@@ -2,25 +2,11 @@ import React, { useState } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { PerspectiveCamera, OrthographicCamera, OrbitControls, useTexture, GizmoHelper, GizmoViewport, Text, Edges, Line, Html } from '@react-three/drei';
 import * as THREE from 'three';
+import useStore from '../store/useStore';
+import { getGlobalMatrix } from '../utils/sceneGraph';
+import { formatUnit } from '../utils/units';
 
-const getMatrix = (id, isBoard, boards, groups) => {
-  let mat = new THREE.Matrix4();
-  let cur = id; let isB = isBoard;
-  while (cur) {
-      let p = [0, 0, 0], r = [0, 0, 0], pId = null;
-      if (isB) {
-          const bb = boards.find(x => x.id.toString() === cur);
-          if (bb) { p = bb.position || [0, 0, 0]; r = bb.rotation || [0, 0, 0]; pId = bb.parentId; }
-          isB = false;
-      } else {
-          const g = groups[cur];
-          if (g) { p = g.position || [0, 0, 0]; r = g.rotation || [0, 0, 0]; pId = g.parentId; }
-      }
-      mat.premultiply(new THREE.Matrix4().compose(new THREE.Vector3(...p), new THREE.Quaternion().setFromEuler(new THREE.Euler(...r, 'XYZ')), new THREE.Vector3(1, 1, 1)));
-      cur = pId;
-  }
-  return mat;
-};
+
 
 const ConstraintVisualizer = ({ boards, groups, selectedItemIds }) => {
   const selectedBoards = boards.filter(b => selectedItemIds.includes(b.id.toString()) && b.constraints && b.constraints.length > 0);
@@ -45,10 +31,10 @@ const ConstraintVisualizer = ({ boards, groups, selectedItemIds }) => {
 
         return b.constraints.map((c, i) => {
           const targetBoard = boards.find(x => x.id.toString() === c.targetId.toString());
-          const startMat = getMatrix(b.id.toString(), true, boards, groups);
+          const startMat = getGlobalMatrix(b.id.toString(), true, boards, groups);
           const startPos = getFaceLocalPos(b, c.sourceFace).applyMatrix4(startMat);
 
-          const targetMat = getMatrix(c.targetId.toString(), true, boards, groups);
+          const targetMat = getGlobalMatrix(c.targetId.toString(), true, boards, groups);
           const targetPos = getFaceLocalPos(targetBoard, c.targetFace).applyMatrix4(targetMat);
           
           const midPos = startPos.clone().lerp(targetPos, 0.5);
@@ -91,13 +77,7 @@ const DimensioningOverlay = ({ boards, groups, selectedItemIds, showDimensions, 
   if (!showDimensions || selectedItemIds.length === 0) return null;
   const isDark = theme === 'dark';
 
-  const formatUnit = (val) => {
-    if (units === 'metric') return `${(val * 25.4).toFixed(1)}mm`;
-    const frac = val % 1;
-    let label = `${Math.floor(val)}`;
-    if (frac > 0) label += ` ${Math.round(frac * 8)}/8`; // Simplified 1/8 increments
-    return `${label}"`;
-  };
+
 
   return (
     <group>
@@ -110,7 +90,7 @@ const DimensioningOverlay = ({ boards, groups, selectedItemIds, showDimensions, 
         const extY = b.size[1] / 2;
         const extZ = b.size[2] / 2;
         
-        const mat = getMatrix(id, true, boards, groups);
+        const mat = getGlobalMatrix(id, true, boards, groups);
         
         const mapPt = (x, y, z) => new THREE.Vector3(x, y, z).applyMatrix4(mat).toArray();
         const color = isDark ? '#888888' : '#666666';
@@ -142,21 +122,21 @@ const DimensioningOverlay = ({ boards, groups, selectedItemIds, showDimensions, 
              <Line points={xT1} color={color} lineWidth={1.5} />
              <Line points={xT2} color={color} lineWidth={1.5} />
              <Html position={ptX} center style={{ pointerEvents: 'none', transition: 'all 0.1s' }}>
-                <div style={{ color: isDark ? '#d0d0d0' : '#222222', fontSize: '0.75rem', fontWeight: 'bold' }}>W: {formatUnit(b.size[0])}</div>
+                <div style={{ color: isDark ? '#d0d0d0' : '#222222', fontSize: '0.75rem', fontWeight: 'bold' }}>W: {formatUnit(b.size[0], units)}</div>
              </Html>
 
              <Line points={yD} color={color} lineWidth={1.5} />
              <Line points={yT1} color={color} lineWidth={1.5} />
              <Line points={yT2} color={color} lineWidth={1.5} />
              <Html position={ptY} center style={{ pointerEvents: 'none', transition: 'all 0.1s' }}>
-                <div style={{ color: isDark ? '#d0d0d0' : '#222222', fontSize: '0.75rem', fontWeight: 'bold' }}>L: {formatUnit(b.size[1])}</div>
+                <div style={{ color: isDark ? '#d0d0d0' : '#222222', fontSize: '0.75rem', fontWeight: 'bold' }}>L: {formatUnit(b.size[1], units)}</div>
              </Html>
 
              <Line points={zD} color={color} lineWidth={1.5} />
              <Line points={zT1} color={color} lineWidth={1.5} />
              <Line points={zT2} color={color} lineWidth={1.5} />
              <Html position={ptZ} center style={{ pointerEvents: 'none', transition: 'all 0.1s' }}>
-                <div style={{ color: isDark ? '#d0d0d0' : '#222222', fontSize: '0.75rem', fontWeight: 'bold' }}>D: {formatUnit(b.size[2])}</div>
+                <div style={{ color: isDark ? '#d0d0d0' : '#222222', fontSize: '0.75rem', fontWeight: 'bold' }}>D: {formatUnit(b.size[2], units)}</div>
              </Html>
           </group>
         );
@@ -188,7 +168,7 @@ const BoundingBoxVisualizer = ({ boards, groups, selectedItemIds, showBoundingBo
   if (validBoards.length === 0) return null;
 
   validBoards.forEach(b => {
-      const mat = getMatrix(b.id.toString(), true, boards, groups);
+      const mat = getGlobalMatrix(b.id.toString(), true, boards, groups);
       const w = b.size[0] / 2, h = b.size[1] / 2, d = b.size[2] / 2;
       const corners = [
           new THREE.Vector3(w, h, d), new THREE.Vector3(w, h, -d), new THREE.Vector3(w, -h, d), new THREE.Vector3(w, -h, -d),
@@ -284,7 +264,7 @@ const RecursiveNode = ({ nodeId, groups, boards, selectedItemIds, toggleSelectio
           if (faceStr.startsWith('z')) planeH = b.size[1];
 
           // Determine global normal to label the face
-          const mat = getMatrix(b.id.toString(), true, boards, groups);
+          const mat = getGlobalMatrix(b.id.toString(), true, boards, groups);
           const normalMatrix = new THREE.Matrix3().getNormalMatrix(mat);
           const localNormal = new THREE.Vector3();
           if (faceStr === 'x+') localNormal.set(1, 0, 0);
@@ -378,7 +358,8 @@ function WoodJoint({ boards, groups, selectedItemIds, toggleSelection, showEdges
   );
 }
 
-export default function Viewport3D({ boards, groups, selectedItemIds, setSelectedItemIds, toggleSelection, gridSnap = '1/8 in', theme = 'light', globalBounds, showEdges, showDimensions, showBoundingBox, units, onDoubleClickItem, constraintTargetMode }) {
+export default function Viewport3D() {
+  const { boards, groups, selectedItemIds, setSelectedItemIds, toggleSelection, gridSnap, theme, globalBounds, showEdges, showDimensions, showBoundingBox, units, constraintTargetMode } = useStore();
   const [isOrtho, setIsOrtho] = useState(false);
   const [hoveredFaceData, setHoveredFaceData] = useState(null);
 
@@ -471,7 +452,6 @@ export default function Viewport3D({ boards, groups, selectedItemIds, setSelecte
             showBoundingBox={showBoundingBox}
             units={units}
             theme={theme}
-            onDoubleClickItem={onDoubleClickItem}
             constraintTargetMode={constraintTargetMode}
             hoveredFaceData={hoveredFaceData}
             setHoveredFaceData={setHoveredFaceData}
