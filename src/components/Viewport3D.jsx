@@ -283,11 +283,50 @@ const RecursiveNode = ({ nodeId, groups, boards, selectedItemIds, toggleSelectio
           if (faceStr.startsWith('x')) planeH = b.size[1];
           if (faceStr.startsWith('z')) planeH = b.size[1];
 
+          // Determine global normal to label the face
+          const mat = getMatrix(b.id.toString(), true, boards, groups);
+          const normalMatrix = new THREE.Matrix3().getNormalMatrix(mat);
+          const localNormal = new THREE.Vector3();
+          if (faceStr === 'x+') localNormal.set(1, 0, 0);
+          if (faceStr === 'x-') localNormal.set(-1, 0, 0);
+          if (faceStr === 'y+') localNormal.set(0, 1, 0);
+          if (faceStr === 'y-') localNormal.set(0, -1, 0);
+          if (faceStr === 'z+') localNormal.set(0, 0, 1);
+          if (faceStr === 'z-') localNormal.set(0, 0, -1);
+          
+          localNormal.applyMatrix3(normalMatrix).normalize();
+          
+          const epsilon = 0.01;
+          let tooltipLabel = 'not coplanar';
+          
+          if (localNormal.y > 1 - epsilon) tooltipLabel = "top";
+          else if (localNormal.y < -1 + epsilon) tooltipLabel = "bottom";
+          else if (localNormal.x > 1 - epsilon) tooltipLabel = "right";
+          else if (localNormal.x < -1 + epsilon) tooltipLabel = "left";
+          else if (localNormal.z > 1 - epsilon) tooltipLabel = "front";
+          else if (localNormal.z < -1 + epsilon) tooltipLabel = "back";
+
           return (
-            <mesh position={pos} rotation={rot} raycast={() => null}>
-              <planeGeometry args={[planeW, planeH]} />
-              <meshBasicMaterial color="#00ffff" transparent opacity={0.4} depthTest={false} side={THREE.DoubleSide} />
-            </mesh>
+            <group>
+              <mesh position={pos} rotation={rot} raycast={() => null}>
+                <planeGeometry args={[planeW, planeH]} />
+                <meshBasicMaterial color="#00ffff" transparent opacity={0.4} depthTest={false} side={THREE.DoubleSide} />
+              </mesh>
+              <Html position={pos} center style={{ pointerEvents: 'none', zIndex: 10 }}>
+                <div style={{
+                  background: 'rgba(0, 0, 0, 0.75)',
+                  color: 'white',
+                  padding: '4px 8px',
+                  borderRadius: '6px',
+                  fontSize: '0.8rem',
+                  fontWeight: 'bold',
+                  whiteSpace: 'nowrap',
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.5)'
+                }}>
+                  {tooltipLabel}
+                </div>
+              </Html>
+            </group>
           );
         })()}
       </mesh>
@@ -388,7 +427,7 @@ export default function Viewport3D({ boards, groups, selectedItemIds, setSelecte
         <ambientLight intensity={0.4} />
         <pointLight position={[20, 20, 20]} intensity={1} />
 
-        <GizmoHelper alignment="top-right" margin={[420, 160]}>
+        <GizmoHelper alignment="top-center" margin={[0, 160]}>
           <GizmoViewport axisColors={['#ff3b30', '#34c759', '#007aff']} labelColor="white" labels={['R', 'U', 'F']} />
         </GizmoHelper>
 

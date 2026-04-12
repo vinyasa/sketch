@@ -91,7 +91,7 @@ export default function App() {
     const [showDimensions, setShowDimensions] = useState(() => loadState('showDimensions', true));
     const [showBoundingBox, setShowBoundingBox] = useState(() => loadState('showBoundingBox', true));
     const [showSettingsPanel, setShowSettingsPanel] = useState(false);
-    const [editGroupName, setEditGroupName] = useState('');
+
     const [globalBounds, setGlobalBounds] = useState(() => loadState('globalBounds', { enabled: false, x: 18, y: 25, z: 18 }));
     const [toast, setToast] = useState(null);
 
@@ -101,9 +101,9 @@ export default function App() {
     };
 
     const [selectedItemIds, setSelectedItemIds] = useState([]);
-    const [contextPanelItemId, setContextPanelItemId] = useState(null);
     const [constraintTargetMode, setConstraintTargetMode] = useState(null);
     const [newBoardDialog, setNewBoardDialog] = useState(null);
+    const [confirmDialog, setConfirmDialog] = useState(null);
     const [fileMenuOpen, setFileMenuOpen] = useState(false);
     const [recentFiles, setRecentFiles] = useState(() => {
         try { return JSON.parse(localStorage.getItem('lucey_recent_files')) || []; }
@@ -251,18 +251,6 @@ export default function App() {
         { id: 4, name: 'Cross Brace', parentId: 'Supports', size: [34.5, 2, 0.75], position: [0, -4, 2.625], rotation: [Math.PI / 2, 0, 0], material: 'cherry', joint: 'Dado', constraints: [{ type: 'Flush', targetId: 2, properties: 'Offset: 0in' }, { type: 'Flush', targetId: 3, properties: 'Offset: 0in' }] }
     ]));
 
-    useEffect(() => {
-        if (contextPanelItemId) {
-            if (selectedItemIds.length === 1) {
-                const isBoard = boards.some(b => b.id.toString() === selectedItemIds[0]);
-                if (isBoard && contextPanelItemId !== selectedItemIds[0]) {
-                    setContextPanelItemId(selectedItemIds[0]);
-                }
-            } else if (selectedItemIds.length === 0) {
-                setContextPanelItemId(null);
-            }
-        }
-    }, [selectedItemIds, contextPanelItemId, boards]);
 
 
     const getGlobalMatrix = (id, isBoard, currentBoards = boards, currentGroups = groups) => {
@@ -432,12 +420,94 @@ export default function App() {
     };
 
     const updateGroupVector = (groupId, key, index, value) => {
+        const parsedVal = parseFloat(value) * (key === 'rotation' ? Math.PI / 180 : 1) || 0;
+
+        // Update the group itself
         setGroups(prev => {
             const cur = prev[groupId] || { rotation: [0, 0, 0], position: [0, 0, 0], visible: true };
             let newVec = [...cur[key]];
-            newVec[index] = parseFloat(value) * (key === 'rotation' ? Math.PI / 180 : 1) || 0;
+            newVec[index] = parsedVal;
             return { ...prev, [groupId]: { ...cur, [key]: newVec } };
         });
+
+        // If moving position, propagate to externally-constrained boards
+        if (key === 'position') {
+            const oldVal = (groups[groupId]?.position || [0, 0, 0])[index];
+            const localDelta = parsedVal - oldVal;
+            if (localDelta === 0) return;
+
+            // Convert local delta to world-space delta using parent rotation
+            const parentRotMat = getParentRotMatrix(groups[groupId]?.parentId, groups);
+            const worldDelta = new THREE.Vector3(0, 0, 0);
+            worldDelta.setComponent(index, localDelta);
+            worldDelta.applyMatrix4(parentRotMat);
+
+            // Recursively collect all board IDs inside this group
+            const insideBoardIds = new Set();
+            const collectChildren = (parentId) => {
+                boards.forEach(b => { if (b.parentId === parentId) insideBoardIds.add(b.id.toString()); });
+                Object.keys(groups).forEach(k => { if (groups[k].parentId === parentId) collectChildren(k); });
+            };
+            collectChildren(groupId);
+
+            if (insideBoardIds.size === 0) return;
+
+            // Flood-fill outward through enabled constraints to find linked external boards
+            let externalLinkedIds = new Set();
+            let frontier = new Set(insideBoardIds);
+            let visited = new Set(insideBoardIds);
+            let changed = true;
+            while (changed) {
+                changed = false;
+                boards.forEach(b => {
+                    const bid = b.id.toString();
+                    if (visited.has(bid)) return;
+                    // Check if this board has an enabled constraint pointing to something in our set
+                    if (b.constraints && b.constraints.some(c => c.enabled !== false && visited.has(c.targetId.toString()))) {
+                        visited.add(bid);
+                        externalLinkedIds.add(bid);
+                        changed = true;
+                    }
+                });
+                // Also check if any board in our set has an enabled constraint pointing outward
+                boards.forEach(b => {
+                    const bid = b.id.toString();
+                    if (!visited.has(bid)) return;
+                    if (b.constraints) {
+                        b.constraints.forEach(c => {
+                            const tid = c.targetId.toString();
+                            if (c.enabled !== false && !visited.has(tid)) {
+                                visited.add(tid);
+                                externalLinkedIds.add(tid);
+                                changed = true;
+                            }
+                        });
+                    }
+                });
+            }
+
+            // Remove inside boards — we only want to move the external ones
+            insideBoardIds.forEach(id => externalLinkedIds.delete(id));
+
+            if (externalLinkedIds.size === 0) return;
+
+            // Apply world delta to each external linked board, converted to its local space
+            setBoards(prev => prev.map(b => {
+                if (externalLinkedIds.has(b.id.toString())) {
+                    const parentInv = getParentRotMatrix(b.parentId, groups).clone().invert();
+                    const localShift = worldDelta.clone().applyMatrix4(parentInv);
+                    return {
+                        ...b,
+                        position: [
+                            b.position[0] + localShift.x,
+                            b.position[1] + localShift.y,
+                            b.position[2] + localShift.z
+                        ]
+                    };
+                }
+                return b;
+            }));
+        }
     };
 
     const processAiCommand = (text) => {
@@ -526,10 +596,6 @@ export default function App() {
                 const isLength = /(short|long|length|tall|top|bottom)/.test(lower);
                 const isWidth = /(wide|narrow|width|left|right)/.test(lower);
 
-                let anchorMultiplier = 0;
-                if (/(top|right|front)/.test(lower)) anchorMultiplier = 1;
-                if (/(bottom|left|back)/.test(lower)) anchorMultiplier = -1;
-
                 let targetedBoards = selectedItemIds.length > 0 ? boards.filter(b => selectedItemIds.includes(b.id.toString())) : [];
 
                 // Fallback: If nothing is selected, try to infer the target board by name matching the chat text
@@ -542,41 +608,52 @@ export default function App() {
 
                     setBoards(prev => prev.map(b => {
                         if (targetIds.includes(b.id.toString())) {
-                            let dims = [
-                                { idx: 0, val: b.size[0] },
-                                { idx: 1, val: b.size[1] },
-                                { idx: 2, val: b.size[2] }
-                            ];
-                            // Sort descending: [0]=Max length, [1]=Median width, [2]=Min thickness
-                            dims.sort((a, c) => c.val - a.val);
+                            let targetGlobalNormal = null;
+                            if (/(top|up)/.test(lower)) targetGlobalNormal = new THREE.Vector3(0, 1, 0);
+                            else if (/(bottom|down)/.test(lower)) targetGlobalNormal = new THREE.Vector3(0, -1, 0);
+                            else if (/(right)/.test(lower)) targetGlobalNormal = new THREE.Vector3(1, 0, 0);
+                            else if (/(left)/.test(lower)) targetGlobalNormal = new THREE.Vector3(-1, 0, 0);
+                            else if (/(front)/.test(lower)) targetGlobalNormal = new THREE.Vector3(0, 0, 1);
+                            else if (/(back)/.test(lower)) targetGlobalNormal = new THREE.Vector3(0, 0, -1);
 
-                            let targetIndex = dims[0].idx; // Default to longest dimension
-                            if (isWidth) targetIndex = dims[1].idx;
-                            else if (!isLength && !isWidth) targetIndex = dims[2].idx;
+                            let targetIndex = 0;
+                            let localSign = 1;
+
+                            if (targetGlobalNormal) {
+                                const mat = getGlobalMatrix(b.id.toString(), true, prev, groups);
+                                const normalMatrix = new THREE.Matrix3().getNormalMatrix(mat);
+                                let bestDot = -Infinity;
+                                const faces = [
+                                    { i: 0, sign: 1, v: new THREE.Vector3(1,0,0) }, { i: 0, sign: -1, v: new THREE.Vector3(-1,0,0) },
+                                    { i: 1, sign: 1, v: new THREE.Vector3(0,1,0) }, { i: 1, sign: -1, v: new THREE.Vector3(0,-1,0) },
+                                    { i: 2, sign: 1, v: new THREE.Vector3(0,0,1) }, { i: 2, sign: -1, v: new THREE.Vector3(0,0,-1) }
+                                ];
+                                faces.forEach(f => {
+                                    const worldV = f.v.clone().applyMatrix3(normalMatrix).normalize();
+                                    const d = worldV.dot(targetGlobalNormal);
+                                    if (d > bestDot) {
+                                        bestDot = d;
+                                        targetIndex = f.i;
+                                        localSign = f.sign;
+                                    }
+                                });
+                            } else {
+                                let dims = [ { idx: 0, val: b.size[0] }, { idx: 1, val: b.size[1] }, { idx: 2, val: b.size[2] } ];
+                                dims.sort((a, c) => c.val - a.val);
+                                targetIndex = dims[0].idx; // Default to longest dimension
+                                if (isWidth) targetIndex = dims[1].idx;
+                                else if (!isLength && !isWidth) targetIndex = dims[2].idx;
+                            }
 
                             let newSize = [...b.size];
                             const actualDelta = Math.max(0.1 - newSize[targetIndex], delta);
                             newSize[targetIndex] += actualDelta;
 
                             let newPos = [...b.position];
-                            if (anchorMultiplier !== 0) {
-                                let localDir = new THREE.Vector3(0, 0, 0);
-                                localDir.setComponent(targetIndex, 1);
-                                localDir.applyEuler(new THREE.Euler(...(b.rotation || [0, 0, 0]), 'XYZ'));
-
-                                let alignedMultiplier = anchorMultiplier;
-                                if (/(top|bottom|up|down)/.test(lower)) {
-                                    alignedMultiplier = anchorMultiplier * (localDir.y < -0.1 ? -1 : 1);
-                                } else if (/(right|left)/.test(lower)) {
-                                    alignedMultiplier = anchorMultiplier * (localDir.x < -0.1 ? -1 : 1);
-                                } else if (/(front|back)/.test(lower)) {
-                                    alignedMultiplier = anchorMultiplier * (localDir.z < -0.1 ? -1 : 1);
-                                }
-
+                            if (targetGlobalNormal) {
                                 let localOffset = new THREE.Vector3(0, 0, 0);
-                                localOffset.setComponent(targetIndex, (actualDelta / 2) * alignedMultiplier);
+                                localOffset.setComponent(targetIndex, (actualDelta / 2) * localSign);
                                 localOffset.applyEuler(new THREE.Euler(...(b.rotation || [0, 0, 0]), 'XYZ'));
-
                                 newPos[0] += localOffset.x;
                                 newPos[1] += localOffset.y;
                                 newPos[2] += localOffset.z;
@@ -854,10 +931,6 @@ export default function App() {
                     onDragOver={handleDragOver}
                     onDrop={e => { if (isGroup) handleDrop(e, nodeId); }}
                     onClick={(e) => toggleSelection(nodeId.toString(), e.shiftKey || e.ctrlKey || e.metaKey)}
-                    onDoubleClick={(e) => {
-                        e.stopPropagation();
-                        if (!isGroup) setContextPanelItemId(nodeId.toString());
-                    }}
                 >
                     <span style={{ flex: 1, cursor: 'pointer', whiteSpace: 'nowrap' }}>
                         {isGroup && hasChildren && (
@@ -868,7 +941,7 @@ export default function App() {
                                 {g.isExpanded ? '⏷' : '⏵'}
                             </span>
                         )}
-                        {isGroup && !hasChildren && <span style={{ marginRight: '16px', display: 'inline-block', width: '12px' }}></span>}
+                        {isGroup && !hasChildren && <span style={{ marginRight: '4px', display: 'inline-block', width: '12px' }}></span>}
                         {isGroup ? nodeId : g.name}
                     </span>
                     <button
@@ -896,26 +969,6 @@ export default function App() {
     const selectedBoard = selectedItemIds.length === 1 && boards.find(b => b.id.toString() === selectedItemIds[0]);
     const selectedGroup = selectedItemIds.length === 1 && Object.keys(groups).find(k => k === selectedItemIds[0]);
 
-    useEffect(() => { setEditGroupName(selectedGroup || ''); }, [selectedGroup]);
-
-    const commitGroupRename = () => {
-        const newName = editGroupName.trim();
-        if (!newName || newName === selectedGroup) { setEditGroupName(selectedGroup || ''); return; }
-        if (groups[newName]) { alert("Assembly name already corresponds to another group."); setEditGroupName(selectedGroup); return; }
-
-        pushHistory();
-        setGroups(prev => {
-            const newG = { ...prev };
-            newG[newName] = newG[selectedGroup];
-            delete newG[selectedGroup];
-            Object.keys(newG).forEach(k => {
-                if (newG[k].parentId === selectedGroup) newG[k].parentId = newName;
-            });
-            return newG;
-        });
-        setBoards(prev => prev.map(b => b.parentId === selectedGroup ? { ...b, parentId: newName } : b));
-        setSelectedGroup(newName);
-    };
 
     // Rough AABB Calculation for Inspector
     let overallSize = [0, 0, 0];
@@ -1083,6 +1136,45 @@ export default function App() {
         });
     };
 
+    const handleAssemblyDelete = () => {
+        const groupToDelete = selectedGroup;
+        setConfirmDialog({
+            message: `Are you sure you want to delete assembly "${groupToDelete}"? This will permanently delete ALL nested sub-assemblies and components.`,
+            onConfirm: () => {
+                pushHistory();
+                let allGroupIdsToDel = new Set([groupToDelete]);
+                let allBoardIdsToDel = new Set();
+                const traverse = (pId) => {
+                    Object.keys(groups).forEach(k => { if (groups[k].parentId === pId && !allGroupIdsToDel.has(k)) { allGroupIdsToDel.add(k); traverse(k); } });
+                    boards.forEach(bd => { if (bd.parentId === pId) allBoardIdsToDel.add(bd.id); });
+                };
+                traverse(groupToDelete);
+
+                setGroups(prev => {
+                    let nextGroups = { ...prev };
+                    allGroupIdsToDel.forEach(id => delete nextGroups[id]);
+                    return nextGroups;
+                });
+                setBoards(prev => prev.filter(bd => !allBoardIdsToDel.has(bd.id)));
+                setSelectedItemIds(prev => prev.filter(id => !allBoardIdsToDel.has(parseInt(id)) && !allGroupIdsToDel.has(id)));
+                setConfirmDialog(null);
+            }
+        });
+    };
+
+    const handleComponentDelete = () => {
+        const boardToDelete = selectedBoard;
+        setConfirmDialog({
+            message: `Are you sure you want to delete component "${boardToDelete.name}"? This action will permanently remove it from the project.`,
+            onConfirm: () => {
+                pushHistory();
+                setBoards(prev => prev.filter(bd => bd.id !== boardToDelete.id));
+                setSelectedItemIds(prev => prev.filter(id => id !== boardToDelete.id.toString()));
+                setConfirmDialog(null);
+            }
+        });
+    };
+
     const manualAddAssembly = () => {
         pushHistory();
         const newId = 'Assembly ' + Math.floor(Math.random() * 1000);
@@ -1091,8 +1183,7 @@ export default function App() {
             ...prev,
             [newId]: { parentId: targetParent, isExpanded: true, visible: true, position: [0, 0, 0], rotation: [0, 0, 0] }
         }));
-        clearSelection();
-        setSelectedGroup(newId);
+        setSelectedItemIds([newId]);
     };
 
     return (
@@ -1116,7 +1207,6 @@ export default function App() {
                     showDimensions={showDimensions}
                     showBoundingBox={showBoundingBox}
                     units={units}
-                    onDoubleClickItem={setContextPanelItemId}
                     constraintTargetMode={constraintTargetMode}
                 />
             </div>
@@ -1316,13 +1406,52 @@ export default function App() {
                                 </div>
                             </DraggablePanel>
 
-                            <DraggablePanel title="Inspector" defaultPosition={{ x: window.innerWidth - 270, y: window.innerHeight * 0.45 }} onFocusCapture={(e) => { if (e.target.tagName === 'INPUT') pushHistory(); }}>
+                            <DraggablePanel title="Inspector" defaultPosition={{ x: window.innerWidth - 540, y: 80 }} onFocusCapture={(e) => { if (e.target.tagName === 'INPUT') pushHistory(); }}>
                                 {selectedGroup ? (
-                                    <>
-                                        <div className="inspector-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
-                                            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Assembly:</span>
-                                            <input type="text" value={editGroupName} onChange={e => setEditGroupName(e.target.value)} onBlur={commitGroupRename} onKeyDown={e => e.key === 'Enter' && e.target.blur()} disabled={selectedGroup === 'Workspace'} title={selectedGroup === 'Workspace' ? 'Root workspace cannot be renamed' : 'Click to rename assembly'} style={{ flex: 1, width: '100%', background: selectedGroup === 'Workspace' ? 'transparent' : 'rgba(128,128,128,0.15)', padding: '6px 12px', borderRadius: '6px', border: '1px solid', borderColor: selectedGroup === 'Workspace' ? 'transparent' : 'var(--border-color)', color: 'var(--accent-color)', fontSize: 'inherit', fontWeight: 'inherit', outline: 'none' }} />
-                                        </div>
+                                    (() => {
+                                        const isWorkspace = selectedGroup === 'Workspace';
+                                        let moveColors = ['transparent', 'transparent', 'transparent'];
+                                        if (!isWorkspace) {
+                                            const pMat = getParentRotMatrix(groups[selectedGroup].parentId, groups);
+                                            const pE = pMat.elements;
+                                            const getColor = (v) => {
+                                                let ax = Math.abs(v.x), ay = Math.abs(v.y), az = Math.abs(v.z);
+                                                if (ax > ay && ax > az) return 'rgba(255, 60, 60, 0.2)';
+                                                if (ay > ax && ay > az) return 'rgba(60, 255, 60, 0.2)';
+                                                return 'rgba(60, 150, 255, 0.2)';
+                                            };
+                                            moveColors = [
+                                                getColor(new THREE.Vector3(pE[0], pE[1], pE[2]).normalize()),
+                                                getColor(new THREE.Vector3(pE[4], pE[5], pE[6]).normalize()),
+                                                getColor(new THREE.Vector3(pE[8], pE[9], pE[10]).normalize())
+                                            ];
+                                        }
+
+                                        return (
+                                            <>
+                                                <div className="inspector-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
+                                                    <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Assembly:</span>
+                                                    <input 
+                                                        type="text" 
+                                                        value={selectedGroup} 
+                                                        disabled={isWorkspace}
+                                                        title={isWorkspace ? 'Root workspace cannot be renamed' : 'Click to rename assembly'}
+                                                        onChange={(e) => {
+                                                            const newName = e.target.value;
+                                                            if (newName === selectedGroup || groups[newName]) return;
+                                                            let nextGroups = { ...groups };
+                                                            nextGroups[newName] = nextGroups[selectedGroup];
+                                                            delete nextGroups[selectedGroup];
+                                                            Object.keys(nextGroups).forEach(k => {
+                                                                if (nextGroups[k].parentId === selectedGroup) nextGroups[k].parentId = newName;
+                                                            });
+                                                            setGroups(nextGroups);
+                                                            setBoards(boards.map(bd => bd.parentId === selectedGroup ? { ...bd, parentId: newName } : bd));
+                                                            setSelectedItemIds(selectedItemIds.map(id => id === selectedGroup ? newName : id));
+                                                        }}
+                                                        style={{ flex: 1, width: '100%', background: isWorkspace ? 'transparent' : 'rgba(128,128,128,0.15)', padding: '6px 12px', borderRadius: '6px', border: '1px solid', borderColor: isWorkspace ? 'transparent' : 'var(--border-color)', color: 'var(--accent-color)', fontSize: 'inherit', fontWeight: 'inherit', outline: 'none' }} 
+                                                    />
+                                                </div>
                                         <div className="inspector-section">
                                             <h4>Overall Dimensions (in)</h4>
                                             <div className="vec3-inputs">
@@ -1334,9 +1463,9 @@ export default function App() {
                                         <div className="inspector-section">
                                             <h4>Group Position (in)</h4>
                                             <div className="vec3-inputs">
-                                                <div>X<input type="number" value={Number((groups[selectedGroup].position || [0, 0, 0])[0].toFixed(4))} onChange={e => updateGroupVector(selectedGroup, 'position', 0, e.target.value)} /></div>
-                                                <div>Y<input type="number" value={Number((groups[selectedGroup].position || [0, 0, 0])[1].toFixed(4))} onChange={e => updateGroupVector(selectedGroup, 'position', 1, e.target.value)} /></div>
-                                                <div>Z<input type="number" value={Number((groups[selectedGroup].position || [0, 0, 0])[2].toFixed(4))} onChange={e => updateGroupVector(selectedGroup, 'position', 2, e.target.value)} /></div>
+                                                <div style={{ backgroundColor: moveColors[0] }}>X<input type="number" value={Number((groups[selectedGroup].position || [0, 0, 0])[0].toFixed(4))} onChange={e => updateGroupVector(selectedGroup, 'position', 0, e.target.value)} /></div>
+                                                <div style={{ backgroundColor: moveColors[1] }}>Y<input type="number" value={Number((groups[selectedGroup].position || [0, 0, 0])[1].toFixed(4))} onChange={e => updateGroupVector(selectedGroup, 'position', 1, e.target.value)} /></div>
+                                                <div style={{ backgroundColor: moveColors[2] }}>Z<input type="number" value={Number((groups[selectedGroup].position || [0, 0, 0])[2].toFixed(4))} onChange={e => updateGroupVector(selectedGroup, 'position', 2, e.target.value)} /></div>
                                             </div>
                                             <button style={{ marginTop: '8px', width: '100%' }} className="primary-btn" onClick={dropGroupToFloor}>↓ Set on Floor</button>
                                         </div>
@@ -1349,7 +1478,22 @@ export default function App() {
                                             </div>
                                             <p className="hint" style={{ marginTop: '8px' }}>Transforms apply recursively down the tree stack.</p>
                                         </div>
+                                        {!isWorkspace && (
+                                            <div style={{ marginTop: '16px' }}>
+                                                <button
+                                                    className="nav-btn"
+                                                    style={{ width: '100%', padding: '8px', color: '#ff3b30', border: '1px solid rgba(255, 59, 48, 0.3)', background: 'rgba(255, 59, 48, 0.05)', fontWeight: 'bold', transition: 'background 0.2s' }}
+                                                    onMouseEnter={e => e.target.style.background = 'rgba(255, 59, 48, 0.15)'}
+                                                    onMouseLeave={e => e.target.style.background = 'rgba(255, 59, 48, 0.05)'}
+                                                    onClick={handleAssemblyDelete}
+                                                >
+                                                    Delete Assembly & Contents
+                                                </button>
+                                            </div>
+                                        )}
                                     </>
+                                );
+                            })()
                                 ) : selectedItemIds.length > 1 ? (
                                     <>
                                         <div className="inspector-title">Multiple Selected ({selectedItemIds.length})</div>
@@ -1530,6 +1674,17 @@ export default function App() {
                                                     <h4>Parent Node:</h4>
                                                     <div style={{ fontSize: '0.85rem', color: 'var(--text-main)', marginBottom: '8px' }}><strong>{selectedBoard.parentId}</strong></div>
                                                 </div>
+                                                <div style={{ marginTop: '16px' }}>
+                                                    <button
+                                                        className="nav-btn"
+                                                        style={{ width: '100%', padding: '8px', color: '#ff3b30', border: '1px solid rgba(255, 59, 48, 0.3)', background: 'rgba(255, 59, 48, 0.05)', fontWeight: 'bold', transition: 'background 0.2s' }}
+                                                        onMouseEnter={e => e.target.style.background = 'rgba(255, 59, 48, 0.15)'}
+                                                        onMouseLeave={e => e.target.style.background = 'rgba(255, 59, 48, 0.05)'}
+                                                        onClick={handleComponentDelete}
+                                                    >
+                                                        Delete Component
+                                                    </button>
+                                                </div>
                                             </>
                                         );
                                     })()
@@ -1571,133 +1726,17 @@ export default function App() {
                     )}
                 </main>
 
-                {contextPanelItemId && (
-                    <div className="context-panel-overlay" onClick={() => setContextPanelItemId(null)}>
-                        <div className="context-panel glass-panel" onClick={e => e.stopPropagation()}>
-                            <div className="header">
-                                <h3 style={{ color: 'var(--accent-color)', margin: 0 }}>Component Parameters</h3>
-                                <button className="close-btn" onClick={() => setContextPanelItemId(null)}>×</button>
+
+
+                {confirmDialog && (
+                    <div className="app-overlay" style={{ background: 'rgba(0,0,0,0.6)', zIndex: 10001, display: 'flex', justifyContent: 'center', alignItems: 'center', position: 'fixed', inset: 0 }} onClick={() => setConfirmDialog(null)}>
+                        <div className="glass-panel" style={{ padding: '24px', width: '380px', borderRadius: '12px', display: 'flex', flexDirection: 'column', gap: '16px' }} onClick={e => e.stopPropagation()}>
+                            <h3 style={{ margin: 0, color: '#ff3b30' }}>⚠ Confirm Deletion</h3>
+                            <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--text-main)', lineHeight: 1.5 }}>{confirmDialog.message}</p>
+                            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '8px' }}>
+                                <button className="nav-btn" style={{ padding: '8px 20px', border: '1px solid var(--border-color)' }} onClick={() => setConfirmDialog(null)}>Cancel</button>
+                                <button className="nav-btn" style={{ padding: '8px 20px', background: 'rgba(255, 59, 48, 0.15)', color: '#ff3b30', border: '1px solid rgba(255, 59, 48, 0.3)', fontWeight: 'bold' }} onClick={confirmDialog.onConfirm}>Delete</button>
                             </div>
-
-                            {(() => {
-                                const b = boards.find(x => x.id.toString() === contextPanelItemId);
-                                if (!b) return <p className="hint">Component not found.</p>;
-
-                                const getMatrix = (id, isBoard = false) => {
-                                    let mat = new THREE.Matrix4();
-                                    let cur = id; let isB = isBoard;
-                                    while (cur) {
-                                        let p = [0, 0, 0], r = [0, 0, 0], pId = null;
-                                        if (isB) {
-                                            const bb = boards.find(x => x.id.toString() === cur);
-                                            if (bb) { p = bb.position || [0, 0, 0]; r = bb.rotation || [0, 0, 0]; pId = bb.parentId; }
-                                            isB = false;
-                                        } else {
-                                            const g = groups[cur];
-                                            if (g) { p = g.position || [0, 0, 0]; r = g.rotation || [0, 0, 0]; pId = g.parentId; }
-                                        }
-                                        mat.premultiply(new THREE.Matrix4().compose(new THREE.Vector3(...p), new THREE.Quaternion().setFromEuler(new THREE.Euler(...r, 'XYZ')), new THREE.Vector3(1, 1, 1)));
-                                        cur = pId;
-                                    }
-                                    return mat;
-                                };
-
-                                const gPos = new THREE.Vector3(0, 0, 0).applyMatrix4(getMatrix(b.id.toString(), true));
-
-                                const hUpdateBoard = (key, val) => {
-                                    setBoards(boards.map(bd => bd.id.toString() === contextPanelItemId ? { ...bd, [key]: val } : bd));
-                                };
-                                const hUpdateVec = (key, index, val) => {
-                                    setBoards(boards.map(bd => {
-                                        if (bd.id.toString() === contextPanelItemId) {
-                                            let newVec = [...bd[key]];
-                                            newVec[index] = parseFloat(val) || 0;
-                                            return { ...bd, [key]: newVec };
-                                        }
-                                        return bd;
-                                    }));
-                                };
-
-                                return (
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                                        <div>
-                                            <input type="text" value={b.name} onChange={e => hUpdateBoard('name', e.target.value)} style={{ width: '100%', background: 'rgba(0,0,0,0.1)', padding: '6px 10px', borderRadius: '6px', border: '1px solid var(--border-color)', color: 'var(--text-main)', outline: 'none' }} />
-                                        </div>
-
-                                        <div className="inspector-section" style={{ marginBottom: 0 }}>
-                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                                <h4>Material</h4>
-                                                <select value={b.material} onChange={e => hUpdateBoard('material', e.target.value)} style={{ width: '60%', padding: '4px 8px' }}>
-                                                    {['pine', 'cherry', 'walnut', 'red-oak', 'white-oak'].map(m => <option key={m} value={m}>{m.replace('-', ' ')}</option>)}
-                                                </select>
-                                            </div>
-                                        </div>
-
-                                        <div className="inspector-section" style={{ marginBottom: 0 }}>
-                                            <h4>Dimensions (L/W/D)</h4>
-                                            <div className="vec3-inputs">
-                                                <div>L<input type="number" step="0.5" value={Number(b.size[1].toFixed(4))} onChange={e => hUpdateVec('size', 1, e.target.value)} /></div>
-                                                <div>W<input type="number" step="0.5" value={Number(b.size[0].toFixed(4))} onChange={e => hUpdateVec('size', 0, e.target.value)} /></div>
-                                                <div>D<input type="number" step="0.5" value={Number(b.size[2].toFixed(4))} onChange={e => hUpdateVec('size', 2, e.target.value)} /></div>
-                                            </div>
-                                        </div>
-
-                                        <div className="inspector-section" style={{ marginBottom: 0 }}>
-                                            <h4>Local Position</h4>
-                                            <div className="vec3-inputs">
-                                                <div>X<input type="number" step="0.125" value={Number(b.position[0].toFixed(4))} onChange={e => hUpdateVec('position', 0, e.target.value)} /></div>
-                                                <div>Y<input type="number" step="0.125" value={Number(b.position[1].toFixed(4))} onChange={e => hUpdateVec('position', 1, e.target.value)} /></div>
-                                                <div>Z<input type="number" step="0.125" value={Number(b.position[2].toFixed(4))} onChange={e => hUpdateVec('position', 2, e.target.value)} /></div>
-                                            </div>
-                                        </div>
-
-                                        <div className="inspector-section" style={{ marginBottom: 0, paddingBottom: '16px', borderBottom: '1px solid var(--border-color)' }}>
-                                            <h4>Parent Node</h4>
-                                            <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>{b.parentId}</span>
-                                        </div>
-
-                                        <div className="inspector-section" style={{ marginBottom: 0 }}>
-                                            <h4>Computed True Global Pos</h4>
-                                            <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', display: 'flex', gap: '12px' }}>
-                                                <span>X: {gPos.x.toFixed(4)}</span>
-                                                <span>Y: {gPos.y.toFixed(4)}</span>
-                                                <span>Z: {gPos.z.toFixed(4)}</span>
-                                            </div>
-                                        </div>
-
-                                        <div className="inspector-section" style={{ marginBottom: 0 }}>
-                                            <h4>Active Constraints</h4>
-                                            {(!b.constraints || b.constraints.length === 0) ? (
-                                                <div className="hint" style={{ marginTop: 0 }}>No active constraints.</div>
-                                            ) : (
-                                                <ul style={{ margin: '4px 0 0 0', paddingLeft: '20px', fontSize: '0.85rem', color: 'var(--text-main)' }}>
-                                                    {b.constraints.map((c, i) => (
-                                                        <li key={i}>{c.type} → {c.targetId}</li>
-                                                    ))}
-                                                </ul>
-                                            )}
-                                        </div>
-
-                                        <div style={{ marginTop: '8px' }}>
-                                            <button
-                                                className="nav-btn"
-                                                style={{ width: '100%', padding: '8px', color: '#ff3b30', border: '1px solid rgba(255, 59, 48, 0.3)', background: 'rgba(255, 59, 48, 0.05)', fontWeight: 'bold' }}
-                                                onClick={() => {
-                                                    if (window.confirm("Are you sure you want to delete this component? This action will permanently remove it from the project.")) {
-                                                        pushHistory();
-                                                        setBoards(boards.filter(bd => bd.id !== b.id));
-                                                        setSelectedItemIds(selectedItemIds.filter(id => id !== b.id.toString()));
-                                                        setContextPanelItemId(null);
-                                                    }
-                                                }}
-                                            >
-                                                Delete Component
-                                            </button>
-                                        </div>
-
-                                    </div>
-                                );
-                            })()}
                         </div>
                     </div>
                 )}
