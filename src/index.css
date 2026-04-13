@@ -2,6 +2,7 @@
   --bg-color: #0d0f12;
   --panel-bg: rgba(22, 24, 29, 0.35);
   --panel-blur: blur(24px);
+  --title-bg: rgba(255, 255, 255, 0.1);
   --accent-color: #bc8a5f;
   --accent-hover: #a87b55;
   --text-main: #f0f0f0;
@@ -14,6 +15,7 @@
   --bg-color: #e8eaed;
   --panel-bg: rgba(255, 255, 255, 0.45);
   --panel-blur: blur(24px);
+  --title-bg: rgba(0, 0, 0, 0.15);
   --accent-color: #a87b55;
   --accent-hover: #8e6542;
   --text-main: #1d1d1d;

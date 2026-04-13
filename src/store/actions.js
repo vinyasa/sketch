@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { getGlobalMatrix, getParentRotMatrix, collectChildBoards } from '../utils/sceneGraph';
 import { solveAlignmentConstraint, getConstraintConnectedSet } from '../utils/constraintSolver';
+import { calculateProceduralBoxWalls } from '../utils/procedural';
 
 export const createActions = (set, get) => ({
 
@@ -277,6 +278,30 @@ export const createActions = (set, get) => ({
     },
 
 
+    updateProceduralBox: (groupId, metaUpdates) => {
+        const { pushHistory, groups, boards, setGroups, setBoards } = get();
+        const curGroup = groups[groupId];
+        if (!curGroup || !curGroup.meta || curGroup.meta.type !== 'procedural-box') return;
+        pushHistory();
+
+        const newMeta = { ...curGroup.meta, ...metaUpdates };
+        setGroups(prev => ({ ...prev, [groupId]: { ...prev[groupId], meta: newMeta } }));
+
+        const wallsData = calculateProceduralBoxWalls(newMeta);
+        
+        setBoards(prev => prev.map(b => {
+             if (b.parentId === groupId) {
+                 const mappedData = wallsData.find(wd => b.name.includes(wd.role));
+                 if (mappedData) {
+                     const updates = { ...b, size: mappedData.size, position: mappedData.position };
+                     if (mappedData.rotation) updates.rotation = mappedData.rotation;
+                     return updates;
+                 }
+             }
+             return b;
+        }));
+    },
+
     processAiCommand: (text) => {
         const { pushHistory, selectedItemIds, setBoards, setGroups, boards, groups, defaultMaterial, globalBounds, setChatMessages } = get();
         pushHistory();
@@ -434,6 +459,112 @@ export const createActions = (set, get) => ({
                 reply = `Generated dynamic Top plane!${trimNotice}`;
                 updated = true;
             }
+        } else if (/(build|create|make).+box/i.test(lower)) {
+            let targets = [];
+            if (selectedItemIds.length === 0 || selectedItemIds.includes('Workspace')) {
+                targets = boards;
+            } else {
+                const validBoards = new Set();
+                const traverse = (pId) => {
+                    boards.filter(b => b.parentId === pId).forEach(b => validBoards.add(b));
+                    Object.keys(groups).filter(k => groups[k].parentId === pId).forEach(k => traverse(k));
+                };
+
+                selectedItemIds.forEach(id => {
+                    if (Object.keys(groups).includes(id)) {
+                        traverse(id);
+                    } else {
+                        const b = boards.find(x => x.id.toString() === id);
+                        if (b) validBoards.add(b);
+                    }
+                });
+                targets = Array.from(validBoards);
+            }
+
+            let minX = -12, maxX = 12, minZ = -8, maxZ = 8, maxY = 0;
+
+            if (targets.length > 0) {
+                minX = Infinity; maxX = -Infinity; minZ = Infinity; maxZ = -Infinity; maxY = -Infinity;
+
+                targets.forEach(b => {
+                    const w = b.size[0] / 2, h = b.size[1] / 2, d = b.size[2] / 2;
+                    const corners = [
+                        new THREE.Vector3(w, h, d), new THREE.Vector3(w, h, -d), new THREE.Vector3(w, -h, d), new THREE.Vector3(w, -h, -d),
+                        new THREE.Vector3(-w, h, d), new THREE.Vector3(-w, h, -d), new THREE.Vector3(-w, -h, d), new THREE.Vector3(-w, -h, -d)
+                    ];
+                    
+                    const mat = getGlobalMatrix(b.id.toString(), true, boards, groups);
+
+                    corners.forEach(v => {
+                        v.applyMatrix4(mat);
+                        if (v.x < minX) minX = v.x;
+                        if (v.x > maxX) maxX = v.x;
+                        if (v.z < minZ) minZ = v.z;
+                        if (v.z > maxZ) maxZ = v.z;
+                        if (v.y > maxY) maxY = v.y;
+                    });
+                });
+            }
+
+            let newWidth = Math.abs(maxX - minX);
+            let newDepth = Math.abs(maxZ - minZ);
+            const thickness = 0.75;
+            
+            let newHeight = 12;
+            const hMatch = lower.match(/(\d*\.?\d+)\s*(?:inch|in|"|'')?\s*(tall|high|deep|box)/i);
+            if (hMatch && hMatch[1]) {
+                 newHeight = parseFloat(hMatch[1]);
+            }
+
+            const newGroupId = 'Assembly ' + Math.floor(Math.random() * 1000);
+            
+            let newX = minX + (newWidth / 2);
+            let newZ = minZ + (newDepth / 2);
+            let finalY = maxY;
+
+            if (/(bounding box|workspace box|workspace bounds|global bounds)/.test(lower) && globalBounds && globalBounds.enabled) {
+                newWidth = globalBounds.x;
+                newDepth = globalBounds.z;
+                newX = globalBounds.x / 2; // Exact center of the visual workspace footprint
+                newZ = globalBounds.z / 2;
+                finalY = 0; // Sit perfectly on the floor
+            }
+
+            const proceduralMeta = {
+                type: 'procedural-box',
+                w: newWidth, h: newHeight, d: newDepth, t: thickness,
+                joint: 'butt-A'
+            };
+
+            setGroups(prev => ({
+                ...prev,
+                [newGroupId]: { 
+                    parentId: 'Workspace', 
+                    isExpanded: true, 
+                    visible: true, 
+                    position: [newX, finalY, newZ], 
+                    rotation: [0, 0, 0],
+                    meta: proceduralMeta
+                }
+            }));
+
+            const wallsData = calculateProceduralBoxWalls(proceduralMeta);
+            const newBoards = wallsData.map((wd, i) => ({
+                id: Date.now() + i,
+                name: `${wd.role} Wall`,
+                parentId: newGroupId,
+                size: wd.size,
+                position: wd.position,
+                rotation: wd.rotation || [0, 0, 0],
+                material: defaultMaterial,
+                joint: 'None',
+                constraints: []
+            }));
+
+            setBoards(prev => [...prev, ...newBoards]);
+            setSelectedItemIds([newGroupId]);
+            reply = `Generated dynamic ${newHeight}" box aligned to the calculated blueprint!`;
+            updated = true;
         } else if (/(cut|add|trim|extend|shave|chop|short|long|wide|narrow|thick|thin|reduce|increase|shrink|grow|length|width|thickness|decrease)/.test(lower)) {
             const match = lower.match(/(\d*\.?\d+)/);
             if (match) {
@@ -778,13 +909,21 @@ export const createActions = (set, get) => ({
         const { pushHistory, newBoardDialog, setBoards, defaultMaterial, setSelectedItemIds, setNewBoardDialog } = get();
         pushHistory();
         const newId = Date.now();
+        
+        // Always maintain the internal component definition of Width, Length, and Depth
         let calculatedSize = [newBoardDialog.dimW, newBoardDialog.dimL, newBoardDialog.dimD];
-        if (newBoardDialog.plane === 'red-blue') calculatedSize = [newBoardDialog.dimW, newBoardDialog.dimD, newBoardDialog.dimL];
-        else if (newBoardDialog.plane === 'green-blue') calculatedSize = [newBoardDialog.dimD, newBoardDialog.dimW, newBoardDialog.dimL];
+        let calculatedRotation = [0, 0, 0];
+        
+        // Orient the board by rotating it instead of destroying its dimensional integrity
+        if (newBoardDialog.plane === 'red-blue') {
+            calculatedRotation = [Math.PI / 2, 0, 0]; // Lays it flat on the floor
+        } else if (newBoardDialog.plane === 'green-blue') {
+            calculatedRotation = [0, Math.PI / 2, 0]; // Stands it edge-on into the screen
+        }
 
         setBoards(prev => [...prev, {
             id: newId, name: newBoardDialog.name || 'New Component', parentId: newBoardDialog.parentId,
-            size: calculatedSize, position: newBoardDialog.position, rotation: [0, 0, 0],
+            size: calculatedSize, position: newBoardDialog.position, rotation: calculatedRotation,
             material: defaultMaterial, joint: 'None', constraints: []
         }]);
         setSelectedItemIds([newId.toString()]);

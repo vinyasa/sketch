@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { getGlobalMatrix } from './sceneGraph';
+import { getGlobalMatrix, calculateGroupLocalAABB } from './sceneGraph';
 
 /**
  * Solve a Flush or Glue alignment constraint, returning the new position
@@ -11,17 +11,35 @@ import { getGlobalMatrix } from './sceneGraph';
  * @returns {{ position: [x, y, z] } | null}
  */
 export const solveAlignmentConstraint = (sourceBoard, constraintObj, currentBoards, currentGroups) => {
-    const tBoard = currentBoards.find(b => b.id.toString() === constraintObj.targetId.toString());
+    let tBoard = currentBoards.find(b => b.id.toString() === constraintObj.targetId.toString());
+    
+    if (!tBoard && currentGroups[constraintObj.targetId]) {
+        // Target is an Assembly. Generate a virtual board from its local bounding volume.
+        const aabb = calculateGroupLocalAABB(constraintObj.targetId, currentBoards, currentGroups);
+        if (aabb) {
+            tBoard = {
+                id: constraintObj.targetId,
+                isVirtualGroupBound: true,
+                size: [aabb.width, aabb.height, aabb.depth],
+                // The center of the bounding box is physically offset from the assembly's pivot origin
+                localOffset: new THREE.Vector3(aabb.centerX, aabb.centerY, aabb.centerZ)
+            };
+        }
+    }
+
     if (!tBoard) return null;
 
     const getLocalData = (board, face) => {
         let norm = new THREE.Vector3();
         let pos = new THREE.Vector3();
+        if (board.localOffset) {
+            pos.copy(board.localOffset);
+        }
         const sign = face[1] === '+' ? 1 : -1;
         const w = board.size[0] / 2, h = board.size[1] / 2, d = board.size[2] / 2;
-        if (face[0] === 'x') { norm.set(sign, 0, 0); pos.set(w * sign, 0, 0); }
-        if (face[0] === 'y') { norm.set(0, sign, 0); pos.set(0, h * sign, 0); }
-        if (face[0] === 'z') { norm.set(0, 0, sign); pos.set(0, 0, d * sign); }
+        if (face[0] === 'x') { norm.set(sign, 0, 0); pos.x += w * sign; }
+        if (face[0] === 'y') { norm.set(0, sign, 0); pos.y += h * sign; }
+        if (face[0] === 'z') { norm.set(0, 0, sign); pos.z += d * sign; }
         return { norm, pos };
     };
 

@@ -63,7 +63,7 @@ const AppHeader = () => {
                 </button>
                 <div className="divider"></div>
                 <button className="nav-btn accent-fill" onClick={() => setIsRightPanelOpen(!isRightPanelOpen)}>
-                    {isRightPanelOpen ? 'Hide Panel ⏵' : '⏴ Show Panel'}
+                    {isRightPanelOpen ? 'Hide Panels ⏵' : '⏴ Show Panels'}
                 </button>
             </nav>
         </header>

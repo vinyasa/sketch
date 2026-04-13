@@ -1,9 +1,39 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 
 const DraggablePanel = ({ title, defaultPosition, onFocusCapture, children, defaultSize = { width: 250 } }) => {
     const [pos, setPos] = useState(defaultPosition);
     const [isDragging, setIsDragging] = useState(false);
     const dragRef = useRef(null);
+    const panelRef = useRef(null);
+
+    useEffect(() => {
+        const handleResize = () => {
+            if (!panelRef.current) return;
+            const rect = panelRef.current.getBoundingClientRect();
+            
+            setPos(currentPos => {
+                let newX = currentPos.x;
+                let newY = currentPos.y;
+                
+                if (newX + rect.width > window.innerWidth) newX = window.innerWidth - rect.width;
+                if (newX < 0) newX = 0;
+                
+                if (newY + rect.height > window.innerHeight) newY = window.innerHeight - rect.height;
+                if (newY < 0) newY = 0;
+                
+                if (newX !== currentPos.x || newY !== currentPos.y) {
+                    return { x: newX, y: newY };
+                }
+                return currentPos;
+            });
+        };
+
+        window.addEventListener('resize', handleResize);
+        // Also fire once on mount to ensure starting position is safe
+        handleResize();
+        
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
 
     const onPointerDown = (e) => {
         if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'SELECT' && e.target.tagName !== 'BUTTON') {
@@ -15,10 +45,21 @@ const DraggablePanel = ({ title, defaultPosition, onFocusCapture, children, defa
     };
 
     const onPointerMove = (e) => {
-        if (!isDragging || !dragRef.current) return;
+        if (!isDragging || !dragRef.current || !panelRef.current) return;
         const dx = e.clientX - dragRef.current.startX;
         const dy = e.clientY - dragRef.current.startY;
-        setPos({ x: dragRef.current.posX + dx, y: dragRef.current.posY + dy });
+        
+        let newX = dragRef.current.posX + dx;
+        let newY = dragRef.current.posY + dy;
+        
+        const rect = panelRef.current.getBoundingClientRect();
+        
+        if (newX + rect.width > window.innerWidth) newX = window.innerWidth - rect.width;
+        if (newX < 0) newX = 0;
+        if (newY + rect.height > window.innerHeight) newY = window.innerHeight - rect.height;
+        if (newY < 0) newY = 0;
+        
+        setPos({ x: newX, y: newY });
     };
 
     const onPointerUp = (e) => {
@@ -27,7 +68,7 @@ const DraggablePanel = ({ title, defaultPosition, onFocusCapture, children, defa
     };
 
     return (
-        <div className="glass-panel" onFocusCapture={onFocusCapture} style={{
+        <div ref={panelRef} className="glass-panel" onFocusCapture={onFocusCapture} style={{
             position: 'absolute', left: pos.x, top: pos.y, width: defaultSize.width, maxHeight: '80%',
             padding: '10px', display: 'flex', flexDirection: 'column', borderRadius: '8px',
             zIndex: 100, pointerEvents: 'auto', resize: 'both', overflow: 'hidden', minWidth: '200px', minHeight: '100px',
@@ -37,7 +78,7 @@ const DraggablePanel = ({ title, defaultPosition, onFocusCapture, children, defa
                 className="draggable-handle"
                 style={{
                     fontWeight: 600, fontSize: '0.85rem', marginBottom: '10px', cursor: isDragging ? 'grabbing' : 'grab',
-                    margin: '-10px -10px 10px -10px', padding: '8px 10px', backgroundColor: 'rgba(0,0,0,0.15)', color: 'var(--accent-color)',
+                    margin: '-10px -10px 10px -10px', padding: '8px 10px', backgroundColor: 'var(--title-bg)', color: 'var(--accent-color)',
                     borderRadius: '8px 8px 0 0', borderBottom: '1px solid var(--border-color)', userSelect: 'none'
                 }}
                 onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}

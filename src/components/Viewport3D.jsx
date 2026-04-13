@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { PerspectiveCamera, OrthographicCamera, OrbitControls, useTexture, GizmoHelper, GizmoViewport, Text, Edges, Line, Html } from '@react-three/drei';
 import * as THREE from 'three';
 import useStore from '../store/useStore';
-import { getGlobalMatrix } from '../utils/sceneGraph';
+import { getGlobalMatrix, calculateGroupLocalAABB } from '../utils/sceneGraph';
 import { formatUnit } from '../utils/units';
 
 
@@ -198,7 +198,7 @@ const BoundingBoxVisualizer = ({ boards, groups, selectedItemIds, showBoundingBo
   );
 };
 
-const RecursiveNode = ({ nodeId, groups, boards, selectedItemIds, toggleSelection, textures, isParentSelected = false, showEdges, onDoubleClickItem, constraintTargetMode, hoveredFaceData, setHoveredFaceData }) => {
+const RecursiveNode = ({ nodeId, groups, boards, selectedItemIds, toggleSelection, textures, isParentSelected = false, showEdges, onDoubleClickItem, constraintTargetMode, hoveredFaceData, setHoveredFaceData, modifierActive }) => {
   const isGroup = groups[nodeId] !== undefined;
   const isSelected = selectedItemIds.includes(nodeId.toString()) || isParentSelected;
 
@@ -207,6 +207,7 @@ const RecursiveNode = ({ nodeId, groups, boards, selectedItemIds, toggleSelectio
     if (!b || b.visible === false) return null;
     return (
       <mesh
+        raycast={modifierActive ? () => null : undefined}
         position={b.position}
         rotation={b.rotation || [0, 0, 0]}
         onClick={(e) => {
@@ -319,19 +320,80 @@ const RecursiveNode = ({ nodeId, groups, boards, selectedItemIds, toggleSelectio
   const childGroups = Object.keys(groups).filter(k => groups[k].parentId === nodeId);
   const childBoards = boards.filter(b => b.parentId === nodeId);
 
+  let groupProxyBounds = null;
+  if (isGroup && constraintTargetMode?.active) {
+      groupProxyBounds = calculateGroupLocalAABB(nodeId, boards, groups);
+  }
+
   return (
     <group position={g.position || [0, 0, 0]} rotation={g.rotation || [0, 0, 0]}>
+      {groupProxyBounds && (
+        <mesh
+          position={[groupProxyBounds.centerX, groupProxyBounds.centerY, groupProxyBounds.centerZ]}
+          raycast={!modifierActive ? () => null : undefined}
+          onClick={(e) => {
+            if (!modifierActive) return;
+            e.stopPropagation();
+            const faceStr = e.faceIndex !== undefined ? ['x+', 'x-', 'y+', 'y-', 'z+', 'z-'][Math.floor(e.faceIndex / 2)] : null;
+            toggleSelection(nodeId, e.shiftKey || e.ctrlKey || e.metaKey, faceStr);
+          }}
+          onPointerMove={(e) => {
+            if (!modifierActive) return;
+            e.stopPropagation();
+            if (e.faceIndex !== undefined) {
+              const fStr = ['x+', 'x-', 'y+', 'y-', 'z+', 'z-'][Math.floor(e.faceIndex / 2)];
+              if (!hoveredFaceData || hoveredFaceData.id !== nodeId || hoveredFaceData.faceStr !== fStr) {
+                setHoveredFaceData({ id: nodeId, faceStr: fStr });
+              }
+            }
+          }}
+          onPointerOut={(e) => {
+            if (hoveredFaceData && hoveredFaceData.id === nodeId) {
+              setHoveredFaceData(null);
+            }
+          }}
+        >
+          <boxGeometry args={[groupProxyBounds.width + 0.05, groupProxyBounds.height + 0.05, groupProxyBounds.depth + 0.05]} />
+          <meshBasicMaterial color="#bc8a5f" transparent opacity={modifierActive ? 0.3 : 0} depthTest={false} wireframe={true} />
+          
+          {(modifierActive && hoveredFaceData && hoveredFaceData.id === nodeId) && (() => {
+             const faceStr = hoveredFaceData.faceStr;
+             let pos = [0, 0, 0], rot = [0, 0, 0];
+             const w = groupProxyBounds.width / 2 + 0.05;
+             const h = groupProxyBounds.height / 2 + 0.05;
+             const d = groupProxyBounds.depth / 2 + 0.05;
+             if (faceStr === 'x+') { pos = [w, 0, 0]; rot = [0, Math.PI / 2, 0]; }
+             if (faceStr === 'x-') { pos = [-w, 0, 0]; rot = [0, -Math.PI / 2, 0]; }
+             if (faceStr === 'y+') { pos = [0, h, 0]; rot = [-Math.PI / 2, 0, 0]; }
+             if (faceStr === 'y-') { pos = [0, -h, 0]; rot = [Math.PI / 2, 0, 0]; }
+             if (faceStr === 'z+') { pos = [0, 0, d]; rot = [0, 0, 0]; }
+             if (faceStr === 'z-') { pos = [0, 0, -d]; rot = [0, Math.PI, 0]; }
+             
+             let planeW = faceStr.startsWith('x') ? groupProxyBounds.depth : groupProxyBounds.width;
+             let planeH = faceStr.startsWith('y') ? groupProxyBounds.depth : groupProxyBounds.height;
+             if (faceStr.startsWith('x')) planeH = groupProxyBounds.height;
+             if (faceStr.startsWith('z')) planeH = groupProxyBounds.height;
+             return (
+               <mesh position={pos} rotation={rot} raycast={() => null}>
+                 <planeGeometry args={[planeW, planeH]} />
+                 <meshBasicMaterial color="#bc8a5f" transparent opacity={0.6} depthTest={false} side={THREE.DoubleSide} />
+               </mesh>
+             );
+          })()}
+        </mesh>
+      )}
+
       {childGroups.map(k => (
-        <RecursiveNode key={k} nodeId={k} groups={groups} boards={boards} selectedItemIds={selectedItemIds} toggleSelection={toggleSelection} textures={textures} isParentSelected={isSelected} showEdges={showEdges} onDoubleClickItem={onDoubleClickItem} constraintTargetMode={constraintTargetMode} hoveredFaceData={hoveredFaceData} setHoveredFaceData={setHoveredFaceData} />
+        <RecursiveNode key={k} nodeId={k} groups={groups} boards={boards} selectedItemIds={selectedItemIds} toggleSelection={toggleSelection} textures={textures} isParentSelected={isSelected} showEdges={showEdges} onDoubleClickItem={onDoubleClickItem} constraintTargetMode={constraintTargetMode} hoveredFaceData={hoveredFaceData} setHoveredFaceData={setHoveredFaceData} modifierActive={modifierActive} />
       ))}
       {childBoards.map(b => (
-        <RecursiveNode key={`b_${b.id}`} nodeId={b.id.toString()} groups={groups} boards={boards} selectedItemIds={selectedItemIds} toggleSelection={toggleSelection} textures={textures} isParentSelected={isSelected} showEdges={showEdges} onDoubleClickItem={onDoubleClickItem} constraintTargetMode={constraintTargetMode} hoveredFaceData={hoveredFaceData} setHoveredFaceData={setHoveredFaceData} />
+        <RecursiveNode key={`b_${b.id}`} nodeId={b.id.toString()} groups={groups} boards={boards} selectedItemIds={selectedItemIds} toggleSelection={toggleSelection} textures={textures} isParentSelected={isSelected} showEdges={showEdges} onDoubleClickItem={onDoubleClickItem} constraintTargetMode={constraintTargetMode} hoveredFaceData={hoveredFaceData} setHoveredFaceData={setHoveredFaceData} modifierActive={modifierActive} />
       ))}
     </group>
   );
 };
 
-function WoodJoint({ boards, groups, selectedItemIds, toggleSelection, showEdges, showDimensions, showBoundingBox, units, theme, onDoubleClickItem, constraintTargetMode, hoveredFaceData, setHoveredFaceData }) {
+function WoodJoint({ boards, groups, selectedItemIds, toggleSelection, showEdges, showDimensions, showBoundingBox, units, theme, onDoubleClickItem, constraintTargetMode, hoveredFaceData, setHoveredFaceData, modifierActive }) {
   const textures = useTexture({
     'pine': '/textures/pine.svg',
     'cherry': '/textures/cherry.svg',
@@ -349,7 +411,7 @@ function WoodJoint({ boards, groups, selectedItemIds, toggleSelection, showEdges
   return (
     <group>
       {rootGroups.map(k => (
-        <RecursiveNode key={k} nodeId={k} groups={groups} boards={boards} selectedItemIds={selectedItemIds} toggleSelection={toggleSelection} textures={textures} showEdges={showEdges} onDoubleClickItem={onDoubleClickItem} constraintTargetMode={constraintTargetMode} hoveredFaceData={hoveredFaceData} setHoveredFaceData={setHoveredFaceData} />
+        <RecursiveNode key={k} nodeId={k} groups={groups} boards={boards} selectedItemIds={selectedItemIds} toggleSelection={toggleSelection} textures={textures} showEdges={showEdges} onDoubleClickItem={onDoubleClickItem} constraintTargetMode={constraintTargetMode} hoveredFaceData={hoveredFaceData} setHoveredFaceData={setHoveredFaceData} modifierActive={modifierActive} />
       ))}
       <ConstraintVisualizer boards={boards} groups={groups} selectedItemIds={selectedItemIds} />
       <BoundingBoxVisualizer boards={boards} groups={groups} selectedItemIds={selectedItemIds} showBoundingBox={showBoundingBox} theme={theme} />
@@ -362,6 +424,14 @@ export default function Viewport3D() {
   const { boards, groups, selectedItemIds, setSelectedItemIds, toggleSelection, gridSnap, theme, globalBounds, showEdges, showDimensions, showBoundingBox, units, constraintTargetMode } = useStore();
   const [isOrtho, setIsOrtho] = useState(false);
   const [hoveredFaceData, setHoveredFaceData] = useState(null);
+  const [modifierActive, setModifierActive] = useState(false);
+
+  useEffect(() => {
+    const handleKey = (e) => setModifierActive(e.shiftKey || e.altKey);
+    window.addEventListener('keydown', handleKey);
+    window.addEventListener('keyup', handleKey);
+    return () => { window.removeEventListener('keydown', handleKey); window.removeEventListener('keyup', handleKey); };
+  }, []);
 
   const isDark = theme === 'dark';
   const majorColor = isDark ? 0x666666 : 0x999999;
@@ -455,6 +525,7 @@ export default function Viewport3D() {
             constraintTargetMode={constraintTargetMode}
             hoveredFaceData={hoveredFaceData}
             setHoveredFaceData={setHoveredFaceData}
+            modifierActive={modifierActive}
           />
         </React.Suspense>
       </Canvas>

@@ -6,8 +6,28 @@
  */
 export const formatUnit = (val, units) => {
     if (units === 'metric') return `${(val * 25.4).toFixed(1)}mm`;
-    const frac = val % 1;
-    let label = `${Math.floor(val)}`;
-    if (frac > 0) label += ` ${Math.round(frac * 8)}/8`;
-    return `${label}"`;
+    
+    let whole = Math.floor(val);
+    let num = Math.round((val % 1) * 8);
+    let den = 8;
+    
+    if (num === 8) {
+        whole += 1;
+        num = 0;
+    }
+    
+    if (num === 0) {
+        return `${whole}"`;
+    }
+    
+    while (num % 2 === 0 && den > 1) {
+        num /= 2;
+        den /= 2;
+    }
+    
+    if (whole === 0) {
+        return `${num}/${den}"`;
+    }
+    
+    return `${whole} ${num}/${den}"`;
 };

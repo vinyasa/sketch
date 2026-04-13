@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import * as THREE from 'three';
 import { getParentRotMatrix } from '../../utils/sceneGraph';
 import { solveAlignmentConstraint } from '../../utils/constraintSolver';
@@ -6,6 +6,8 @@ import { solveAlignmentConstraint } from '../../utils/constraintSolver';
 import useStore from '../../store/useStore';
 
 const InspectorPanel = () => {
+    const [cloneOffset, setCloneOffset] = useState(0.75);
+
     const {
         boards, groups, selectedItemIds,
         updateVector, updateGroupVector,
@@ -13,7 +15,8 @@ const InspectorPanel = () => {
         pushHistory,
         dropBoardToFloor, dropGroupToFloor,
         handleAssemblyDelete, handleComponentDelete,
-        constraintTargetMode, setConstraintTargetMode
+        constraintTargetMode, setConstraintTargetMode,
+        updateProceduralBox
     } = useStore();
 
     const selectedBoard = selectedItemIds.length === 1 && boards.find(b => b.id.toString() === selectedItemIds[0]);
@@ -113,6 +116,22 @@ const InspectorPanel = () => {
                     </div>
                     <p className="hint" style={{ marginTop: '8px' }}>Transforms apply recursively down the tree stack.</p>
                 </div>
+                {groups[selectedGroup].meta && groups[selectedGroup].meta.type === 'procedural-box' && (
+                    <div className="inspector-section" style={{ background: 'rgba(188, 138, 95, 0.1)', border: '1px solid rgba(188, 138, 95, 0.3)' }}>
+                        <h4 style={{ color: 'var(--accent-color)' }}>Procedural Box Generator</h4>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px' }}>
+                            <span style={{ fontSize: '0.8rem', color: 'var(--text-main)' }}>Joint Strategy:</span>
+                            <button className="secondary-btn" style={{ padding: '4px 8px', fontSize: '0.8rem', minWidth: '100px' }} onClick={() => {
+                                const cur = groups[selectedGroup].meta.joint;
+                                const next = cur === 'butt-A' ? 'butt-B' : cur === 'butt-B' ? 'miter' : 'butt-A';
+                                updateProceduralBox(selectedGroup, { joint: next });
+                            }}>
+                                {groups[selectedGroup].meta.joint === 'butt-A' ? 'Butt (Front/Back full)' : groups[selectedGroup].meta.joint === 'butt-B' ? 'Butt (Sides full)' : 'Miter'}
+                            </button>
+                        </div>
+                        <p className="hint" style={{ marginTop: '6px' }}>Click to auto-recalculate all 4 walls.</p>
+                    </div>
+                )}
                 {!isWorkspace && (
                     <div style={{ marginTop: '16px' }}>
                         <button
@@ -167,6 +186,55 @@ const InspectorPanel = () => {
 
         const hasActiveGlue = (selectedBoard.constraints || []).some(c => c.type === 'Glue' && c.enabled !== false) ||
             incomingConstraints.some(c => c.constraint.type === 'Glue' && c.constraint.enabled !== false);
+
+        const handleClone = () => {
+            if (!selectedBoard) return;
+            const minSize = Math.min(...selectedBoard.size);
+            const thickAxis = selectedBoard.size.indexOf(minSize);
+            
+            const euler = new THREE.Euler(
+                selectedBoard.rotation[0], 
+                selectedBoard.rotation[1], 
+                selectedBoard.rotation[2], 
+                'XYZ'
+            );
+            const vec = new THREE.Vector3(thickAxis === 0 ? 1 : 0, thickAxis === 1 ? 1 : 0, thickAxis === 2 ? 1 : 0);
+            vec.applyEuler(euler);
+            vec.multiplyScalar(cloneOffset);
+            
+            const maxId = Math.max(...boards.map(b => parseInt(b.id) || 0), 0);
+            const newId = maxId + 1;
+            
+            const newBoard = {
+                ...selectedBoard,
+                id: newId,
+                position: [
+                    selectedBoard.position[0] + vec.x,
+                    selectedBoard.position[1] + vec.y,
+                    selectedBoard.position[2] + vec.z
+                ],
+                constraints: []
+            };
+            
+            const match = selectedBoard.name.match(/^(.*?)(\sCopy\s\d+|\sCopy)?$/);
+            const baseName = match ? match[1] : selectedBoard.name;
+            let maxCopyIdx = 0;
+            boards.forEach(b => {
+                 const m = b.name.match(new RegExp(`^${baseName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} Copy (\\d+)$`));
+                 if (m) maxCopyIdx = Math.max(maxCopyIdx, parseInt(m[1]));
+                 else if (b.name === `${baseName} Copy`) maxCopyIdx = Math.max(maxCopyIdx, 1);
+            });
+            
+            if (maxCopyIdx > 0) {
+                newBoard.name = `${baseName} Copy ${maxCopyIdx + 1}`;
+            } else {
+                newBoard.name = `${baseName} Copy`;
+            }
+            
+            pushHistory();
+            setBoards([...boards, newBoard]);
+            setSelectedItemIds([newId.toString()]);
+        };
 
         return (
             <>
@@ -312,6 +380,14 @@ const InspectorPanel = () => {
                 <div className="inspector-section">
                     <h4>Parent Node:</h4>
                     <div style={{ fontSize: '0.85rem', color: 'var(--text-main)', marginBottom: '8px' }}><strong>{selectedBoard.parentId}</strong></div>
+                </div>
+                <div className="inspector-section">
+                    <h4>Clone Component</h4>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '8px' }}>
+                        <span style={{ fontSize: '0.82rem' }}>Thick Offset (in):</span>
+                        <input type="number" step="0.125" value={cloneOffset} onChange={e => setCloneOffset(Number(e.target.value))} style={{ width: '60px', padding: '4px', background: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '4px' }} />
+                        <button className="primary-btn" style={{ flex: 1, padding: '4px 0', fontSize: '0.9rem' }} onClick={handleClone}>Clone Along Axis</button>
+                    </div>
                 </div>
                 <div style={{ marginTop: '16px' }}>
                     <button

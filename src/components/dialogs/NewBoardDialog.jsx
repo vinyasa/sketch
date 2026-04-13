@@ -57,9 +57,9 @@ const NewBoardDialog = () => {
                 <div className="inspector-section" style={{ margin: 0 }}>
                     <h4>Spawn Offset (in)</h4>
                     <div className="vec3-inputs">
-                        <div>X<input type="number" step="1" value={dialog.position[0]} onChange={e => { const v = parseFloat(e.target.value) || 0; setDialog(p => ({ ...p, position: [v, p.position[1], p.position[2]] })) }} /></div>
-                        <div>Y<input type="number" step="1" value={dialog.position[1]} onChange={e => { const v = parseFloat(e.target.value) || 0; setDialog(p => ({ ...p, position: [p.position[0], v, p.position[2]] })) }} /></div>
-                        <div>Z<input type="number" step="1" value={dialog.position[2]} onChange={e => { const v = parseFloat(e.target.value) || 0; setDialog(p => ({ ...p, position: [p.position[0], p.position[1], v] })) }} /></div>
+                        <div style={{ backgroundColor: 'rgba(255, 60, 60, 0.2)' }}>X<input type="number" step="1" value={dialog.position[0]} onChange={e => { const v = parseFloat(e.target.value) || 0; setDialog(p => ({ ...p, position: [v, p.position[1], p.position[2]] })) }} /></div>
+                        <div style={{ backgroundColor: 'rgba(60, 255, 60, 0.2)' }}>Y<input type="number" step="1" value={dialog.position[1]} onChange={e => { const v = parseFloat(e.target.value) || 0; setDialog(p => ({ ...p, position: [p.position[0], v, p.position[2]] })) }} /></div>
+                        <div style={{ backgroundColor: 'rgba(60, 150, 255, 0.2)' }}>Z<input type="number" step="1" value={dialog.position[2]} onChange={e => { const v = parseFloat(e.target.value) || 0; setDialog(p => ({ ...p, position: [p.position[0], p.position[1], v] })) }} /></div>
                     </div>
                 </div>
 

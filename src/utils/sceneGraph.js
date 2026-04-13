@@ -105,3 +105,53 @@ export const collectChildBoards = (parentId, boards, groups) => {
     traverse(parentId);
     return result;
 };
+
+/**
+ * Compute an AABB for an entire group in the *local coordinate space* of that group.
+ * Useful for virtual dimensioning or constraint targeting on assemblies.
+ */
+export const calculateGroupLocalAABB = (groupId, boards, groups) => {
+    let minX = Infinity, maxX = -Infinity;
+    let minY = Infinity, maxY = -Infinity;
+    let minZ = Infinity, maxZ = -Infinity;
+    let found = false;
+
+    const groupMatGlobal = getGlobalMatrix(groupId, false, boards, groups);
+    const invGroupMatGlobal = groupMatGlobal.clone().invert();
+
+    const traverseBounds = (pId) => {
+        boards.filter(b => b.parentId === pId).forEach(b => {
+             found = true;
+             const bMat = getGlobalMatrix(b.id.toString(), true, boards, groups);
+             const relMat = new THREE.Matrix4().multiplyMatrices(invGroupMatGlobal, bMat);
+             
+             const w = b.size[0]/2, h = b.size[1]/2, d = b.size[2]/2;
+             const corners = [
+                 new THREE.Vector3(w, h, d), new THREE.Vector3(w, h, -d), new THREE.Vector3(w, -h, d), new THREE.Vector3(w, -h, -d),
+                 new THREE.Vector3(-w, h, d), new THREE.Vector3(-w, h, -d), new THREE.Vector3(-w, -h, d), new THREE.Vector3(-w, -h, -d)
+             ];
+             corners.forEach(v => {
+                 v.applyMatrix4(relMat);
+                 if (v.x < minX) minX = v.x; if (v.x > maxX) maxX = v.x;
+                 if (v.y < minY) minY = v.y; if (v.y > maxY) maxY = v.y;
+                 if (v.z < minZ) minZ = v.z; if (v.z > maxZ) maxZ = v.z;
+             });
+        });
+        Object.keys(groups).filter(k => groups[k].parentId === pId).forEach(k => traverseBounds(k));
+    };
+
+    traverseBounds(groupId);
+
+    if (!found) return null;
+    
+    return {
+        width: Math.abs(maxX - minX),
+        height: Math.abs(maxY - minY),
+        depth: Math.abs(maxZ - minZ),
+        centerX: (maxX + minX) / 2,
+        centerY: (maxY + minY) / 2,
+        centerZ: (maxZ + minZ) / 2,
+        minX, maxX, minY, maxY, minZ, maxZ
+    };
+};
+
