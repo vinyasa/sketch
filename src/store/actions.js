@@ -1,5 +1,4 @@
-import * as THREE from 'three';
-import { getGlobalMatrix, getParentRotMatrix, collectChildBoards } from '../utils/sceneGraph';
+import { computeWorldAABB, collectChildBoards, calculateGroupAABB } from '../utils/sceneGraph';
 import { solveAlignmentConstraint, getConstraintConnectedSet } from '../utils/constraintSolver';
 import { calculateProceduralBoxWalls } from '../utils/procedural';
 
@@ -21,7 +20,7 @@ export const createActions = (set, get) => ({
 
         let newRecents = recentFiles.filter(r => r.name !== name);
         newRecents.unshift({ name, timestamp: Date.now() });
-        if (newRecents.length > 5) newRecents = newRecents.slice(0, 5); // Keep top 5
+        if (newRecents.length > 5) newRecents = newRecents.slice(0, 5);
         setRecentFiles(newRecents);
         localStorage.setItem('lucey_recent_files', JSON.stringify(newRecents));
 
@@ -157,11 +156,12 @@ export const createActions = (set, get) => ({
     toggleGroupVisibility: (groupId) => {
         const { setGroups } = get();
         setGroups(prev => {
-            const cur = prev[groupId] || { rotation: [0, 0, 0], position: [0, 0, 0] };
+            const cur = prev[groupId] || {};
             return { ...prev, [groupId]: { ...cur, visible: cur.visible === false ? true : false } };
         });
     },
 
+    // ─── Update a vector field (size or position) on selected boards ─────────
     updateVector: (key, index, value) => {
         const { selectedItemIds, pushHistory, boards, setBoards } = get();
         if (selectedItemIds.length === 0) return;
@@ -194,89 +194,53 @@ export const createActions = (set, get) => ({
         }));
     },
 
-    updateGroupVector: (groupId, key, index, value) => {
-        const { setGroups, groups, boards, setBoards } = get();
-        const parsedVal = parseFloat(value) * (key === 'rotation' ? Math.PI / 180 : 1) || 0;
+    // ─── Move all boards in a group by a delta ───────────────────────────────
+    moveGroup: (groupId, axis, delta) => {
+        const { pushHistory, boards, groups, setBoards } = get();
+        if (delta === 0) return;
+        pushHistory();
 
-        setGroups(prev => {
-            const cur = prev[groupId] || { rotation: [0, 0, 0], position: [0, 0, 0], visible: true };
-            let newVec = [...cur[key]];
-            newVec[index] = parsedVal;
-            return { ...prev, [groupId]: { ...cur, [key]: newVec } };
-        });
+        // Collect all boards in this group and its children
+        const childBoards = collectChildBoards(groupId, boards, groups);
+        const childIds = new Set(childBoards.map(b => b.id.toString()));
 
-        if (key === 'position') {
-            const oldVal = (groups[groupId]?.position || [0, 0, 0])[index];
-            const localDelta = parsedVal - oldVal;
-            if (localDelta === 0) return;
-
-            const parentRotMat = getParentRotMatrix(groups[groupId]?.parentId, groups);
-            const worldDelta = new THREE.Vector3(0, 0, 0);
-            worldDelta.setComponent(index, localDelta);
-            worldDelta.applyMatrix4(parentRotMat);
-
-            const insideBoardIds = new Set();
-            const collectChildren = (parentId) => {
-                boards.forEach(b => { if (b.parentId === parentId) insideBoardIds.add(b.id.toString()); });
-                Object.keys(groups).forEach(k => { if (groups[k].parentId === parentId) collectChildren(k); });
-            };
-            collectChildren(groupId);
-
-            if (insideBoardIds.size === 0) return;
-
-            let externalLinkedIds = new Set();
-            let frontier = new Set(insideBoardIds); // used? NO
-            let visited = new Set(insideBoardIds);
-            let changed = true;
-            while (changed) {
-                changed = false;
-                boards.forEach(b => {
-                    const bid = b.id.toString();
-                    if (visited.has(bid)) return;
-                    if (b.constraints && b.constraints.some(c => c.enabled !== false && visited.has(c.targetId.toString()))) {
-                        visited.add(bid);
-                        externalLinkedIds.add(bid);
-                        changed = true;
-                    }
-                });
-                boards.forEach(b => {
-                    const bid = b.id.toString();
-                    if (!visited.has(bid)) return;
-                    if (b.constraints) {
-                        b.constraints.forEach(c => {
-                            const tid = c.targetId.toString();
-                            if (c.enabled !== false && !visited.has(tid)) {
-                                visited.add(tid);
-                                externalLinkedIds.add(tid);
-                                changed = true;
-                            }
-                        });
-                    }
-                });
-            }
-
-            insideBoardIds.forEach(id => externalLinkedIds.delete(id));
-
-            if (externalLinkedIds.size === 0) return;
-
-            setBoards(prev => prev.map(b => {
-                if (externalLinkedIds.has(b.id.toString())) {
-                    const parentInv = getParentRotMatrix(b.parentId, groups).clone().invert();
-                    const localShift = worldDelta.clone().applyMatrix4(parentInv);
-                    return {
-                        ...b,
-                        position: [
-                            b.position[0] + localShift.x,
-                            b.position[1] + localShift.y,
-                            b.position[2] + localShift.z
-                        ]
-                    };
+        // Also find externally-constrained boards
+        let allMovingIds = new Set(childIds);
+        let changed = true;
+        while (changed) {
+            changed = false;
+            boards.forEach(b => {
+                const bid = b.id.toString();
+                if (allMovingIds.has(bid)) return;
+                if (b.constraints && b.constraints.some(c => c.enabled !== false && allMovingIds.has(c.targetId.toString()))) {
+                    allMovingIds.add(bid);
+                    changed = true;
                 }
-                return b;
-            }));
+            });
+            boards.forEach(b => {
+                const bid = b.id.toString();
+                if (!allMovingIds.has(bid)) return;
+                if (b.constraints) {
+                    b.constraints.forEach(c => {
+                        const tid = c.targetId.toString();
+                        if (c.enabled !== false && !allMovingIds.has(tid)) {
+                            allMovingIds.add(tid);
+                            changed = true;
+                        }
+                    });
+                }
+            });
         }
-    },
 
+        setBoards(prev => prev.map(b => {
+            if (allMovingIds.has(b.id.toString())) {
+                let newPos = [...b.position];
+                newPos[axis] += delta;
+                return { ...b, position: newPos };
+            }
+            return b;
+        }));
+    },
 
     updateProceduralBox: (groupId, metaUpdates) => {
         const { pushHistory, groups, boards, setGroups, setBoards } = get();
@@ -287,39 +251,61 @@ export const createActions = (set, get) => ({
         const newMeta = { ...curGroup.meta, ...metaUpdates };
         setGroups(prev => ({ ...prev, [groupId]: { ...prev[groupId], meta: newMeta } }));
 
+        // Compute offset: procedural box walls are centered at the group's footprint
+        // We need the center position of the group's existing boards to reposition
+        const existingBoards = boards.filter(b => b.parentId === groupId);
+        let offsetX = 0, offsetZ = 0;
+        if (existingBoards.length > 0) {
+            const aabb = computeWorldAABB(existingBoards);
+            offsetX = (aabb.minX + aabb.maxX) / 2;
+            offsetZ = (aabb.minZ + aabb.maxZ) / 2;
+        }
+
         const wallsData = calculateProceduralBoxWalls(newMeta);
-        
+
         setBoards(prev => prev.map(b => {
-             if (b.parentId === groupId) {
-                 const mappedData = wallsData.find(wd => b.name.includes(wd.role));
-                 if (mappedData) {
-                     const updates = { ...b, size: mappedData.size, position: mappedData.position };
-                     if (mappedData.rotation) updates.rotation = mappedData.rotation;
-                     return updates;
-                 }
-             }
-             return b;
+            if (b.parentId === groupId) {
+                const mappedData = wallsData.find(wd => b.name.includes(wd.role));
+                if (mappedData) {
+                    return {
+                        ...b,
+                        size: mappedData.size,
+                        position: [
+                            mappedData.position[0] + offsetX,
+                            mappedData.position[1],
+                            mappedData.position[2] + offsetZ
+                        ]
+                    };
+                }
+            }
+            return b;
         }));
     },
 
+    // ─── AI Command Processor ────────────────────────────────────────────────
     processAiCommand: (text) => {
-        const { pushHistory, selectedItemIds, setBoards, setGroups, boards, groups, defaultMaterial, globalBounds, setChatMessages } = get();
+        const { pushHistory, selectedItemIds, setBoards, setGroups, setSelectedItemIds, boards, groups, defaultMaterial, globalBounds, setChatMessages } = get();
         pushHistory();
         const lower = text.toLowerCase();
-        let reply = "I've processed your spatial request.";
+        let reply = "I've processed your request.";
         let updated = false;
 
+        // ── Material change ──────────────────────────────────────────────────
         if (lower.includes('walnut') || lower.includes('pine') || lower.includes('cherry') || lower.includes('oak')) {
             const mat = ['walnut', 'pine', 'cherry', 'red-oak', 'white-oak'].find(m => lower.includes(m.replace('-', ' '))) || 'walnut';
             setBoards(prev => prev.map(b => (selectedItemIds.length > 0 ? (selectedItemIds.includes(b.id.toString()) ? { ...b, material: mat } : b) : { ...b, material: mat })));
             reply = selectedItemIds.length > 0 ? `Changed selected to ${mat}.` : `Changed all to ${mat}.`;
             updated = true;
-        } else if ((lower.includes('nudge') || lower.includes('move')) && selectedItemIds.length > 0) {
-            let axis = 1;
-            let val = 1;
-            if (lower.includes('left') || lower.includes('right') || lower.includes('x')) axis = 0;
-            if (lower.includes('forward') || lower.includes('back') || lower.includes('z')) axis = 2;
 
+        // ── Move / Nudge (color-based or directional) ────────────────────────
+        } else if ((lower.includes('nudge') || lower.includes('move')) && selectedItemIds.length > 0) {
+            // Determine axis from color names or direction words
+            let axis = 1; // default: Y (green/up)
+            if (lower.includes('red') || lower.includes('left') || lower.includes('right') || /\bx\b/.test(lower)) axis = 0;
+            if (lower.includes('blue') || lower.includes('forward') || lower.includes('back') || /\bz\b/.test(lower)) axis = 2;
+            if (lower.includes('green') || lower.includes('up') || lower.includes('down') || /\by\b/.test(lower)) axis = 1;
+
+            let val = 1;
             if (lower.includes('down') || lower.includes('left') || lower.includes('back')) val = -1;
 
             const match = lower.match(/([+-]?\d*\.?\d+)/);
@@ -327,48 +313,28 @@ export const createActions = (set, get) => ({
 
             const movingIds = getConstraintConnectedSet(selectedItemIds, boards);
 
-            setGroups(prev => {
-                let nextConf = { ...prev };
-                for (let id of selectedItemIds) {
-                    if (nextConf[id]) {
-                        let curConf = nextConf[id];
-
-                        let t_global = new THREE.Vector3();
-                        t_global.setComponent(axis, val);
-                        let localTranslation = t_global.applyMatrix4(getParentRotMatrix(curConf.parentId, prev).invert());
-
-                        let n = [...curConf.position];
-                        n[0] += localTranslation.x;
-                        n[1] += localTranslation.y;
-                        n[2] += localTranslation.z;
-                        nextConf[id] = { ...curConf, position: n };
-                    }
-                }
-                return nextConf;
-            });
-
             setBoards(prev => prev.map(b => {
                 if (movingIds.has(b.id.toString())) {
-                    let t_global = new THREE.Vector3();
-                    t_global.setComponent(axis, val);
-                    let localTranslation = t_global.applyMatrix4(getParentRotMatrix(b.parentId, groups).invert());
-
-                    let n = [...b.position];
-                    n[0] += localTranslation.x;
-                    n[1] += localTranslation.y;
-                    n[2] += localTranslation.z;
-                    return { ...b, position: n };
+                    let newPos = [...b.position];
+                    newPos[axis] += val;
+                    return { ...b, position: newPos };
                 }
                 return b;
             }));
-            reply = `Globally translated ${movingIds.size} restricted component(s) by ${val} inches.`;
+
+            const axisName = ['red (X)', 'green (Y)', 'blue (Z)'][axis];
+            reply = `Moved ${movingIds.size} component(s) by ${val}" along ${axisName}.`;
             updated = true;
+
+        // ── Add leg ──────────────────────────────────────────────────────────
         } else if (lower.includes('add') && lower.includes('leg')) {
             const newId = Date.now();
-            setBoards(prev => [...prev, { id: newId, name: 'New Leg', parentId: 'Workspace', size: [1.5, 12, 1.5], position: [0, 0, 0], rotation: [0, 0, 0], material: defaultMaterial, joint: 'Butt 1', constraints: [] }]);
+            setBoards(prev => [...prev, { id: newId, name: 'New Leg', parentId: 'Workspace', size: [1.5, 12, 1.5], position: [0, 6, 0], material: defaultMaterial, joint: 'Butt 1', constraints: [] }]);
             setSelectedItemIds([newId.toString()]);
-            reply = `Added a new 1.5x1.5 leg directly to the root Workspace using default material (${defaultMaterial}).`;
+            reply = `Added a new 1.5×12×1.5 leg at origin, sitting on floor.`;
             updated = true;
+
+        // ── Add top ──────────────────────────────────────────────────────────
         } else if (lower.includes('top') && (lower.includes('add') || lower.includes('put'))) {
             let targets = [];
             if (selectedItemIds.length === 0 || selectedItemIds.includes('Workspace')) {
@@ -379,7 +345,6 @@ export const createActions = (set, get) => ({
                     boards.filter(b => b.parentId === pId).forEach(b => validBoards.add(b));
                     Object.keys(groups).filter(k => groups[k].parentId === pId).forEach(k => traverse(k));
                 };
-
                 selectedItemIds.forEach(id => {
                     if (Object.keys(groups).includes(id)) {
                         traverse(id);
@@ -392,142 +357,50 @@ export const createActions = (set, get) => ({
             }
 
             if (targets.length === 0) {
-                reply = "I need some existing geometry selected to calculate exactly where a top should go!";
+                reply = "I need some existing geometry to calculate where a top should go!";
             } else {
-                let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity, maxY = -Infinity, minY = Infinity;
-
-                targets.forEach(b => {
-                    const w = b.size[0] / 2, h = b.size[1] / 2, d = b.size[2] / 2;
-                    const corners = [
-                        new THREE.Vector3(w, h, d), new THREE.Vector3(w, h, -d), new THREE.Vector3(w, -h, d), new THREE.Vector3(w, -h, -d),
-                        new THREE.Vector3(-w, h, d), new THREE.Vector3(-w, h, -d), new THREE.Vector3(-w, -h, d), new THREE.Vector3(-w, -h, -d)
-                    ];
-
-                    const mat = getGlobalMatrix(b.id.toString(), true, boards, groups);
-
-                    corners.forEach(v => {
-                        v.applyMatrix4(mat);
-                        if (v.x < minX) minX = v.x;
-                        if (v.x > maxX) maxX = v.x;
-                        if (v.z < minZ) minZ = v.z;
-                        if (v.z > maxZ) maxZ = v.z;
-                        if (v.y > maxY) maxY = v.y;
-                        if (v.y < minY) minY = v.y;
-                    });
-                });
-
-                let newWidth = Math.abs(maxX - minX);
-                let newDepth = Math.abs(maxZ - minZ);
+                const aabb = computeWorldAABB(targets);
+                let newWidth = Math.abs(aabb.maxX - aabb.minX);
+                let newDepth = Math.abs(aabb.maxZ - aabb.minZ);
                 const thickness = 0.75;
 
                 if (newWidth < 3) newWidth = Math.max(newWidth, 24);
                 if (newDepth < 3) newDepth = Math.max(newDepth, 16);
 
-                const newX = minX + ((Math.abs(maxX - minX)) / 2);
-                const newZ = minZ + ((Math.abs(maxZ - minZ)) / 2);
-                const finalY = maxY + (thickness / 2);
-
-                let trimNotice = "";
-
-                const geometricBase = minY !== Infinity ? minY : 0;
-                const projectedAssemblyHeight = (maxY + thickness) - geometricBase;
-
-                if (globalBounds.enabled && projectedAssemblyHeight > globalBounds.y) {
-                    trimNotice = `\n\nWARNING: The generated Top extends to ${projectedAssemblyHeight.toFixed(2)}", which exceeds your workspace height limit of ${globalBounds.y}". You may want to manually move it or resize the legs.`;
-                }
+                const newX = (aabb.minX + aabb.maxX) / 2;
+                const newZ = (aabb.minZ + aabb.maxZ) / 2;
+                const newY = aabb.maxY + thickness / 2;
 
                 const newId = Date.now();
                 const pId = targets[0]?.parentId || 'Workspace';
 
-                const pMatrix = getGlobalMatrix(pId, false, boards, groups);
-                pMatrix.invert();
-
-                const localPos = new THREE.Vector3(newX, finalY, newZ).applyMatrix4(pMatrix);
-                const localEuler = new THREE.Euler().setFromRotationMatrix(pMatrix, 'XYZ');
-
-                setBoards(prev => {
-                    return [...prev, {
-                        id: newId, name: 'Table Top', parentId: pId,
-                        size: [newWidth, thickness, newDepth],
-                        position: [localPos.x, localPos.y, localPos.z],
-                        rotation: [localEuler.x, localEuler.y, localEuler.z],
-                        material: defaultMaterial,
-                        joint: 'None', constraints: []
-                    }];
-                });
+                setBoards(prev => [...prev, {
+                    id: newId, name: 'Table Top', parentId: pId,
+                    size: [newWidth, thickness, newDepth],
+                    position: [newX, newY, newZ],
+                    material: defaultMaterial,
+                    joint: 'None', constraints: []
+                }]);
                 setSelectedItemIds([newId.toString()]);
-                reply = `Generated dynamic Top plane!${trimNotice}`;
+                reply = `Generated top at Y=${newY.toFixed(2)}".`;
                 updated = true;
             }
+
+        // ── Build box ────────────────────────────────────────────────────────
         } else if (/(build|create|make).+box/i.test(lower)) {
-            let targets = [];
-            if (selectedItemIds.length === 0 || selectedItemIds.includes('Workspace')) {
-                targets = boards;
-            } else {
-                const validBoards = new Set();
-                const traverse = (pId) => {
-                    boards.filter(b => b.parentId === pId).forEach(b => validBoards.add(b));
-                    Object.keys(groups).filter(k => groups[k].parentId === pId).forEach(k => traverse(k));
-                };
-
-                selectedItemIds.forEach(id => {
-                    if (Object.keys(groups).includes(id)) {
-                        traverse(id);
-                    } else {
-                        const b = boards.find(x => x.id.toString() === id);
-                        if (b) validBoards.add(b);
-                    }
-                });
-                targets = Array.from(validBoards);
-            }
-
-            let minX = -12, maxX = 12, minZ = -8, maxZ = 8, maxY = 0;
-
-            if (targets.length > 0) {
-                minX = Infinity; maxX = -Infinity; minZ = Infinity; maxZ = -Infinity; maxY = -Infinity;
-
-                targets.forEach(b => {
-                    const w = b.size[0] / 2, h = b.size[1] / 2, d = b.size[2] / 2;
-                    const corners = [
-                        new THREE.Vector3(w, h, d), new THREE.Vector3(w, h, -d), new THREE.Vector3(w, -h, d), new THREE.Vector3(w, -h, -d),
-                        new THREE.Vector3(-w, h, d), new THREE.Vector3(-w, h, -d), new THREE.Vector3(-w, -h, d), new THREE.Vector3(-w, -h, -d)
-                    ];
-                    
-                    const mat = getGlobalMatrix(b.id.toString(), true, boards, groups);
-
-                    corners.forEach(v => {
-                        v.applyMatrix4(mat);
-                        if (v.x < minX) minX = v.x;
-                        if (v.x > maxX) maxX = v.x;
-                        if (v.z < minZ) minZ = v.z;
-                        if (v.z > maxZ) maxZ = v.z;
-                        if (v.y > maxY) maxY = v.y;
-                    });
-                });
-            }
-
-            let newWidth = Math.abs(maxX - minX);
-            let newDepth = Math.abs(maxZ - minZ);
+            let newWidth = 24, newDepth = 16;
             const thickness = 0.75;
-            
             let newHeight = 12;
-            const hMatch = lower.match(/(\d*\.?\d+)\s*(?:inch|in|"|'')?\s*(tall|high|deep|box)/i);
-            if (hMatch && hMatch[1]) {
-                 newHeight = parseFloat(hMatch[1]);
-            }
+            let newX = 0, newZ = 0, baseY = 0;
 
-            const newGroupId = 'Assembly ' + Math.floor(Math.random() * 1000);
-            
-            let newX = minX + (newWidth / 2);
-            let newZ = minZ + (newDepth / 2);
-            let finalY = maxY;
+            const hMatch = lower.match(/(\d*\.?\d+)\s*(?:inch|in|"|'')\s*(tall|high|deep|box)/i);
+            if (hMatch && hMatch[1]) {
+                newHeight = parseFloat(hMatch[1]);
+            }
 
             if (/(bounding box|workspace box|workspace bounds|global bounds)/.test(lower) && globalBounds && globalBounds.enabled) {
                 newWidth = globalBounds.x;
                 newDepth = globalBounds.z;
-                newX = globalBounds.x / 2; // Exact center of the visual workspace footprint
-                newZ = globalBounds.z / 2;
-                finalY = 0; // Sit perfectly on the floor
             }
 
             const proceduralMeta = {
@@ -536,14 +409,14 @@ export const createActions = (set, get) => ({
                 joint: 'butt-A'
             };
 
+            const newGroupId = 'Assembly ' + Math.floor(Math.random() * 1000);
+
             setGroups(prev => ({
                 ...prev,
-                [newGroupId]: { 
-                    parentId: 'Workspace', 
-                    isExpanded: true, 
-                    visible: true, 
-                    position: [newX, finalY, newZ], 
-                    rotation: [0, 0, 0],
+                [newGroupId]: {
+                    parentId: 'Workspace',
+                    isExpanded: true,
+                    visible: true,
                     meta: proceduralMeta
                 }
             }));
@@ -554,8 +427,7 @@ export const createActions = (set, get) => ({
                 name: `${wd.role} Wall`,
                 parentId: newGroupId,
                 size: wd.size,
-                position: wd.position,
-                rotation: wd.rotation || [0, 0, 0],
+                position: [wd.position[0] + newX, wd.position[1] + baseY, wd.position[2] + newZ],
                 material: defaultMaterial,
                 joint: 'None',
                 constraints: []
@@ -563,17 +435,20 @@ export const createActions = (set, get) => ({
 
             setBoards(prev => [...prev, ...newBoards]);
             setSelectedItemIds([newGroupId]);
-            reply = `Generated dynamic ${newHeight}" box aligned to the calculated blueprint!`;
+            reply = `Generated ${newHeight}" box (${newWidth}×${newDepth}) sitting on floor.`;
             updated = true;
-        } else if (/(cut|add|trim|extend|shave|chop|short|long|wide|narrow|thick|thin|reduce|increase|shrink|grow|length|width|thickness|decrease)/.test(lower)) {
+
+        // ── Resize (cut/add/length/width/thickness) ──────────────────────────
+        } else if (/(cut|add|trim|extend|shave|chop|short|long|wide|narrow|thick|thin|reduce|increase|shrink|grow|length|width|thickness|decrease|wider|thicker|longer)/.test(lower)) {
             const match = lower.match(/(\d*\.?\d+)/);
             if (match) {
                 const val = parseFloat(match[1]);
                 const isNegative = /(cut|trim|shave|chop|short|narrow|thin|reduce|shrink|decrease)/.test(lower);
                 const delta = isNegative ? -val : val;
 
-                const isLength = /(short|long|length|tall|top|bottom)/.test(lower);
-                const isWidth = /(wide|narrow|width|left|right)/.test(lower);
+                const isLength = /(short|long|length|tall|longer)/.test(lower);
+                const isWidth = /(wide|narrow|width|wider)/.test(lower);
+                const isThickness = /(thick|thin|thicker|thinner|thickness)/.test(lower);
 
                 let targetedBoards = selectedItemIds.length > 0 ? boards.filter(b => selectedItemIds.includes(b.id.toString())) : [];
 
@@ -586,151 +461,50 @@ export const createActions = (set, get) => ({
 
                     setBoards(prev => prev.map(b => {
                         if (targetIds.includes(b.id.toString())) {
-                            let targetGlobalNormal = null;
-                            if (/(top|up)/.test(lower)) targetGlobalNormal = new THREE.Vector3(0, 1, 0);
-                            else if (/(bottom|down)/.test(lower)) targetGlobalNormal = new THREE.Vector3(0, -1, 0);
-                            else if (/(right)/.test(lower)) targetGlobalNormal = new THREE.Vector3(1, 0, 0);
-                            else if (/(left)/.test(lower)) targetGlobalNormal = new THREE.Vector3(-1, 0, 0);
-                            else if (/(front)/.test(lower)) targetGlobalNormal = new THREE.Vector3(0, 0, 1);
-                            else if (/(back)/.test(lower)) targetGlobalNormal = new THREE.Vector3(0, 0, -1);
+                            // Sort dimensions to find length (biggest), width (middle), thickness (smallest)
+                            let dims = [
+                                { idx: 0, val: b.size[0] },
+                                { idx: 1, val: b.size[1] },
+                                { idx: 2, val: b.size[2] }
+                            ];
+                            dims.sort((a, c) => c.val - a.val);
 
-                            let targetIndex = 0;
-                            let localSign = 1;
-
-                            if (targetGlobalNormal) {
-                                const mat = getGlobalMatrix(b.id.toString(), true, prev, groups);
-                                const normalMatrix = new THREE.Matrix3().getNormalMatrix(mat);
-                                let bestDot = -Infinity;
-                                const faces = [
-                                    { i: 0, sign: 1, v: new THREE.Vector3(1,0,0) }, { i: 0, sign: -1, v: new THREE.Vector3(-1,0,0) },
-                                    { i: 1, sign: 1, v: new THREE.Vector3(0,1,0) }, { i: 1, sign: -1, v: new THREE.Vector3(0,-1,0) },
-                                    { i: 2, sign: 1, v: new THREE.Vector3(0,0,1) }, { i: 2, sign: -1, v: new THREE.Vector3(0,0,-1) }
-                                ];
-                                faces.forEach(f => {
-                                    const worldV = f.v.clone().applyMatrix3(normalMatrix).normalize();
-                                    const d = worldV.dot(targetGlobalNormal);
-                                    if (d > bestDot) {
-                                        bestDot = d;
-                                        targetIndex = f.i;
-                                        localSign = f.sign;
-                                    }
-                                });
-                            } else {
-                                let dims = [ { idx: 0, val: b.size[0] }, { idx: 1, val: b.size[1] }, { idx: 2, val: b.size[2] } ];
-                                dims.sort((a, c) => c.val - a.val);
-                                targetIndex = dims[0].idx; 
-                                if (isWidth) targetIndex = dims[1].idx;
-                                else if (!isLength && !isWidth) targetIndex = dims[2].idx;
+                            let targetIndex;
+                            if (isLength) targetIndex = dims[0].idx;        // longest
+                            else if (isWidth) targetIndex = dims[1].idx;    // middle
+                            else if (isThickness) targetIndex = dims[2].idx; // smallest
+                            else {
+                                // Directional: check for axis-specific words
+                                if (/(right|left)/.test(lower) || lower.includes('red') || /\bx\b/.test(lower)) targetIndex = 0;
+                                else if (/(up|down|top|bottom)/.test(lower) || lower.includes('green') || /\by\b/.test(lower)) targetIndex = 1;
+                                else if (/(front|back)/.test(lower) || lower.includes('blue') || /\bz\b/.test(lower)) targetIndex = 2;
+                                else targetIndex = dims[2].idx; // default: thickness
                             }
 
                             let newSize = [...b.size];
                             const actualDelta = Math.max(0.1 - newSize[targetIndex], delta);
                             newSize[targetIndex] += actualDelta;
 
-                            let newPos = [...b.position];
-                            if (targetGlobalNormal) {
-                                let localOffset = new THREE.Vector3(0, 0, 0);
-                                localOffset.setComponent(targetIndex, (actualDelta / 2) * localSign);
-                                localOffset.applyEuler(new THREE.Euler(...(b.rotation || [0, 0, 0]), 'XYZ'));
-                                newPos[0] += localOffset.x;
-                                newPos[1] += localOffset.y;
-                                newPos[2] += localOffset.z;
-                            }
-
-                            return { ...b, size: newSize, position: newPos };
+                            return { ...b, size: newSize };
                         }
                         return b;
                     }));
 
-                    reply = `Dynamically re-scaled ${targetIds.length} element(s) with a ${delta > 0 ? '+' : ''}${delta}" shift.`;
+                    const dimLabel = isLength ? 'length' : isWidth ? 'width' : 'thickness';
+                    reply = `Adjusted ${dimLabel} of ${targetIds.length} component(s) by ${delta > 0 ? '+' : ''}${delta}".`;
                     updated = true;
                 } else {
-                    reply = "I don't know which board to resize! Please click on a component or say its exact name.";
+                    reply = "I don't know which board to resize! Please select a component or say its name.";
                     updated = true;
                 }
             } else {
-                reply = "I didn't detect the exact numeric measurement! Try saying 'cut .75 inches off the bottom'.";
-                updated = true;
-            }
-        } else if (lower.includes('rotate') && selectedItemIds.length > 0) {
-            let axis = 1; 
-            if (lower.includes('x-y') || lower.includes('xy plane')) axis = 2;
-            else if (lower.includes('y-z') || lower.includes('yz plane')) axis = 0;
-            else if (lower.includes('x-z') || lower.includes('xz plane')) axis = 1;
-            else if (lower.includes(' x ') || lower.includes('x-axis') || lower.endsWith(' x') || lower.includes('red')) axis = 0;
-            else if (lower.includes(' y ') || lower.includes('y-axis') || lower.endsWith(' y') || lower.includes('green')) axis = 1;
-            else if (lower.includes(' z ') || lower.includes('z-axis') || lower.endsWith(' z') || lower.includes('blue')) axis = 2;
-
-            let deg = 90;
-            const match = lower.match(/(-?\d+)/);
-            if (match) deg = parseInt(match[1]);
-
-            let constraintViolation = null;
-            const force = lower.includes('force') || lower.includes('break');
-
-            for (let id of selectedItemIds) {
-                const isGroup = groups[id] !== undefined;
-                if (isGroup) continue;
-
-                const b = boards.find(x => x.id.toString() === id);
-                if (!b) continue;
-
-                const hasMyConstraints = b.constraints && b.constraints.some(c => c.enabled !== false);
-                const isTargetOfConstraints = boards.some(otherB =>
-                    otherB.constraints && otherB.constraints.some(c => c.enabled !== false && c.targetId.toString() === id)
-                );
-
-                if ((hasMyConstraints || isTargetOfConstraints) && !force) {
-                    constraintViolation = `Constraint Blocked: Component [${b.name}] has active constraints attached to it. You must clear its constraints to rotate it freely, or add "force" to bypass.`;
-                    break;
-                }
-            }
-
-            if (constraintViolation) {
-                reply = constraintViolation;
-            } else {
-                let globalAxis = new THREE.Vector3();
-                globalAxis.setComponent(axis, 1);
-                let qRot = new THREE.Quaternion().setFromAxisAngle(globalAxis, deg * Math.PI / 180);
-
-                setGroups(prev => {
-                    let nextConf = { ...prev };
-                    for (let id of selectedItemIds) {
-                        if (nextConf[id]) {
-                            let curConf = nextConf[id];
-                            let parentMatrix = getParentRotMatrix(curConf.parentId, prev);
-                            let parentQuat = new THREE.Quaternion().setFromRotationMatrix(parentMatrix);
-                            let localQRot = parentQuat.clone().invert().multiply(qRot).multiply(parentQuat);
-
-                            let q = new THREE.Quaternion().setFromEuler(new THREE.Euler(...(curConf.rotation || [0, 0, 0]), 'XYZ'));
-                            q.premultiply(localQRot);
-                            let e = new THREE.Euler().setFromQuaternion(q, 'XYZ');
-                            nextConf[id] = { ...curConf, rotation: [e.x, e.y, e.z] };
-                        }
-                    }
-                    return nextConf;
-                });
-
-                setBoards(prev => prev.map(b => {
-                    if (selectedItemIds.includes(b.id.toString())) {
-                        let parentMatrix = getParentRotMatrix(b.parentId, groups);
-                        let parentQuat = new THREE.Quaternion().setFromRotationMatrix(parentMatrix);
-                        let localQRot = parentQuat.clone().invert().multiply(qRot).multiply(parentQuat);
-
-                        let q = new THREE.Quaternion().setFromEuler(new THREE.Euler(...(b.rotation || [0, 0, 0]), 'XYZ'));
-                        q.premultiply(localQRot);
-                        let e = new THREE.Euler().setFromQuaternion(q, 'XYZ');
-                        return { ...b, rotation: [e.x, e.y, e.z] };
-                    }
-                    return b;
-                }));
-                reply = `Applied ${deg} degree rotation sequence.`;
+                reply = "I didn't detect a number! Try 'make this 1 inch wider'.";
                 updated = true;
             }
         }
 
         if (!updated) {
-            reply = "I need clearer spatial constraints. Try 'move selected down 1 inch' or 'change to cherry'.";
+            reply = "I need clearer instructions. Try 'move this 3 along red' or 'make this 1 inch wider'.";
         }
 
         setTimeout(() => {
@@ -770,61 +544,48 @@ export const createActions = (set, get) => ({
         }
     },
 
-    dropGroupToFloor: () => {
-        const { selectedItemIds, groups, pushHistory, boards, setGroups } = get();
-        const selectedGroup = selectedItemIds.length === 1 && Object.keys(groups).find(k => k === selectedItemIds[0]);
-        if (!selectedGroup) return;
-        pushHistory();
-        let lowestY = Infinity;
-        const cb = [];
-        const traverse = (pId) => {
-            boards.filter(b => b.parentId === pId).forEach(b => cb.push(b));
-            Object.keys(groups).filter(k => groups[k].parentId === pId).forEach(k => traverse(k));
-        };
-        traverse(selectedGroup);
-
-        cb.forEach(b => {
-            const mat = getGlobalMatrix(b.id.toString(), true, boards, groups);
-            const w = b.size[0] / 2, h = b.size[1] / 2, d = b.size[2] / 2;
-            const corners = [
-                new THREE.Vector3(w, h, d), new THREE.Vector3(w, h, -d), new THREE.Vector3(w, -h, d), new THREE.Vector3(w, -h, -d),
-                new THREE.Vector3(-w, h, d), new THREE.Vector3(-w, h, -d), new THREE.Vector3(-w, -h, d), new THREE.Vector3(-w, -h, -d)
-            ];
-            corners.forEach(v => { v.applyMatrix4(mat); if (v.y < lowestY) lowestY = v.y; });
-        });
-
-        if (lowestY === Infinity) return;
-        const offset = new THREE.Vector3(0, -3 - lowestY, 0).applyMatrix4(getParentRotMatrix(groups[selectedGroup].parentId, groups).invert());
-
-        setGroups(prev => {
-            const cur = prev[selectedGroup];
-            let p = cur.position || [0, 0, 0];
-            return { ...prev, [selectedGroup]: { ...cur, position: [p[0] + offset.x, p[1] + offset.y, p[2] + offset.z] } };
-        });
-    },
-
+    // ─── Drop to floor: set the board so its bottom face sits at Y=0 ─────────
     dropBoardToFloor: () => {
-        const { selectedItemIds, boards, groups, pushHistory, setBoards } = get();
+        const { selectedItemIds, boards, pushHistory, setBoards } = get();
         const selectedBoard = selectedItemIds.length === 1 && boards.find(b => b.id.toString() === selectedItemIds[0]);
         if (!selectedBoard) return;
         pushHistory();
 
-        let lowestY = Infinity;
-        const mat = getGlobalMatrix(selectedBoard.id.toString(), true, boards, groups);
-        const w = selectedBoard.size[0] / 2, h = selectedBoard.size[1] / 2, d = selectedBoard.size[2] / 2;
-        const corners = [
-            new THREE.Vector3(w, h, d), new THREE.Vector3(w, h, -d), new THREE.Vector3(w, -h, d), new THREE.Vector3(w, -h, -d),
-            new THREE.Vector3(-w, h, d), new THREE.Vector3(-w, h, -d), new THREE.Vector3(-w, -h, d), new THREE.Vector3(-w, -h, -d)
-        ];
-        corners.forEach(v => { v.applyMatrix4(mat); if (v.y < lowestY) lowestY = v.y; });
-
-        if (lowestY === Infinity) return;
-        const offset = new THREE.Vector3(0, -3 - lowestY, 0).applyMatrix4(getParentRotMatrix(selectedBoard.parentId, groups).invert());
+        // Bottom of board = position.y - size.y/2. We want bottom at Y=0.
+        const newY = selectedBoard.size[1] / 2;
 
         setBoards(boards.map(b => {
             if (selectedItemIds.includes(b.id.toString())) {
-                let p = b.position || [0, 0, 0];
-                return { ...b, position: [p[0] + offset.x, p[1] + offset.y, p[2] + offset.z] };
+                return { ...b, position: [b.position[0], newY, b.position[2]] };
+            }
+            return b;
+        }));
+    },
+
+    dropGroupToFloor: () => {
+        const { selectedItemIds, groups, pushHistory, boards, setBoards } = get();
+        const selectedGroup = selectedItemIds.length === 1 && Object.keys(groups).find(k => k === selectedItemIds[0]);
+        if (!selectedGroup) return;
+        pushHistory();
+
+        // Find the lowest Y extent of all child boards
+        const childBoards = collectChildBoards(selectedGroup, boards, groups);
+        if (childBoards.length === 0) return;
+
+        let lowestY = Infinity;
+        childBoards.forEach(b => {
+            const bottomY = b.position[1] - b.size[1] / 2;
+            if (bottomY < lowestY) lowestY = bottomY;
+        });
+
+        if (lowestY === Infinity) return;
+        // Shift all child boards so the lowest is sitting on Y=0
+        const delta = -lowestY;
+
+        const childIds = new Set(childBoards.map(b => b.id.toString()));
+        setBoards(boards.map(b => {
+            if (childIds.has(b.id.toString())) {
+                return { ...b, position: [b.position[0], b.position[1] + delta, b.position[2]] };
             }
             return b;
         }));
@@ -839,11 +600,10 @@ export const createActions = (set, get) => ({
         setNewBoardDialog({
             name: 'New Component',
             parentId: targetParent,
-            dimW: 12,
-            dimL: 12,
-            dimD: 0.75,
-            plane: 'red-green',
-            position: [0, 0, 0]
+            sizeX: 12,
+            sizeY: 0.75,
+            sizeZ: 12,
+            position: [0, 0.375, 0]
         });
     },
 
@@ -900,7 +660,7 @@ export const createActions = (set, get) => ({
         const targetParent = selectedGroup || (selectedBoard ? selectedBoard.parentId : 'Workspace');
         setGroups(prev => ({
             ...prev,
-            [newId]: { parentId: targetParent, isExpanded: true, visible: true, position: [0, 0, 0], rotation: [0, 0, 0] }
+            [newId]: { parentId: targetParent, isExpanded: true, visible: true }
         }));
         setSelectedItemIds([newId]);
     },
@@ -909,22 +669,16 @@ export const createActions = (set, get) => ({
         const { pushHistory, newBoardDialog, setBoards, defaultMaterial, setSelectedItemIds, setNewBoardDialog } = get();
         pushHistory();
         const newId = Date.now();
-        
-        // Always maintain the internal component definition of Width, Length, and Depth
-        let calculatedSize = [newBoardDialog.dimW, newBoardDialog.dimL, newBoardDialog.dimD];
-        let calculatedRotation = [0, 0, 0];
-        
-        // Orient the board by rotating it instead of destroying its dimensional integrity
-        if (newBoardDialog.plane === 'red-blue') {
-            calculatedRotation = [Math.PI / 2, 0, 0]; // Lays it flat on the floor
-        } else if (newBoardDialog.plane === 'green-blue') {
-            calculatedRotation = [0, Math.PI / 2, 0]; // Stands it edge-on into the screen
-        }
 
         setBoards(prev => [...prev, {
-            id: newId, name: newBoardDialog.name || 'New Component', parentId: newBoardDialog.parentId,
-            size: calculatedSize, position: newBoardDialog.position, rotation: calculatedRotation,
-            material: defaultMaterial, joint: 'None', constraints: []
+            id: newId,
+            name: newBoardDialog.name || 'New Component',
+            parentId: newBoardDialog.parentId,
+            size: [newBoardDialog.sizeX, newBoardDialog.sizeY, newBoardDialog.sizeZ],
+            position: newBoardDialog.position,
+            material: defaultMaterial,
+            joint: 'None',
+            constraints: []
         }]);
         setSelectedItemIds([newId.toString()]);
         setNewBoardDialog(null);

@@ -3,7 +3,7 @@ import { Canvas } from '@react-three/fiber';
 import { PerspectiveCamera, OrthographicCamera, OrbitControls, useTexture, GizmoHelper, GizmoViewport, Text, Edges, Line, Html } from '@react-three/drei';
 import * as THREE from 'three';
 import useStore from '../store/useStore';
-import { getGlobalMatrix, calculateGroupLocalAABB } from '../utils/sceneGraph';
+import { computeWorldAABB, collectChildBoards, calculateGroupAABB } from '../utils/sceneGraph';
 import { formatUnit } from '../utils/units';
 
 
@@ -15,27 +15,21 @@ const ConstraintVisualizer = ({ boards, groups, selectedItemIds }) => {
   return (
     <group>
       {selectedBoards.map(b => {
-        const getFaceLocalPos = (bd, faceStr) => {
+        const getFaceWorldPos = (bd, faceStr) => {
           if (!faceStr || !bd || !bd.size) return new THREE.Vector3(0, 0, 0);
-          const w = bd.size[0] / 2;
-          const h = bd.size[1] / 2;
-          const d = bd.size[2] / 2;
-          if (faceStr === 'x+') return new THREE.Vector3(w, 0, 0);
-          if (faceStr === 'x-') return new THREE.Vector3(-w, 0, 0);
-          if (faceStr === 'y+') return new THREE.Vector3(0, h, 0);
-          if (faceStr === 'y-') return new THREE.Vector3(0, -h, 0);
-          if (faceStr === 'z+') return new THREE.Vector3(0, 0, d);
-          if (faceStr === 'z-') return new THREE.Vector3(0, 0, -d);
-          return new THREE.Vector3(0, 0, 0);
+          const pos = new THREE.Vector3(...bd.position);
+          const axisChar = faceStr[0];
+          const sign = faceStr[1] === '+' ? 1 : -1;
+          if (axisChar === 'x') pos.x += (bd.size[0] / 2) * sign;
+          if (axisChar === 'y') pos.y += (bd.size[1] / 2) * sign;
+          if (axisChar === 'z') pos.z += (bd.size[2] / 2) * sign;
+          return pos;
         };
 
         return b.constraints.map((c, i) => {
           const targetBoard = boards.find(x => x.id.toString() === c.targetId.toString());
-          const startMat = getGlobalMatrix(b.id.toString(), true, boards, groups);
-          const startPos = getFaceLocalPos(b, c.sourceFace).applyMatrix4(startMat);
-
-          const targetMat = getGlobalMatrix(c.targetId.toString(), true, boards, groups);
-          const targetPos = getFaceLocalPos(targetBoard, c.targetFace).applyMatrix4(targetMat);
+          const startPos = getFaceWorldPos(b, c.sourceFace);
+          const targetPos = getFaceWorldPos(targetBoard, c.targetFace);
           
           const midPos = startPos.clone().lerp(targetPos, 0.5);
 
@@ -73,11 +67,9 @@ const ConstraintVisualizer = ({ boards, groups, selectedItemIds }) => {
   );
 };
 
-const DimensioningOverlay = ({ boards, groups, selectedItemIds, showDimensions, units, theme }) => {
+const DimensioningOverlay = ({ boards, selectedItemIds, showDimensions, units, theme }) => {
   if (!showDimensions || selectedItemIds.length === 0) return null;
   const isDark = theme === 'dark';
-
-
 
   return (
     <group>
@@ -85,36 +77,34 @@ const DimensioningOverlay = ({ boards, groups, selectedItemIds, showDimensions, 
         const b = boards.find(x => x.id.toString() === id);
         if (!b) return null;
         
-        // Find local bounds
-        const extX = b.size[0] / 2;
-        const extY = b.size[1] / 2;
-        const extZ = b.size[2] / 2;
+        const px = b.position[0], py = b.position[1], pz = b.position[2];
+        const hx = b.size[0] / 2, hy = b.size[1] / 2, hz = b.size[2] / 2;
         
-        const mat = getGlobalMatrix(id, true, boards, groups);
-        
-        const mapPt = (x, y, z) => new THREE.Vector3(x, y, z).applyMatrix4(mat).toArray();
         const color = isDark ? '#888888' : '#666666';
         const oY = 1.5;
         const oX = 1.5;
 
-        // X (Width) floating above
-        const xD = [mapPt(-extX, extY + oY, 0), mapPt(extX, extY + oY, 0)];
-        const xT1 = [mapPt(-extX, extY + oY - 0.25, 0), mapPt(-extX, extY + oY + 0.25, 0)];
-        const xT2 = [mapPt(extX, extY + oY - 0.25, 0), mapPt(extX, extY + oY + 0.25, 0)];
+        // X dimension line (Red) — across the top front
+        const xD = [[px - hx, py + hy + oY, pz], [px + hx, py + hy + oY, pz]];
+        const xT1 = [[px - hx, py + hy + oY - 0.25, pz], [px - hx, py + hy + oY + 0.25, pz]];
+        const xT2 = [[px + hx, py + hy + oY - 0.25, pz], [px + hx, py + hy + oY + 0.25, pz]];
 
-        // Y (Length) floating to right
-        const yD = [mapPt(extX + oX, -extY, 0), mapPt(extX + oX, extY, 0)];
-        const yT1 = [mapPt(extX + oX - 0.25, -extY, 0), mapPt(extX + oX + 0.25, -extY, 0)];
-        const yT2 = [mapPt(extX + oX - 0.25, extY, 0), mapPt(extX + oX + 0.25, extY, 0)];
+        // Y dimension line (Green/Up) — along the right side
+        const yD = [[px + hx + oX, py - hy, pz], [px + hx + oX, py + hy, pz]];
+        const yT1 = [[px + hx + oX - 0.25, py - hy, pz], [px + hx + oX + 0.25, py - hy, pz]];
+        const yT2 = [[px + hx + oX - 0.25, py + hy, pz], [px + hx + oX + 0.25, py + hy, pz]];
 
-        // Z (Depth) floating below
-        const zD = [mapPt(0, -extY - oY, -extZ), mapPt(0, -extY - oY, extZ)];
-        const zT1 = [mapPt(0, -extY - oY - 0.25, -extZ), mapPt(0, -extY - oY + 0.25, -extZ)];
-        const zT2 = [mapPt(0, -extY - oY - 0.25, extZ), mapPt(0, -extY - oY + 0.25, extZ)];
+        // Z dimension line (Blue/Depth) — along the bottom
+        const zD = [[px, py - hy - oY, pz - hz], [px, py - hy - oY, pz + hz]];
+        const zT1 = [[px, py - hy - oY - 0.25, pz - hz], [px, py - hy - oY + 0.25, pz - hz]];
+        const zT2 = [[px, py - hy - oY - 0.25, pz + hz], [px, py - hy - oY + 0.25, pz + hz]];
 
-        const ptX = mapPt(0, extY + oY + 0.2, 0);
-        const ptY = mapPt(extX + oX + 0.4, 0, 0);
-        const ptZ = mapPt(0, -extY - oY - 0.2, 0);
+        const ptX = [px, py + hy + oY + 0.2, pz];
+        const ptY = [px + hx + oX + 0.4, py, pz];
+        const ptZ = [px, py - hy - oY - 0.2, pz];
+
+        // Dimension labels: sort to show Length/Width/Thickness
+        const sorted = [...b.size].sort((a, c) => c - a);
 
         return (
           <group key={`dim_${id}`}>
@@ -122,21 +112,21 @@ const DimensioningOverlay = ({ boards, groups, selectedItemIds, showDimensions, 
              <Line points={xT1} color={color} lineWidth={1.5} />
              <Line points={xT2} color={color} lineWidth={1.5} />
              <Html position={ptX} center style={{ pointerEvents: 'none', transition: 'all 0.1s' }}>
-                <div style={{ color: isDark ? '#d0d0d0' : '#222222', fontSize: '0.75rem', fontWeight: 'bold' }}>W: {formatUnit(b.size[0], units)}</div>
+                <div style={{ color: isDark ? '#d0d0d0' : '#222222', fontSize: '0.75rem', fontWeight: 'bold' }}>X: {formatUnit(b.size[0], units)}</div>
              </Html>
 
              <Line points={yD} color={color} lineWidth={1.5} />
              <Line points={yT1} color={color} lineWidth={1.5} />
              <Line points={yT2} color={color} lineWidth={1.5} />
              <Html position={ptY} center style={{ pointerEvents: 'none', transition: 'all 0.1s' }}>
-                <div style={{ color: isDark ? '#d0d0d0' : '#222222', fontSize: '0.75rem', fontWeight: 'bold' }}>L: {formatUnit(b.size[1], units)}</div>
+                <div style={{ color: isDark ? '#d0d0d0' : '#222222', fontSize: '0.75rem', fontWeight: 'bold' }}>Y: {formatUnit(b.size[1], units)}</div>
              </Html>
 
              <Line points={zD} color={color} lineWidth={1.5} />
              <Line points={zT1} color={color} lineWidth={1.5} />
              <Line points={zT2} color={color} lineWidth={1.5} />
              <Html position={ptZ} center style={{ pointerEvents: 'none', transition: 'all 0.1s' }}>
-                <div style={{ color: isDark ? '#d0d0d0' : '#222222', fontSize: '0.75rem', fontWeight: 'bold' }}>D: {formatUnit(b.size[2], units)}</div>
+                <div style={{ color: isDark ? '#d0d0d0' : '#222222', fontSize: '0.75rem', fontWeight: 'bold' }}>Z: {formatUnit(b.size[2], units)}</div>
              </Html>
           </group>
         );
@@ -148,7 +138,6 @@ const DimensioningOverlay = ({ boards, groups, selectedItemIds, showDimensions, 
 const BoundingBoxVisualizer = ({ boards, groups, selectedItemIds, showBoundingBox, theme }) => {
   if (!showBoundingBox || selectedItemIds.length === 0) return null;
   
-  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity;
   const validBoards = [];
 
   const traverse = (pId) => {
@@ -167,27 +156,14 @@ const BoundingBoxVisualizer = ({ boards, groups, selectedItemIds, showBoundingBo
 
   if (validBoards.length === 0) return null;
 
-  validBoards.forEach(b => {
-      const mat = getGlobalMatrix(b.id.toString(), true, boards, groups);
-      const w = b.size[0] / 2, h = b.size[1] / 2, d = b.size[2] / 2;
-      const corners = [
-          new THREE.Vector3(w, h, d), new THREE.Vector3(w, h, -d), new THREE.Vector3(w, -h, d), new THREE.Vector3(w, -h, -d),
-          new THREE.Vector3(-w, h, d), new THREE.Vector3(-w, h, -d), new THREE.Vector3(-w, -h, d), new THREE.Vector3(-w, -h, -d)
-      ];
-      corners.forEach(v => {
-          v.applyMatrix4(mat);
-          if (v.x < minX) minX = v.x; if (v.x > maxX) maxX = v.x;
-          if (v.y < minY) minY = v.y; if (v.y > maxY) maxY = v.y;
-          if (v.z < minZ) minZ = v.z; if (v.z > maxZ) maxZ = v.z;
-      });
-  });
+  const aabb = computeWorldAABB(validBoards);
 
-  const width = Math.abs(maxX - minX);
-  const height = Math.abs(maxY - minY);
-  const depth = Math.abs(maxZ - minZ);
-  const centerX = minX + width / 2;
-  const centerY = minY + height / 2;
-  const centerZ = minZ + depth / 2;
+  const width = Math.abs(aabb.maxX - aabb.minX);
+  const height = Math.abs(aabb.maxY - aabb.minY);
+  const depth = Math.abs(aabb.maxZ - aabb.minZ);
+  const centerX = aabb.minX + width / 2;
+  const centerY = aabb.minY + height / 2;
+  const centerZ = aabb.minZ + depth / 2;
 
   const isDark = theme === 'dark';
   return (
@@ -198,119 +174,117 @@ const BoundingBoxVisualizer = ({ boards, groups, selectedItemIds, showBoundingBo
   );
 };
 
-const RecursiveNode = ({ nodeId, groups, boards, selectedItemIds, toggleSelection, textures, isParentSelected = false, showEdges, onDoubleClickItem, constraintTargetMode, hoveredFaceData, setHoveredFaceData, modifierActive }) => {
+const BoardMesh = ({ b, selectedItemIds, toggleSelection, textures, showEdges, constraintTargetMode, hoveredFaceData, setHoveredFaceData, modifierActive }) => {
+  if (b.visible === false) return null;
+  const isSelected = selectedItemIds.includes(b.id.toString());
+
+  // Face labels are fixed in world space — no rotation means these are always correct
+  const faceLabels = {
+    'x+': 'right', 'x-': 'left',
+    'y+': 'top',   'y-': 'bottom',
+    'z+': 'front', 'z-': 'back'
+  };
+
+  return (
+    <mesh
+      raycast={modifierActive ? () => null : undefined}
+      position={b.position}
+      onClick={(e) => {
+        e.stopPropagation();
+        const faceStr = e.faceIndex !== undefined ? ['x+', 'x-', 'y+', 'y-', 'z+', 'z-'][Math.floor(e.faceIndex / 2)] : null;
+        toggleSelection(b.id.toString(), e.shiftKey || e.ctrlKey || e.metaKey, faceStr);
+      }}
+      onPointerMove={(e) => {
+        const isActiveMode = constraintTargetMode && constraintTargetMode.active;
+        if (isSelected || isActiveMode) {
+          e.stopPropagation();
+          if (e.faceIndex !== undefined) {
+            const fStr = ['x+', 'x-', 'y+', 'y-', 'z+', 'z-'][Math.floor(e.faceIndex / 2)];
+            if (!hoveredFaceData || hoveredFaceData.id !== b.id.toString() || hoveredFaceData.faceStr !== fStr) {
+              setHoveredFaceData({ id: b.id.toString(), faceStr: fStr });
+            }
+          }
+        }
+      }}
+      onPointerOut={(e) => {
+        if (hoveredFaceData && hoveredFaceData.id === b.id.toString()) {
+          setHoveredFaceData(null);
+        }
+      }}
+    >
+      <boxGeometry args={b.size} />
+      <meshStandardMaterial
+        map={textures[b.material]}
+        roughness={0.8}
+        emissive={isSelected ? '#bc8a5f' : '#000000'}
+        emissiveIntensity={isSelected ? 0.4 : 0}
+      />
+      {showEdges && <Edges scale={1} threshold={15} color={isSelected ? '#ffffff' : '#222222'} />}
+      {((isSelected || (constraintTargetMode && constraintTargetMode.active)) && hoveredFaceData && hoveredFaceData.id === b.id.toString()) && (() => {
+        const faceStr = hoveredFaceData.faceStr;
+        let pos = [0, 0, 0], rot = [0, 0, 0];
+        const w = b.size[0] / 2 + 0.01;
+        const h = b.size[1] / 2 + 0.01;
+        const d = b.size[2] / 2 + 0.01;
+        if (faceStr === 'x+') { pos = [w, 0, 0]; rot = [0, Math.PI / 2, 0]; }
+        if (faceStr === 'x-') { pos = [-w, 0, 0]; rot = [0, -Math.PI / 2, 0]; }
+        if (faceStr === 'y+') { pos = [0, h, 0]; rot = [-Math.PI / 2, 0, 0]; }
+        if (faceStr === 'y-') { pos = [0, -h, 0]; rot = [Math.PI / 2, 0, 0]; }
+        if (faceStr === 'z+') { pos = [0, 0, d]; rot = [0, 0, 0]; }
+        if (faceStr === 'z-') { pos = [0, 0, -d]; rot = [0, Math.PI, 0]; }
+        
+        let planeW = faceStr.startsWith('x') ? b.size[2] : b.size[0];
+        let planeH = faceStr.startsWith('y') ? b.size[2] : b.size[1];
+        if (faceStr.startsWith('x')) planeH = b.size[1];
+        if (faceStr.startsWith('z')) planeH = b.size[1];
+
+        const tooltipLabel = faceLabels[faceStr] || faceStr;
+
+        return (
+          <group>
+            <mesh position={pos} rotation={rot} raycast={() => null}>
+              <planeGeometry args={[planeW, planeH]} />
+              <meshBasicMaterial color="#00ffff" transparent opacity={0.4} depthTest={false} side={THREE.DoubleSide} />
+            </mesh>
+            <Html position={pos} center style={{ pointerEvents: 'none', zIndex: 10 }}>
+              <div style={{
+                background: 'rgba(0, 0, 0, 0.75)',
+                color: 'white',
+                padding: '4px 8px',
+                borderRadius: '6px',
+                fontSize: '0.8rem',
+                fontWeight: 'bold',
+                whiteSpace: 'nowrap',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.5)'
+              }}>
+                {tooltipLabel}
+              </div>
+            </Html>
+          </group>
+        );
+      })()}
+    </mesh>
+  );
+};
+
+const RecursiveNode = ({ nodeId, groups, boards, selectedItemIds, toggleSelection, textures, showEdges, constraintTargetMode, hoveredFaceData, setHoveredFaceData, modifierActive }) => {
   const isGroup = groups[nodeId] !== undefined;
-  const isSelected = selectedItemIds.includes(nodeId.toString()) || isParentSelected;
 
   if (!isGroup) {
     const b = boards.find(x => x.id.toString() === nodeId);
-    if (!b || b.visible === false) return null;
+    if (!b) return null;
     return (
-      <mesh
-        raycast={modifierActive ? () => null : undefined}
-        position={b.position}
-        rotation={b.rotation || [0, 0, 0]}
-        onClick={(e) => {
-          e.stopPropagation();
-          const faceStr = e.faceIndex !== undefined ? ['x+', 'x-', 'y+', 'y-', 'z+', 'z-'][Math.floor(e.faceIndex / 2)] : null;
-          toggleSelection(b.id.toString(), e.shiftKey || e.ctrlKey || e.metaKey, faceStr);
-        }}
-        onPointerMove={(e) => {
-          const isActiveMode = constraintTargetMode && constraintTargetMode.active;
-          if (isSelected || isActiveMode) {
-            e.stopPropagation();
-            if (e.faceIndex !== undefined) {
-              const fStr = ['x+', 'x-', 'y+', 'y-', 'z+', 'z-'][Math.floor(e.faceIndex / 2)];
-              if (!hoveredFaceData || hoveredFaceData.id !== b.id.toString() || hoveredFaceData.faceStr !== fStr) {
-                setHoveredFaceData({ id: b.id.toString(), faceStr: fStr });
-              }
-            }
-          }
-        }}
-        onPointerOut={(e) => {
-          if (hoveredFaceData && hoveredFaceData.id === b.id.toString()) {
-            setHoveredFaceData(null);
-          }
-        }}
-        onDoubleClick={(e) => {
-          e.stopPropagation();
-          if (onDoubleClickItem) onDoubleClickItem(b.id.toString());
-        }}
-      >
-        <boxGeometry args={b.size} />
-        <meshStandardMaterial
-          map={textures[b.material]}
-          roughness={0.8}
-          emissive={isSelected ? '#bc8a5f' : '#000000'}
-          emissiveIntensity={isSelected ? 0.4 : 0}
-        />
-        {showEdges && <Edges scale={1} threshold={15} color={isSelected ? '#ffffff' : '#222222'} />}
-        {((isSelected || (constraintTargetMode && constraintTargetMode.active)) && hoveredFaceData && hoveredFaceData.id === b.id.toString()) && (() => {
-          const faceStr = hoveredFaceData.faceStr;
-          let pos = [0, 0, 0], rot = [0, 0, 0];
-          const w = b.size[0] / 2 + 0.01;
-          const h = b.size[1] / 2 + 0.01;
-          const d = b.size[2] / 2 + 0.01;
-          const px = w, pnx = -w, py = h, pny = -h, pz = d, pnz = -d;
-          if (faceStr === 'x+') { pos = [px, 0, 0]; rot = [0, Math.PI / 2, 0]; }
-          if (faceStr === 'x-') { pos = [pnx, 0, 0]; rot = [0, -Math.PI / 2, 0]; }
-          if (faceStr === 'y+') { pos = [0, py, 0]; rot = [-Math.PI / 2, 0, 0]; }
-          if (faceStr === 'y-') { pos = [0, pny, 0]; rot = [Math.PI / 2, 0, 0]; }
-          if (faceStr === 'z+') { pos = [0, 0, pz]; rot = [0, 0, 0]; }
-          if (faceStr === 'z-') { pos = [0, 0, pnz]; rot = [0, Math.PI, 0]; }
-          
-          let planeW = faceStr.startsWith('x') ? b.size[2] : b.size[0];
-          let planeH = faceStr.startsWith('y') ? b.size[2] : b.size[1];
-          if (faceStr.startsWith('x')) planeH = b.size[1];
-          if (faceStr.startsWith('z')) planeH = b.size[1];
-
-          // Determine global normal to label the face
-          const mat = getGlobalMatrix(b.id.toString(), true, boards, groups);
-          const normalMatrix = new THREE.Matrix3().getNormalMatrix(mat);
-          const localNormal = new THREE.Vector3();
-          if (faceStr === 'x+') localNormal.set(1, 0, 0);
-          if (faceStr === 'x-') localNormal.set(-1, 0, 0);
-          if (faceStr === 'y+') localNormal.set(0, 1, 0);
-          if (faceStr === 'y-') localNormal.set(0, -1, 0);
-          if (faceStr === 'z+') localNormal.set(0, 0, 1);
-          if (faceStr === 'z-') localNormal.set(0, 0, -1);
-          
-          localNormal.applyMatrix3(normalMatrix).normalize();
-          
-          const epsilon = 0.01;
-          let tooltipLabel = 'not coplanar';
-          
-          if (localNormal.y > 1 - epsilon) tooltipLabel = "top";
-          else if (localNormal.y < -1 + epsilon) tooltipLabel = "bottom";
-          else if (localNormal.x > 1 - epsilon) tooltipLabel = "right";
-          else if (localNormal.x < -1 + epsilon) tooltipLabel = "left";
-          else if (localNormal.z > 1 - epsilon) tooltipLabel = "front";
-          else if (localNormal.z < -1 + epsilon) tooltipLabel = "back";
-
-          return (
-            <group>
-              <mesh position={pos} rotation={rot} raycast={() => null}>
-                <planeGeometry args={[planeW, planeH]} />
-                <meshBasicMaterial color="#00ffff" transparent opacity={0.4} depthTest={false} side={THREE.DoubleSide} />
-              </mesh>
-              <Html position={pos} center style={{ pointerEvents: 'none', zIndex: 10 }}>
-                <div style={{
-                  background: 'rgba(0, 0, 0, 0.75)',
-                  color: 'white',
-                  padding: '4px 8px',
-                  borderRadius: '6px',
-                  fontSize: '0.8rem',
-                  fontWeight: 'bold',
-                  whiteSpace: 'nowrap',
-                  boxShadow: '0 2px 4px rgba(0,0,0,0.5)'
-                }}>
-                  {tooltipLabel}
-                </div>
-              </Html>
-            </group>
-          );
-        })()}
-      </mesh>
+      <BoardMesh
+        b={b}
+        selectedItemIds={selectedItemIds}
+        toggleSelection={toggleSelection}
+        textures={textures}
+        showEdges={showEdges}
+        constraintTargetMode={constraintTargetMode}
+        hoveredFaceData={hoveredFaceData}
+        setHoveredFaceData={setHoveredFaceData}
+        modifierActive={modifierActive}
+      />
     );
   }
 
@@ -320,13 +294,14 @@ const RecursiveNode = ({ nodeId, groups, boards, selectedItemIds, toggleSelectio
   const childGroups = Object.keys(groups).filter(k => groups[k].parentId === nodeId);
   const childBoards = boards.filter(b => b.parentId === nodeId);
 
+  // Group proxy bounding box for constraint targeting
   let groupProxyBounds = null;
-  if (isGroup && constraintTargetMode?.active) {
-      groupProxyBounds = calculateGroupLocalAABB(nodeId, boards, groups);
+  if (constraintTargetMode?.active) {
+    groupProxyBounds = calculateGroupAABB(nodeId, boards, groups);
   }
 
   return (
-    <group position={g.position || [0, 0, 0]} rotation={g.rotation || [0, 0, 0]}>
+    <group>
       {groupProxyBounds && (
         <mesh
           position={[groupProxyBounds.centerX, groupProxyBounds.centerY, groupProxyBounds.centerZ]}
@@ -384,16 +359,16 @@ const RecursiveNode = ({ nodeId, groups, boards, selectedItemIds, toggleSelectio
       )}
 
       {childGroups.map(k => (
-        <RecursiveNode key={k} nodeId={k} groups={groups} boards={boards} selectedItemIds={selectedItemIds} toggleSelection={toggleSelection} textures={textures} isParentSelected={isSelected} showEdges={showEdges} onDoubleClickItem={onDoubleClickItem} constraintTargetMode={constraintTargetMode} hoveredFaceData={hoveredFaceData} setHoveredFaceData={setHoveredFaceData} modifierActive={modifierActive} />
+        <RecursiveNode key={k} nodeId={k} groups={groups} boards={boards} selectedItemIds={selectedItemIds} toggleSelection={toggleSelection} textures={textures} showEdges={showEdges} constraintTargetMode={constraintTargetMode} hoveredFaceData={hoveredFaceData} setHoveredFaceData={setHoveredFaceData} modifierActive={modifierActive} />
       ))}
       {childBoards.map(b => (
-        <RecursiveNode key={`b_${b.id}`} nodeId={b.id.toString()} groups={groups} boards={boards} selectedItemIds={selectedItemIds} toggleSelection={toggleSelection} textures={textures} isParentSelected={isSelected} showEdges={showEdges} onDoubleClickItem={onDoubleClickItem} constraintTargetMode={constraintTargetMode} hoveredFaceData={hoveredFaceData} setHoveredFaceData={setHoveredFaceData} modifierActive={modifierActive} />
+        <RecursiveNode key={`b_${b.id}`} nodeId={b.id.toString()} groups={groups} boards={boards} selectedItemIds={selectedItemIds} toggleSelection={toggleSelection} textures={textures} showEdges={showEdges} constraintTargetMode={constraintTargetMode} hoveredFaceData={hoveredFaceData} setHoveredFaceData={setHoveredFaceData} modifierActive={modifierActive} />
       ))}
     </group>
   );
 };
 
-function WoodJoint({ boards, groups, selectedItemIds, toggleSelection, showEdges, showDimensions, showBoundingBox, units, theme, onDoubleClickItem, constraintTargetMode, hoveredFaceData, setHoveredFaceData, modifierActive }) {
+function WoodJoint({ boards, groups, selectedItemIds, toggleSelection, showEdges, showDimensions, showBoundingBox, units, theme, constraintTargetMode, hoveredFaceData, setHoveredFaceData, modifierActive }) {
   const textures = useTexture({
     'pine': '/textures/pine.svg',
     'cherry': '/textures/cherry.svg',
@@ -411,11 +386,11 @@ function WoodJoint({ boards, groups, selectedItemIds, toggleSelection, showEdges
   return (
     <group>
       {rootGroups.map(k => (
-        <RecursiveNode key={k} nodeId={k} groups={groups} boards={boards} selectedItemIds={selectedItemIds} toggleSelection={toggleSelection} textures={textures} showEdges={showEdges} onDoubleClickItem={onDoubleClickItem} constraintTargetMode={constraintTargetMode} hoveredFaceData={hoveredFaceData} setHoveredFaceData={setHoveredFaceData} modifierActive={modifierActive} />
+        <RecursiveNode key={k} nodeId={k} groups={groups} boards={boards} selectedItemIds={selectedItemIds} toggleSelection={toggleSelection} textures={textures} showEdges={showEdges} constraintTargetMode={constraintTargetMode} hoveredFaceData={hoveredFaceData} setHoveredFaceData={setHoveredFaceData} modifierActive={modifierActive} />
       ))}
       <ConstraintVisualizer boards={boards} groups={groups} selectedItemIds={selectedItemIds} />
       <BoundingBoxVisualizer boards={boards} groups={groups} selectedItemIds={selectedItemIds} showBoundingBox={showBoundingBox} theme={theme} />
-      <DimensioningOverlay boards={boards} groups={groups} selectedItemIds={selectedItemIds} showDimensions={showDimensions} units={units} theme={theme} />
+      <DimensioningOverlay boards={boards} selectedItemIds={selectedItemIds} showDimensions={showDimensions} units={units} theme={theme} />
     </group>
   );
 }
@@ -437,15 +412,15 @@ export default function Viewport3D() {
   const majorColor = isDark ? 0x666666 : 0x999999;
   const minorColor = isDark ? 0x242424 : 0xd2d2d2;
 
-  const gridRadius = 120; // 10 foot workspace span balances integers perfectly for both 6 and 12-inch divides.
-  let minorDivs = 0, majorDivs = 20; // Default off layout
+  const gridRadius = 120;
+  let minorDivs = 0, majorDivs = 20;
 
   if (gridSnap === '1/8 in') {
     minorDivs = 240;
-    majorDivs = 40;  // 3 inch boundaries
+    majorDivs = 40;
   } else if (gridSnap === '1/2 in' || gridSnap === '1 in') {
     minorDivs = 120;
-    majorDivs = 20;  // 6 inch boundaries
+    majorDivs = 20;
   } else if (gridSnap === 'off') {
     minorDivs = 0;
     majorDivs = 20;
@@ -478,8 +453,9 @@ export default function Viewport3D() {
         <ambientLight intensity={0.4} />
         <pointLight position={[20, 20, 20]} intensity={1} />
 
+        {/* Gizmo: R=Red(X left/right), G=Green(Y up/down), B=Blue(Z front/back) */}
         <GizmoHelper alignment="top-center" margin={[0, 160]}>
-          <GizmoViewport axisColors={['#ff3b30', '#34c759', '#007aff']} labelColor="white" labels={['R', 'U', 'F']} />
+          <GizmoViewport axisColors={['#ff3b30', '#34c759', '#007aff']} labelColor="white" labels={['X', 'Y', 'Z']} />
         </GizmoHelper>
 
         {isOrtho ? (
@@ -489,23 +465,15 @@ export default function Viewport3D() {
         )}
 
         <OrbitControls makeDefault />
-        {/* Draw faint Minor grid on the true floor plane */}
+        {/* Floor grid at Y=0 */}
         {minorDivs > 0 && (
-          <gridHelper key={`min_${minorDivs}_${theme}`} args={[gridRadius, minorDivs, minorColor, minorColor]} position={[0, -3.02, 0]} />
+          <gridHelper key={`min_${minorDivs}_${theme}`} args={[gridRadius, minorDivs, minorColor, minorColor]} position={[0, -0.02, 0]} />
         )}
-        {/* Draw bold Major grid slightly above to guarantee strict anti-aliasing dominance */}
-        <gridHelper key={`maj_${majorDivs}_${theme}`} args={[gridRadius, majorDivs, majorColor, majorColor]} position={[0, -2.98, 0]} />
-        <axesHelper args={[40]} position={[0, -2.97, 0]} />
+        <gridHelper key={`maj_${majorDivs}_${theme}`} args={[gridRadius, majorDivs, majorColor, majorColor]} position={[0, 0.02, 0]} />
+        <axesHelper args={[40]} position={[0, 0.03, 0]} />
 
         {globalBounds?.enabled && (
-          <mesh position={[0, -3 + (globalBounds.y / 2), 0]}>
-            <boxGeometry args={[globalBounds.x, globalBounds.y, globalBounds.z]} />
-            <meshBasicMaterial color={theme === 'dark' ? '#bc8a5f' : '#FF9500'} wireframe transparent opacity={0.3} />
-          </mesh>
-        )}
-
-        {globalBounds?.enabled && (
-          <mesh position={[0, -3 + (globalBounds.y / 2), 0]}>
+          <mesh position={[0, globalBounds.y / 2, 0]}>
             <boxGeometry args={[globalBounds.x, globalBounds.y, globalBounds.z]} />
             <meshBasicMaterial color={theme === 'dark' ? '#bc8a5f' : '#FF9500'} wireframe transparent opacity={0.3} />
           </mesh>

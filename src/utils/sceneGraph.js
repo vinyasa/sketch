@@ -1,89 +1,32 @@
-import * as THREE from 'three';
-
 /**
- * Compute the cumulative world-space transformation matrix for a board or group
- * by walking up the parent chain.
- * @param {string} id - The ID of the board or group
- * @param {boolean} isBoard - Whether the starting node is a board (true) or group (false)
- * @param {Array} boards - The boards array
- * @param {Object} groups - The groups object
- * @returns {THREE.Matrix4} The composed world-space matrix
+ * Scene Graph Utilities — World-Space Only
+ * 
+ * All boards exist in a single flat world coordinate system.
+ * No parent-chain matrix walking. No rotation composition.
+ * Groups are purely organizational containers.
  */
-export const getGlobalMatrix = (id, isBoard, boards, groups) => {
-    let mat = new THREE.Matrix4();
-    let cur = id;
-    let isB = isBoard;
-    while (cur) {
-        let p = [0, 0, 0], r = [0, 0, 0], parentId = null;
-        if (isB) {
-            const b = boards.find(x => x.id.toString() === cur);
-            if (b) { p = b.position || [0, 0, 0]; r = b.rotation || [0, 0, 0]; parentId = b.parentId; }
-            isB = false;
-        } else {
-            const g = groups[cur];
-            if (g) { p = g.position || [0, 0, 0]; r = g.rotation || [0, 0, 0]; parentId = g.parentId; }
-        }
-        mat.premultiply(new THREE.Matrix4().compose(
-            new THREE.Vector3(...p),
-            new THREE.Quaternion().setFromEuler(new THREE.Euler(...r, 'XYZ')),
-            new THREE.Vector3(1, 1, 1)
-        ));
-        cur = parentId;
-    }
-    return mat;
-};
-
-/**
- * Compute the cumulative rotation-only matrix for a group's parent chain.
- * Used to convert global-space directions into local-space.
- * @param {string} parentId - The parent group ID to start from
- * @param {Object} groups - The groups object
- * @returns {THREE.Matrix4} The composed rotation matrix
- */
-export const getParentRotMatrix = (parentId, groups) => {
-    let mat = new THREE.Matrix4();
-    let cur = parentId;
-    while (cur) {
-        const g = groups[cur];
-        if (g) {
-            mat.premultiply(new THREE.Matrix4().makeRotationFromEuler(
-                new THREE.Euler(...(g.rotation || [0, 0, 0]), 'XYZ')
-            ));
-            cur = g.parentId;
-        } else {
-            cur = null;
-        }
-    }
-    return mat;
-};
 
 /**
  * Compute an axis-aligned bounding box (AABB) in world space for a list of boards.
- * @param {Array} boardList - The specific boards to compute the AABB for
- * @param {Array} allBoards - The full boards array (needed for matrix traversal)
- * @param {Object} groups - The groups object
+ * Since all boards are axis-aligned with no rotation, this is trivial arithmetic.
+ * @param {Array} boardList - The boards to compute the AABB for
  * @returns {{ minX, maxX, minY, maxY, minZ, maxZ }}
  */
-export const computeWorldAABB = (boardList, allBoards, groups) => {
+export const computeWorldAABB = (boardList) => {
     let minX = Infinity, maxX = -Infinity;
     let minY = Infinity, maxY = -Infinity;
     let minZ = Infinity, maxZ = -Infinity;
 
     boardList.forEach(b => {
-        const mat = getGlobalMatrix(b.id.toString(), true, allBoards, groups);
-        const w = b.size[0] / 2, h = b.size[1] / 2, d = b.size[2] / 2;
-        const corners = [
-            new THREE.Vector3(w, h, d), new THREE.Vector3(w, h, -d),
-            new THREE.Vector3(w, -h, d), new THREE.Vector3(w, -h, -d),
-            new THREE.Vector3(-w, h, d), new THREE.Vector3(-w, h, -d),
-            new THREE.Vector3(-w, -h, d), new THREE.Vector3(-w, -h, -d)
-        ];
-        corners.forEach(v => {
-            v.applyMatrix4(mat);
-            if (v.x < minX) minX = v.x; if (v.x > maxX) maxX = v.x;
-            if (v.y < minY) minY = v.y; if (v.y > maxY) maxY = v.y;
-            if (v.z < minZ) minZ = v.z; if (v.z > maxZ) maxZ = v.z;
-        });
+        const px = b.position[0], py = b.position[1], pz = b.position[2];
+        const hx = b.size[0] / 2, hy = b.size[1] / 2, hz = b.size[2] / 2;
+
+        if (px - hx < minX) minX = px - hx;
+        if (px + hx > maxX) maxX = px + hx;
+        if (py - hy < minY) minY = py - hy;
+        if (py + hy > maxY) maxY = py + hy;
+        if (pz - hz < minZ) minZ = pz - hz;
+        if (pz + hz > maxZ) maxZ = pz + hz;
     });
 
     return { minX, maxX, minY, maxY, minZ, maxZ };
@@ -107,51 +50,26 @@ export const collectChildBoards = (parentId, boards, groups) => {
 };
 
 /**
- * Compute an AABB for an entire group in the *local coordinate space* of that group.
- * Useful for virtual dimensioning or constraint targeting on assemblies.
+ * Compute an AABB for an entire group by collecting all descendant boards.
+ * Since groups have no transform, this is just the world AABB of all children.
+ * @param {string} groupId - The group ID
+ * @param {Array} boards - The boards array
+ * @param {Object} groups - The groups object
+ * @returns {{ width, height, depth, centerX, centerY, centerZ, minX, maxX, minY, maxY, minZ, maxZ } | null}
  */
-export const calculateGroupLocalAABB = (groupId, boards, groups) => {
-    let minX = Infinity, maxX = -Infinity;
-    let minY = Infinity, maxY = -Infinity;
-    let minZ = Infinity, maxZ = -Infinity;
-    let found = false;
+export const calculateGroupAABB = (groupId, boards, groups) => {
+    const childBoards = collectChildBoards(groupId, boards, groups);
+    if (childBoards.length === 0) return null;
 
-    const groupMatGlobal = getGlobalMatrix(groupId, false, boards, groups);
-    const invGroupMatGlobal = groupMatGlobal.clone().invert();
+    const aabb = computeWorldAABB(childBoards);
 
-    const traverseBounds = (pId) => {
-        boards.filter(b => b.parentId === pId).forEach(b => {
-             found = true;
-             const bMat = getGlobalMatrix(b.id.toString(), true, boards, groups);
-             const relMat = new THREE.Matrix4().multiplyMatrices(invGroupMatGlobal, bMat);
-             
-             const w = b.size[0]/2, h = b.size[1]/2, d = b.size[2]/2;
-             const corners = [
-                 new THREE.Vector3(w, h, d), new THREE.Vector3(w, h, -d), new THREE.Vector3(w, -h, d), new THREE.Vector3(w, -h, -d),
-                 new THREE.Vector3(-w, h, d), new THREE.Vector3(-w, h, -d), new THREE.Vector3(-w, -h, d), new THREE.Vector3(-w, -h, -d)
-             ];
-             corners.forEach(v => {
-                 v.applyMatrix4(relMat);
-                 if (v.x < minX) minX = v.x; if (v.x > maxX) maxX = v.x;
-                 if (v.y < minY) minY = v.y; if (v.y > maxY) maxY = v.y;
-                 if (v.z < minZ) minZ = v.z; if (v.z > maxZ) maxZ = v.z;
-             });
-        });
-        Object.keys(groups).filter(k => groups[k].parentId === pId).forEach(k => traverseBounds(k));
-    };
-
-    traverseBounds(groupId);
-
-    if (!found) return null;
-    
     return {
-        width: Math.abs(maxX - minX),
-        height: Math.abs(maxY - minY),
-        depth: Math.abs(maxZ - minZ),
-        centerX: (maxX + minX) / 2,
-        centerY: (maxY + minY) / 2,
-        centerZ: (maxZ + minZ) / 2,
-        minX, maxX, minY, maxY, minZ, maxZ
+        width: Math.abs(aabb.maxX - aabb.minX),
+        height: Math.abs(aabb.maxY - aabb.minY),
+        depth: Math.abs(aabb.maxZ - aabb.minZ),
+        centerX: (aabb.maxX + aabb.minX) / 2,
+        centerY: (aabb.maxY + aabb.minY) / 2,
+        centerZ: (aabb.maxZ + aabb.minZ) / 2,
+        ...aabb
     };
 };
-

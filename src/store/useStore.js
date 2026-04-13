@@ -54,7 +54,7 @@ const useStore = create((set, get) => ({
     setChatInput: (v) => set({ chatInput: typeof v === 'function' ? v(get().chatInput) : v }),
 
     chatMessages: [
-        { role: 'ai', text: 'Ready! Try saying "change completely to walnut" or select a board and say "move up 2 inches".' }
+        { role: 'ai', text: 'Ready! Try "move this 3 along red" or "make this 1 inch wider". Select a board first!' }
     ],
     setChatMessages: (v) => set({ chatMessages: typeof v === 'function' ? v(get().chatMessages) : v }),
 
@@ -89,18 +89,22 @@ const useStore = create((set, get) => ({
     setGlobalBounds: (v) => set({ globalBounds: typeof v === 'function' ? v(get().globalBounds) : v }),
 
     // ── 2C: Core Data State ──────────────────────────────────────────────────
+    // Boards: No rotation field. All positions are world-space.
+    // Size: [x, y, z] where x=width(Red), y=height(Green/up), z=depth(Blue)
+    // Position: [x, y, z] = center of the board in world space
     boards: loadState('boards', [
-        { id: 1, name: 'Table Top', parentId: 'Table Base', size: [36, 6, 0.75], position: [0, 0, 0], rotation: [0, 0, 0], material: 'pine', joint: 'Butt 1', constraints: [] },
-        { id: 2, name: 'Leg A', parentId: 'Table Base', size: [0.75, 6, 12], position: [17.625, 0, 2.625], rotation: [0, 0, 0], material: 'white-oak', joint: 'Miter', constraints: [{ type: 'Glue', targetId: 1, properties: 'Target: Bottom Face' }] },
-        { id: 3, name: 'Leg B', parentId: 'Table Base', size: [0.75, 6, 12], position: [-17.625, 0, 2.625], rotation: [0, 0, 0], material: 'white-oak', joint: 'Miter', constraints: [{ type: 'Glue', targetId: 1, properties: 'Target: Bottom Face' }] },
-        { id: 4, name: 'Cross Brace', parentId: 'Supports', size: [34.5, 2, 0.75], position: [0, -4, 2.625], rotation: [Math.PI / 2, 0, 0], material: 'cherry', joint: 'Dado', constraints: [{ type: 'Flush', targetId: 2, properties: 'Offset: 0in' }, { type: 'Flush', targetId: 3, properties: 'Offset: 0in' }] }
+        { id: 1, name: 'Table Top', parentId: 'Table Base', size: [36, 0.75, 24], position: [0, 12.375, 0], material: 'pine', joint: 'Butt 1', constraints: [] },
+        { id: 2, name: 'Leg A', parentId: 'Table Base', size: [1.5, 12, 1.5], position: [16.5, 6, 10.5], material: 'white-oak', joint: 'Butt 1', constraints: [] },
+        { id: 3, name: 'Leg B', parentId: 'Table Base', size: [1.5, 12, 1.5], position: [-16.5, 6, 10.5], material: 'white-oak', joint: 'Butt 1', constraints: [] },
+        { id: 4, name: 'Leg C', parentId: 'Table Base', size: [1.5, 12, 1.5], position: [16.5, 6, -10.5], material: 'white-oak', joint: 'Butt 1', constraints: [] },
+        { id: 5, name: 'Leg D', parentId: 'Table Base', size: [1.5, 12, 1.5], position: [-16.5, 6, -10.5], material: 'white-oak', joint: 'Butt 1', constraints: [] },
     ]),
     setBoards: (v) => set({ boards: typeof v === 'function' ? v(get().boards) : v }),
 
+    // Groups: Purely organizational. No position or rotation.
     groups: loadState('groups', {
-        'Workspace': { parentId: null, position: [0, 0, 0], rotation: [0, 0, 0], visible: true, isExpanded: true },
-        'Table Base': { parentId: 'Workspace', position: [0, 0, 0], rotation: [0, 0, 0], visible: true, isExpanded: true },
-        'Supports': { parentId: 'Workspace', position: [0, 0, 0], rotation: [0, 0, 0], visible: true, isExpanded: true }
+        'Workspace': { parentId: null, visible: true, isExpanded: true },
+        'Table Base': { parentId: 'Workspace', visible: true, isExpanded: true },
     }),
     setGroups: (v) => set({ groups: typeof v === 'function' ? v(get().groups) : v }),
 

@@ -1,73 +1,78 @@
-import * as THREE from 'three';
-import { getGlobalMatrix, calculateGroupLocalAABB } from './sceneGraph';
+/**
+ * Constraint Solver — World-Space Only
+ * 
+ * All boards are axis-aligned in world space with no rotation.
+ * Face positions are computed by simple arithmetic on position ± half-size.
+ */
+import { calculateGroupAABB } from './sceneGraph';
+
+/**
+ * Compute the world-space position of a face on a board.
+ * @param {Object} board - The board object
+ * @param {string} faceStr - 'x+', 'x-', 'y+', 'y-', 'z+', 'z-'
+ * @returns {{ pos: number, axis: number, sign: number }}
+ */
+const getFaceWorldPosition = (board, faceStr) => {
+    const axisChar = faceStr[0];
+    const sign = faceStr[1] === '+' ? 1 : -1;
+    const axisIndex = axisChar === 'x' ? 0 : axisChar === 'y' ? 1 : 2;
+    const pos = board.position[axisIndex] + (board.size[axisIndex] / 2) * sign;
+    return { pos, axis: axisIndex, sign };
+};
 
 /**
  * Solve a Flush or Glue alignment constraint, returning the new position
  * for the source board, or null if the target is not found.
+ * 
+ * With no rotation, this is simple 1D arithmetic along the face normal axis:
+ * - Flush: source face aligns to the same plane as target face
+ * - Glue: source face touches and is coplanar with target face (opposite normals)
+ * 
  * @param {Object} sourceBoard - The board being constrained
- * @param {Object} constraintObj - The constraint definition { type, sourceFace, targetId, targetFace }
- * @param {Array} currentBoards - The current boards array
- * @param {Object} currentGroups - The current groups object
+ * @param {Object} constraintObj - { type, sourceFace, targetId, targetFace }
+ * @param {Array} currentBoards - All boards
+ * @param {Object} currentGroups - All groups
  * @returns {{ position: [x, y, z] } | null}
  */
 export const solveAlignmentConstraint = (sourceBoard, constraintObj, currentBoards, currentGroups) => {
     let tBoard = currentBoards.find(b => b.id.toString() === constraintObj.targetId.toString());
-    
+
+    // If target is a group, create a virtual board from its AABB
     if (!tBoard && currentGroups[constraintObj.targetId]) {
-        // Target is an Assembly. Generate a virtual board from its local bounding volume.
-        const aabb = calculateGroupLocalAABB(constraintObj.targetId, currentBoards, currentGroups);
+        const aabb = calculateGroupAABB(constraintObj.targetId, currentBoards, currentGroups);
         if (aabb) {
             tBoard = {
                 id: constraintObj.targetId,
                 isVirtualGroupBound: true,
                 size: [aabb.width, aabb.height, aabb.depth],
-                // The center of the bounding box is physically offset from the assembly's pivot origin
-                localOffset: new THREE.Vector3(aabb.centerX, aabb.centerY, aabb.centerZ)
+                position: [aabb.centerX, aabb.centerY, aabb.centerZ]
             };
         }
     }
 
     if (!tBoard) return null;
 
-    const getLocalData = (board, face) => {
-        let norm = new THREE.Vector3();
-        let pos = new THREE.Vector3();
-        if (board.localOffset) {
-            pos.copy(board.localOffset);
-        }
-        const sign = face[1] === '+' ? 1 : -1;
-        const w = board.size[0] / 2, h = board.size[1] / 2, d = board.size[2] / 2;
-        if (face[0] === 'x') { norm.set(sign, 0, 0); pos.x += w * sign; }
-        if (face[0] === 'y') { norm.set(0, sign, 0); pos.y += h * sign; }
-        if (face[0] === 'z') { norm.set(0, 0, sign); pos.z += d * sign; }
-        return { norm, pos };
-    };
+    const tFace = getFaceWorldPosition(tBoard, constraintObj.targetFace);
+    const sFace = getFaceWorldPosition(sourceBoard, constraintObj.sourceFace);
 
-    const tLocal = getLocalData(tBoard, constraintObj.targetFace);
-    const sLocal = getLocalData(sourceBoard, constraintObj.sourceFace);
+    // For Flush: source face plane should equal target face plane
+    // For Glue: source face should touch target face (faces pointing at each other)
+    const targetFacePos = tFace.pos;
+    const sourceFaceOffset = (sourceBoard.size[sFace.axis] / 2) * sFace.sign;
 
-    const tMat = getGlobalMatrix(tBoard.id.toString(), true, currentBoards, currentGroups);
-    const sMat = getGlobalMatrix(sourceBoard.id.toString(), true, currentBoards, currentGroups);
+    let newPosition = [...sourceBoard.position];
 
-    const tGlobalPos = tLocal.pos.applyMatrix4(tMat);
-    const tGlobalNorm = tLocal.norm.applyMatrix4(new THREE.Matrix4().extractRotation(tMat)).normalize();
+    if (constraintObj.type === 'Flush') {
+        // Flush: source face aligns to same plane as target face
+        // sourceFace pos = newPos[axis] + sourceFaceOffset = targetFacePos
+        newPosition[sFace.axis] = targetFacePos - sourceFaceOffset;
+    } else {
+        // Glue: the two faces touch (opposite normals, same plane)
+        // sourceFace pos = newPos[axis] + sourceFaceOffset = targetFacePos
+        newPosition[sFace.axis] = targetFacePos - sourceFaceOffset;
+    }
 
-    const sGlobalPos = sLocal.pos.applyMatrix4(sMat);
-
-    const targetNormal = constraintObj.type === 'Flush' ? tGlobalNorm : tGlobalNorm.clone().negate();
-
-    const dist = new THREE.Vector3().subVectors(tGlobalPos, sGlobalPos).dot(targetNormal);
-    const vShiftGlobal = targetNormal.clone().multiplyScalar(dist);
-
-    const sCenterGlobal = new THREE.Vector3(0, 0, 0).applyMatrix4(sMat);
-    sCenterGlobal.add(vShiftGlobal);
-
-    const parentMat = getGlobalMatrix(sourceBoard.parentId, false, currentBoards, currentGroups);
-    const parentMatInvert = parentMat.clone().invert();
-
-    const newLocalPos = sCenterGlobal.applyMatrix4(parentMatInvert);
-
-    return { position: [newLocalPos.x, newLocalPos.y, newLocalPos.z] };
+    return { position: newPosition };
 };
 
 /**
