@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 
 import useStore from '../../store/useStore';
 
@@ -11,8 +11,10 @@ const SettingsPanel = () => {
         showDimensions, setShowDimensions,
         showBoundingBox, setShowBoundingBox,
         globalBounds, setGlobalBounds,
-        theme, setTheme
+        theme, setTheme,
+        showToast
     } = useStore();
+    const [confirmWipe, setConfirmWipe] = useState(false);
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', padding: '8px', color: 'var(--text-main)' }}>
 
@@ -96,7 +98,21 @@ const SettingsPanel = () => {
             <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '16px' }}>
                 <strong style={{ color: '#ff3b30' }}>System Storage Cache</strong>
                 <p className="hint" style={{ marginTop: '4px', marginBottom: '8px' }}>Permanently destroy the browser's local memory reserve.</p>
-                <button className="nav-btn" style={{ color: '#ff3b30', borderColor: 'rgba(255, 59, 48, 0.3)' }} onClick={() => { if (confirm('Destroy local workspace cache?')) { localStorage.removeItem('lucey_save'); alert('Cache destroyed. Please reload.'); } }}>Wipe Local Cache</button>
+                {!confirmWipe ? (
+                    <button className="nav-btn" style={{ color: '#ff3b30', borderColor: 'rgba(255, 59, 48, 0.3)' }} onClick={() => setConfirmWipe(true)}>Wipe Local Cache</button>
+                ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '10px', background: 'rgba(255,59,48,0.08)', borderRadius: '8px', border: '1px solid rgba(255,59,48,0.3)' }}>
+                        <p style={{ margin: 0, fontSize: '0.85rem', color: '#ff3b30', fontWeight: '600' }}>⚠️ Are you sure? This cannot be undone.</p>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                            <button className="primary-btn" style={{ flex: 1, background: '#ff3b30', borderColor: '#ff3b30' }} onClick={() => {
+                                localStorage.removeItem('lucey_save');
+                                showToast('✅ Cache wiped! Reloading...');
+                                setTimeout(() => window.location.reload(), 1500);
+                            }}>Yes, wipe it</button>
+                            <button className="nav-btn" style={{ flex: 1 }} onClick={() => setConfirmWipe(false)}>Cancel</button>
+                        </div>
+                    </div>
+                )}
             </div>
 
         </div>

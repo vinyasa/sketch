@@ -1,67 +1,199 @@
 import React, { useState, useEffect } from 'react';
 import { Canvas } from '@react-three/fiber';
-import { PerspectiveCamera, OrthographicCamera, OrbitControls, useTexture, GizmoHelper, GizmoViewport, Text, Edges, Line, Html } from '@react-three/drei';
+import { PerspectiveCamera, OrthographicCamera, OrbitControls, useTexture, GizmoHelper, Text, Edges, Line, Html } from '@react-three/drei';
+import { CustomGizmoViewport } from './CustomGizmoViewport';
 import * as THREE from 'three';
 import useStore from '../store/useStore';
 import { computeWorldAABB, collectChildBoards, calculateGroupAABB } from '../utils/sceneGraph';
 import { formatUnit } from '../utils/units';
+import { WOOD_CATALOGUE, WOOD_TEXTURE_URLS, normalizeMaterial } from '../utils/materialCatalogue';
 
 
+// ─── SceneLights: renders all lights from the lighting store slice ────────────
+const SceneLights = ({ lighting }) => {
+  if (!lighting?.lights) return null;
+  return (
+    <group>
+      {lighting.lights.filter(l => l.enabled).map(l => {
+        switch (l.type) {
+          case 'ambient':
+            return <ambientLight key={l.id} color={l.color} intensity={l.intensity} />;
 
-const ConstraintVisualizer = ({ boards, groups, selectedItemIds }) => {
-  const selectedBoards = boards.filter(b => selectedItemIds.includes(b.id.toString()) && b.constraints && b.constraints.length > 0);
-  if (selectedBoards.length === 0) return null;
+          case 'hemisphere':
+            return <hemisphereLight key={l.id} args={[l.color, l.groundColor ?? '#333333', l.intensity]} />;
+
+          case 'directional': {
+            const target = new THREE.Object3D();
+            target.position.set(...(l.target ?? [0, 0, 0]));
+            return (
+              <group key={l.id}>
+                <directionalLight
+                  color={l.color}
+                  intensity={l.intensity}
+                  position={l.position ?? [10, 20, 10]}
+                  castShadow={lighting.shadows && l.castShadow}
+                  shadow-mapSize-width={l.shadowMapSize ?? 1024}
+                  shadow-mapSize-height={l.shadowMapSize ?? 1024}
+                  shadow-camera-near={0.5}
+                  shadow-camera-far={200}
+                  shadow-camera-left={-40}
+                  shadow-camera-right={40}
+                  shadow-camera-top={40}
+                  shadow-camera-bottom={-40}
+                  shadow-bias={-0.0004}
+                  target-position={l.target ?? [0, 0, 0]}
+                />
+              </group>
+            );
+          }
+
+          case 'point':
+            return (
+              <pointLight
+                key={l.id}
+                color={l.color}
+                intensity={l.intensity}
+                position={l.position ?? [0, 20, 0]}
+                distance={l.distance ?? 0}
+                decay={l.decay ?? 2}
+              />
+            );
+
+          case 'spot': {
+            return (
+              <spotLight
+                key={l.id}
+                color={l.color}
+                intensity={l.intensity}
+                position={l.position ?? [10, 30, 10]}
+                angle={l.angle ?? 0.4}
+                penumbra={l.penumbra ?? 0.3}
+                decay={l.decay ?? 1.5}
+                castShadow={lighting.shadows && l.castShadow}
+                shadow-mapSize-width={l.shadowMapSize ?? 1024}
+                shadow-mapSize-height={l.shadowMapSize ?? 1024}
+                shadow-bias={-0.0004}
+                target-position={l.target ?? [0, 0, 0]}
+              />
+            );
+          }
+
+          case 'rectarea':
+            return (
+              <rectAreaLight
+                key={l.id}
+                color={l.color}
+                intensity={l.intensity}
+                position={l.position ?? [0, 20, 0]}
+                width={l.width ?? 10}
+                height={l.height ?? 10}
+                rotation={[-Math.PI / 2, 0, 0]}
+              />
+            );
+
+          default:
+            return null;
+        }
+      })}
+    </group>
+  );
+};
+
+// ─── Invisible floor plane that only receives shadows ────────────────────────
+const ShadowFloor = ({ shadows }) => {
+  if (!shadows) return null;
+  return (
+    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]} receiveShadow>
+      <planeGeometry args={[200, 200]} />
+      <shadowMaterial transparent opacity={0.25} />
+    </mesh>
+  );
+};
+
+// ─── FRONT label on the floor ────────────────────────────────────────────────
+// Lies flat on the Y=0 plane, centered on the +Z (Front) axis.
+// fontSize is tuned so the word spans ≈15 scene-units (inches) wide.
+const FloorFrontLabel = () => (
+  <Text
+    position={[0, 0.05, 23]}       // sit just above Y=0, 23" in front
+    rotation={[-Math.PI / 2, 0, 0]} // lay flat, readable when looking down
+    fontSize={3.2}                  // ~3.2" tall glyphs → ≈15" total word width
+    maxWidth={15}
+    textAlign="center"
+    anchorX="center"
+    anchorY="middle"
+    color="rgba(188,138,95,0.55)"   // warm amber, unobtrusive
+    outlineColor="rgba(0,0,0,0.3)"
+    outlineWidth={0.06}
+    letterSpacing={0.08}
+    depthOffset={-1}                 // render on top of the grid plane
+    renderOrder={1}
+  >
+    FRONT
+  </Text>
+);
+
+const ConstraintVisualizer = ({ boards, groups, selectedItemIds, constraints }) => {
+  if (!constraints || Object.keys(constraints).length === 0) return null;
+  const selSet = new Set(selectedItemIds);
+
+  // Only show constraints where at least one board is selected
+  const visibleConstraints = Object.entries(constraints).filter(([_, c]) =>
+    selSet.has(c.boardAId) || selSet.has(c.boardBId)
+  );
+  if (visibleConstraints.length === 0) return null;
+
+  const getFaceWorldPos3 = (bd, faceStr) => {
+    if (!bd) return new THREE.Vector3(0, 0, 0);
+    if (!faceStr) return new THREE.Vector3(...bd.position);
+    const pos = new THREE.Vector3(...bd.position);
+    const axisChar = faceStr[0];
+    const sign = faceStr[1] === '+' ? 1 : -1;
+    if (axisChar === 'x') pos.x += (bd.size[0] / 2) * sign;
+    else if (axisChar === 'y') pos.y += (bd.size[1] / 2) * sign;
+    else pos.z += (bd.size[2] / 2) * sign;
+    return pos;
+  };
 
   return (
     <group>
-      {selectedBoards.map(b => {
-        const getFaceWorldPos = (bd, faceStr) => {
-          if (!faceStr || !bd || !bd.size) return new THREE.Vector3(0, 0, 0);
-          const pos = new THREE.Vector3(...bd.position);
-          const axisChar = faceStr[0];
-          const sign = faceStr[1] === '+' ? 1 : -1;
-          if (axisChar === 'x') pos.x += (bd.size[0] / 2) * sign;
-          if (axisChar === 'y') pos.y += (bd.size[1] / 2) * sign;
-          if (axisChar === 'z') pos.z += (bd.size[2] / 2) * sign;
-          return pos;
-        };
+      {visibleConstraints.map(([cId, c]) => {
+        const bA = boards.find(b => b.id.toString() === c.boardAId);
+        const bB = boards.find(b => b.id.toString() === c.boardBId);
+        if (!bA || !bB) return null;
 
-        return b.constraints.map((c, i) => {
-          const targetBoard = boards.find(x => x.id.toString() === c.targetId.toString());
-          const startPos = getFaceWorldPos(b, c.sourceFace);
-          const targetPos = getFaceWorldPos(targetBoard, c.targetFace);
-          
-          const midPos = startPos.clone().lerp(targetPos, 0.5);
+        const startPos = c.type === 'Flush'
+          ? getFaceWorldPos3(bA, c.faceA)
+          : new THREE.Vector3(...bA.position);
+        const endPos = c.type === 'Flush'
+          ? getFaceWorldPos3(bB, c.faceB)
+          : new THREE.Vector3(...bB.position);
 
-          return (
-            <group key={`c_${b.id}_${i}`}>
-              <Line
-                points={[startPos, targetPos]}
-                color={c.enabled === false ? "#888888" : "#00ffff"}
-                lineWidth={3}
-                dashed={c.enabled !== false}
-                dashScale={10}
-                dashSize={1}
-                dashOffset={0}
-              />
-              <Html position={midPos.toArray()} center style={{ pointerEvents: 'none', zIndex: c.enabled === false ? 0 : 1 }}>
-                <div style={{
-                  background: c.enabled === false ? 'rgba(136, 136, 136, 0.8)' : 'var(--accent-color)',
-                  color: 'white',
-                  padding: '2px 6px',
-                  borderRadius: '12px',
-                  fontSize: '0.75rem',
-                  fontWeight: 'bold',
-                  boxShadow: '0 2px 4px rgba(0,0,0,0.5)',
-                  whiteSpace: 'nowrap',
-                  opacity: c.enabled === false ? 0.7 : 1
-                }}>
-                  {c.enabled === false ? '🔓' : '🔒'} {c.type}
-                </div>
-              </Html>
-            </group>
-          );
-        });
+        const midPos = startPos.clone().lerp(endPos, 0.5);
+        const color = c.enabled === false ? '#888888' : c.type === 'Glue' ? '#ff9f0a' : '#00ffff';
+
+        return (
+          <group key={cId}>
+            <Line
+              points={[startPos, endPos]}
+              color={color}
+              lineWidth={3}
+              dashed={c.enabled === false}
+              dashScale={10} dashSize={1} dashOffset={0}
+            />
+            <Html position={midPos.toArray()} center style={{ pointerEvents: 'none' }}>
+              <div style={{
+                background: c.enabled === false ? 'rgba(136,136,136,0.8)' : color,
+                color: 'white', padding: '2px 6px', borderRadius: '12px',
+                fontSize: '0.75rem', fontWeight: 'bold',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.5)', whiteSpace: 'nowrap',
+                opacity: c.enabled === false ? 0.7 : 1
+              }}>
+                {c.enabled === false ? '🔓' : '🔒'} {c.type}{c.type === 'Flush' ? ` ${['X','Y','Z'][c.axis]}` : ''}
+              </div>
+            </Html>
+          </group>
+        );
       })}
     </group>
   );
@@ -187,10 +319,13 @@ const BoardMesh = ({ b, selectedItemIds, toggleSelection, textures, showEdges, c
 
   return (
     <mesh
-      raycast={modifierActive ? () => null : undefined}
+      raycast={(modifierActive && constraintTargetMode?.active) ? () => null : undefined}
       position={b.position}
+      rotation={b.rotation || [0, 0, 0]}
+      castShadow
+      receiveShadow
       onClick={(e) => {
-        e.stopPropagation();
+        e.stopPropagation(); // stop from bubbling to Canvas onPointerMissed only
         const faceStr = e.faceIndex !== undefined ? ['x+', 'x-', 'y+', 'y-', 'z+', 'z-'][Math.floor(e.faceIndex / 2)] : null;
         toggleSelection(b.id.toString(), e.shiftKey || e.ctrlKey || e.metaKey, faceStr);
       }}
@@ -213,12 +348,36 @@ const BoardMesh = ({ b, selectedItemIds, toggleSelection, textures, showEdges, c
       }}
     >
       <boxGeometry args={b.size} />
-      <meshStandardMaterial
-        map={textures[b.material]}
-        roughness={0.8}
-        emissive={isSelected ? '#bc8a5f' : '#000000'}
-        emissiveIntensity={isSelected ? 0.4 : 0}
-      />
+      {(() => {
+        const matDesc = normalizeMaterial(b.material);
+        // Key forces React to remount the material when type changes,
+        // preventing stale color/map bleed-over between paint and wood.
+        const matKey = matDesc.type === 'color' ? `color-${matDesc.hex}` : `wood-${matDesc.id}`;
+        const commonProps = {
+          emissive: isSelected ? '#bc8a5f' : '#000000',
+          emissiveIntensity: isSelected ? 0.4 : 0,
+        };
+        if (matDesc.type === 'color') {
+          return (
+            <meshStandardMaterial
+              key={matKey}
+              color={matDesc.hex}
+              roughness={0.85}
+              {...commonProps}
+            />
+          );
+        }
+        const spec = WOOD_CATALOGUE[matDesc.id] ?? WOOD_CATALOGUE['pine'];
+        return (
+          <meshStandardMaterial
+            key={matKey}
+            color="#ffffff"  // explicitly reset — Three.js multiplies map by color; stale tints = wrong result
+            map={textures[matDesc.id] ?? textures['pine']}
+            roughness={spec.roughness}
+            {...commonProps}
+          />
+        );
+      })()}
       {showEdges && <Edges scale={1} threshold={15} color={isSelected ? '#ffffff' : '#222222'} />}
       {((isSelected || (constraintTargetMode && constraintTargetMode.active)) && hoveredFaceData && hoveredFaceData.id === b.id.toString()) && (() => {
         const faceStr = hoveredFaceData.faceStr;
@@ -368,27 +527,26 @@ const RecursiveNode = ({ nodeId, groups, boards, selectedItemIds, toggleSelectio
   );
 };
 
-function WoodJoint({ boards, groups, selectedItemIds, toggleSelection, showEdges, showDimensions, showBoundingBox, units, theme, constraintTargetMode, hoveredFaceData, setHoveredFaceData, modifierActive }) {
-  const textures = useTexture({
-    'pine': '/textures/pine.svg',
-    'cherry': '/textures/cherry.svg',
-    'walnut': '/textures/walnut.svg',
-    'red-oak': '/textures/red-oak.svg',
-    'white-oak': '/textures/white-oak.svg'
-  });
+function WoodJoint({ boards, groups, selectedItemIds, toggleSelection, showEdges, showDimensions, showBoundingBox, units, theme, constraintTargetMode, hoveredFaceData, setHoveredFaceData, modifierActive, constraints }) {
+  // WOOD_TEXTURE_URLS is a stable module-level object — safe to pass to useTexture()
+  const textures = useTexture(WOOD_TEXTURE_URLS);
 
   Object.values(textures).forEach(t => {
     t.wrapS = t.wrapT = THREE.RepeatWrapping;
   });
 
   const rootGroups = Object.keys(groups).filter(k => groups[k].parentId === null);
+  const rootBoards = boards.filter(b => b.parentId === 'Workspace');
 
   return (
     <group>
       {rootGroups.map(k => (
         <RecursiveNode key={k} nodeId={k} groups={groups} boards={boards} selectedItemIds={selectedItemIds} toggleSelection={toggleSelection} textures={textures} showEdges={showEdges} constraintTargetMode={constraintTargetMode} hoveredFaceData={hoveredFaceData} setHoveredFaceData={setHoveredFaceData} modifierActive={modifierActive} />
       ))}
-      <ConstraintVisualizer boards={boards} groups={groups} selectedItemIds={selectedItemIds} />
+      {rootBoards.map(b => (
+        <BoardMesh key={`root_${b.id}`} b={b} selectedItemIds={selectedItemIds} toggleSelection={toggleSelection} textures={textures} showEdges={showEdges} constraintTargetMode={constraintTargetMode} hoveredFaceData={hoveredFaceData} setHoveredFaceData={setHoveredFaceData} modifierActive={modifierActive} />
+      ))}
+      <ConstraintVisualizer boards={boards} groups={groups} selectedItemIds={selectedItemIds} constraints={constraints} />
       <BoundingBoxVisualizer boards={boards} groups={groups} selectedItemIds={selectedItemIds} showBoundingBox={showBoundingBox} theme={theme} />
       <DimensioningOverlay boards={boards} selectedItemIds={selectedItemIds} showDimensions={showDimensions} units={units} theme={theme} />
     </group>
@@ -396,7 +554,7 @@ function WoodJoint({ boards, groups, selectedItemIds, toggleSelection, showEdges
 }
 
 export default function Viewport3D() {
-  const { boards, groups, selectedItemIds, setSelectedItemIds, toggleSelection, gridSnap, theme, globalBounds, showEdges, showDimensions, showBoundingBox, units, constraintTargetMode } = useStore();
+  const { boards, groups, selectedItemIds, setSelectedItemIds, toggleSelection, gridSnap, theme, globalBounds, showEdges, showDimensions, showBoundingBox, units, constraintTargetMode, constraints, lighting } = useStore();
   const [isOrtho, setIsOrtho] = useState(false);
   const [hoveredFaceData, setHoveredFaceData] = useState(null);
   const [modifierActive, setModifierActive] = useState(false);
@@ -449,13 +607,13 @@ export default function Viewport3D() {
         ))}
       </div>
 
-      <Canvas onPointerMissed={() => setSelectedItemIds([])}>
-        <ambientLight intensity={0.4} />
-        <pointLight position={[20, 20, 20]} intensity={1} />
+      <Canvas shadows={lighting?.shadows ? 'soft' : false} onPointerMissed={() => setSelectedItemIds([])}>
+        <SceneLights lighting={lighting} />
+        <ShadowFloor shadows={lighting?.shadows} />
 
-        {/* Gizmo: R=Red(X left/right), G=Green(Y up/down), B=Blue(Z front/back) */}
+        {/* Gizmo: R=Right(+X), L=Left(-X), U=Up(+Y), D=Down(-Y), F=Front(+Z), B=Back(-Z) */}
         <GizmoHelper alignment="top-center" margin={[0, 160]}>
-          <GizmoViewport axisColors={['#ff3b30', '#34c759', '#007aff']} labelColor="white" labels={['X', 'Y', 'Z']} />
+          <CustomGizmoViewport />
         </GizmoHelper>
 
         {isOrtho ? (
@@ -471,9 +629,10 @@ export default function Viewport3D() {
         )}
         <gridHelper key={`maj_${majorDivs}_${theme}`} args={[gridRadius, majorDivs, majorColor, majorColor]} position={[0, 0.02, 0]} />
         <axesHelper args={[40]} position={[0, 0.03, 0]} />
+        <FloorFrontLabel />
 
         {globalBounds?.enabled && (
-          <mesh position={[0, globalBounds.y / 2, 0]}>
+          <mesh position={[0, globalBounds.y / 2, 0]} raycast={() => null}>
             <boxGeometry args={[globalBounds.x, globalBounds.y, globalBounds.z]} />
             <meshBasicMaterial color={theme === 'dark' ? '#bc8a5f' : '#FF9500'} wireframe transparent opacity={0.3} />
           </mesh>
@@ -494,6 +653,7 @@ export default function Viewport3D() {
             hoveredFaceData={hoveredFaceData}
             setHoveredFaceData={setHoveredFaceData}
             modifierActive={modifierActive}
+            constraints={constraints}
           />
         </React.Suspense>
       </Canvas>

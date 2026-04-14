@@ -7,32 +7,39 @@ const DraggablePanel = ({ title, defaultPosition, onFocusCapture, children, defa
     const panelRef = useRef(null);
 
     useEffect(() => {
-        const handleResize = () => {
+        const clampToViewport = () => {
             if (!panelRef.current) return;
             const rect = panelRef.current.getBoundingClientRect();
-            
+
             setPos(currentPos => {
                 let newX = currentPos.x;
                 let newY = currentPos.y;
-                
-                if (newX + rect.width > window.innerWidth) newX = window.innerWidth - rect.width;
+
+                if (newX + rect.width > window.innerWidth)  newX = window.innerWidth  - rect.width;
                 if (newX < 0) newX = 0;
-                
+
                 if (newY + rect.height > window.innerHeight) newY = window.innerHeight - rect.height;
                 if (newY < 0) newY = 0;
-                
-                if (newX !== currentPos.x || newY !== currentPos.y) {
-                    return { x: newX, y: newY };
-                }
+
+                if (newX !== currentPos.x || newY !== currentPos.y) return { x: newX, y: newY };
                 return currentPos;
             });
         };
 
-        window.addEventListener('resize', handleResize);
-        // Also fire once on mount to ensure starting position is safe
-        handleResize();
-        
-        return () => window.removeEventListener('resize', handleResize);
+        // Clamp on window resize
+        window.addEventListener('resize', clampToViewport);
+
+        // Also clamp whenever the panel itself grows (e.g. Inspector expanding after selection)
+        const ro = new ResizeObserver(clampToViewport);
+        if (panelRef.current) ro.observe(panelRef.current);
+
+        // Fire once on mount to ensure starting position is safe
+        clampToViewport();
+
+        return () => {
+            window.removeEventListener('resize', clampToViewport);
+            ro.disconnect();
+        };
     }, []);
 
     const onPointerDown = (e) => {

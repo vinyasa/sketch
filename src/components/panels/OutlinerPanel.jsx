@@ -12,6 +12,19 @@ const OutlinerPanel = () => {
 
     const onDragOver = (e) => { e.preventDefault(); e.stopPropagation(); };
 
+    // Walk up the group ancestor chain and return false if any ancestor is hidden
+    const isEffectivelyVisible = (nodeId, isGroup, g) => {
+        if (g.visible === false) return false;
+        let parentId = isGroup ? g.parentId : g.parentId;
+        while (parentId && parentId !== 'Workspace') {
+            const ancestor = groups[parentId];
+            if (!ancestor) break;
+            if (ancestor.visible === false) return false;
+            parentId = ancestor.parentId;
+        }
+        return true;
+    };
+
     const renderTree = (nodeId, depth = 0, isParentSelected = false) => {
         const isGroup = groups[nodeId] !== undefined;
         const g = isGroup ? groups[nodeId] : boards.find(b => b.id.toString() === nodeId);
@@ -23,8 +36,11 @@ const OutlinerPanel = () => {
         const childBoards = boards.filter(b => b.parentId === nodeId);
         const hasChildren = childGroups.length > 0 || childBoards.length > 0;
 
+        const effectivelyVisible = isEffectivelyVisible(nodeId, isGroup, g);
+        const ownHidden = g.visible === false;
+
         return (
-            <div key={nodeId} style={{ marginLeft: depth > 0 ? 12 : 0 }}>
+            <div key={nodeId} style={{ marginLeft: depth > 0 ? 10 : 0 }}>
                 <div
                     className={`tree-item ${isGroup ? 'active' : 'child'} ${isSelected ? 'highlighted' : ''}`}
                     style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
@@ -48,13 +64,27 @@ const OutlinerPanel = () => {
                     </span>
                     <button
                         onClick={(e) => { e.stopPropagation(); isGroup ? toggleGroupVisibility(nodeId) : toggleBoardVisibility(parseInt(nodeId)); }}
-                        style={{ background: 'none', border: 'none', cursor: 'pointer', opacity: g.visible !== false ? 1 : 0.3, color: 'var(--text-main)', display: 'flex', alignItems: 'center' }}
-                        title="Toggle Visibility"
+                        style={{
+                            background: 'none', border: 'none', cursor: 'pointer',
+                            opacity: effectivelyVisible ? 1 : 0.35,
+                            color: ownHidden ? 'var(--text-muted)' : 'var(--text-main)',
+                            display: 'flex', alignItems: 'center',
+                        }}
+                        title={effectivelyVisible ? 'Hide' : ownHidden ? 'Show' : 'Hidden by parent assembly'}
                     >
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-                            <circle cx="12" cy="12" r="3"></circle>
-                        </svg>
+                        {effectivelyVisible ? (
+                            /* Open eye */
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                                <circle cx="12" cy="12" r="3"></circle>
+                            </svg>
+                        ) : (
+                            /* Slashed eye */
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24"></path>
+                                <line x1="1" y1="1" x2="23" y2="23"></line>
+                            </svg>
+                        )}
                     </button>
                 </div>
 
@@ -75,11 +105,11 @@ const OutlinerPanel = () => {
             <div className="tree-view" style={{ paddingBottom: '24px' }}>
                 {rootNodes.map(k => renderTree(k))}
 
-                <div style={{ marginTop: '24px', display: 'flex', gap: '8px', padding: '0 8px' }}>
-                    <button className="nav-btn" style={{ flex: 1, border: '1px solid var(--border-color)', background: 'rgba(0,0,0,0.05)' }} onClick={onAddBoard}>+ New Board</button>
-                    <button className="nav-btn" style={{ flex: 1, border: '1px solid var(--border-color)', background: 'rgba(0,0,0,0.05)' }} onClick={onAddAssembly}>+ Assembly</button>
+                <div style={{ marginTop: '14px', display: 'flex', gap: '6px', padding: '0 6px' }}>
+                    <button className="nav-btn" style={{ flex: 1, border: '1px solid var(--border-color)', background: 'rgba(0,0,0,0.05)', fontSize: '0.7rem', padding: '4px 8px' }} onClick={onAddBoard}>+ New Board</button>
+                    <button className="nav-btn" style={{ flex: 1, border: '1px solid var(--border-color)', background: 'rgba(0,0,0,0.05)', fontSize: '0.7rem', padding: '4px 8px' }} onClick={onAddAssembly}>+ Assembly</button>
                 </div>
-                <p className="hint" style={{ textAlign: 'center', marginTop: '8px' }}>Generates pieces inside your selected group.</p>
+                <p className="hint" style={{ textAlign: 'center', marginTop: '4px' }}>Generates pieces inside your selected group.</p>
             </div>
         </div>
     );

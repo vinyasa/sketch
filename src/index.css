@@ -58,3 +58,62 @@ button {
 input, select {
   font-family: inherit;
 }
+
+/* ── Global scrollbar styling ─────────────────────────────────────────────── */
+/* Chromium / Safari */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb, rgba(188,138,95,0.35));
+  border-radius: 99px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover, rgba(188,138,95,0.65));
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb, rgba(188,138,95,0.35)) transparent;
+}
+
+/* Dark mode scrollbar variables (default) */
+:root {
+  --scrollbar-thumb: rgba(188,138,95,0.30);
+  --scrollbar-thumb-hover: rgba(188,138,95,0.60);
+}
+
+/* Light mode scrollbar variables */
+:root.light-mode {
+  --scrollbar-thumb: rgba(168,123,85,0.35);
+  --scrollbar-thumb-hover: rgba(168,123,85,0.65);
+}
+
+/* ── Number input spinner arrows ──────────────────────────────────────────── */
+/* Set an explicit light-gray background on the spin widget.
+   Chrome renders dark contrasting arrows automatically — no filter needed.
+   This works identically in dark and light mode. */
+input[type=number]::-webkit-inner-spin-button,
+input[type=number]::-webkit-outer-spin-button {
+  -webkit-appearance: inner-spin-button;
+  background-color: #c0c0c0;
+  border-radius: 3px;
+  opacity: 1;
+  height: 22px;
+  cursor: pointer;
+}
+
+input[type=number]::-webkit-inner-spin-button:hover,
+input[type=number]::-webkit-outer-spin-button:hover {
+  background-color: #a8a8a8;
+}
+
+

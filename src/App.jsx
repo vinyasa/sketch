@@ -9,6 +9,9 @@ import OutlinerPanel from './components/panels/OutlinerPanel';
 import InspectorPanel from './components/panels/InspectorPanel';
 import SettingsPanel from './components/panels/SettingsPanel';
 import CutListPanel from './components/panels/CutListPanel';
+import AssemblyLibraryPanel from './components/panels/AssemblyLibraryPanel';
+import LightingPanel from './components/panels/LightingPanel';
+import MaterialsPanel from './components/panels/MaterialsPanel';
 import NewBoardDialog from './components/dialogs/NewBoardDialog';
 import useStore from './store/useStore';
 
@@ -17,6 +20,9 @@ export default function App() {
         // UI toggles
         showCutlistPanel,
         showSettingsPanel,
+        showAssemblyLibrary,
+        showLightingPanel,
+        showMaterialsPanel,
         isRightPanelOpen,
         toast,
         confirmDialog, setConfirmDialog,
@@ -75,6 +81,24 @@ export default function App() {
                     {showCutlistPanel && (
                         <DraggablePanel title="Project Cut List" defaultPosition={{ x: 100, y: 100 }} defaultSize={{ width: 600 }}>
                             <CutListPanel />
+                        </DraggablePanel>
+                    )}
+
+                    {showAssemblyLibrary && (
+                        <DraggablePanel title="📦 Assembly Library" defaultPosition={{ x: 20, y: 100 }} defaultSize={{ width: 330 }}>
+                            <AssemblyLibraryPanel />
+                        </DraggablePanel>
+                    )}
+
+                    {showLightingPanel && (
+                        <DraggablePanel title="💡 Lighting" defaultPosition={{ x: 370, y: 100 }} defaultSize={{ width: 310 }}>
+                            <LightingPanel />
+                        </DraggablePanel>
+                    )}
+
+                    {showMaterialsPanel && (
+                        <DraggablePanel title="🎨 Materials" defaultPosition={{ x: 700, y: 100 }} defaultSize={{ width: 290 }}>
+                            <MaterialsPanel />
                         </DraggablePanel>
                     )}
                 </main>

@@ -10,6 +10,9 @@ const AppHeader = () => {
         handleUndo, handleRedo, history, redoHistory,
         showCutlistPanel, setShowCutlistPanel,
         showSettingsPanel, setShowSettingsPanel,
+        showAssemblyLibrary, setShowAssemblyLibrary,
+        showLightingPanel, setShowLightingPanel,
+        showMaterialsPanel, setShowMaterialsPanel,
         showDimensions, setShowDimensions,
         isRightPanelOpen, setIsRightPanelOpen
     } = useStore();
@@ -50,13 +53,16 @@ const AppHeader = () => {
                         )}
                     </div>
                     <input type="file" id="project-import-input" accept=".json" style={{ display: 'none' }} onChange={importWorkspace} />
-                    <span onClick={handleUndo} style={{ opacity: history.length ? 1 : 0.4, marginLeft: '16px', cursor: history.length ? 'pointer' : 'default' }}>Undo ({history.length})</span>
-                    <span onClick={handleRedo} style={{ opacity: redoHistory.length ? 1 : 0.4, marginLeft: '16px', cursor: redoHistory.length ? 'pointer' : 'default' }}>Redo ({redoHistory.length})</span>
+                    <span onClick={handleUndo} style={{ opacity: history.length ? 1 : 0.4, marginLeft: '8px', cursor: history.length ? 'pointer' : 'default' }}>↺ Undo ({history.length})</span>
+                    <span onClick={handleRedo} style={{ opacity: redoHistory.length ? 1 : 0.4, marginLeft: '8px', cursor: redoHistory.length ? 'pointer' : 'default' }}>↻ Redo ({redoHistory.length})</span>
                 </div>
             </div>
             <nav className="top-nav">
-                <button className={`nav-btn ${showCutlistPanel ? 'active' : ''}`} onClick={() => setShowCutlistPanel(!showCutlistPanel)}>Cut List</button>
-                <button className={`nav-btn ${showSettingsPanel ? 'active' : ''}`} onClick={() => setShowSettingsPanel(!showSettingsPanel)}>Settings</button>
+                <button className={`nav-btn ${showCutlistPanel ? 'active' : ''}`} onClick={() => setShowCutlistPanel(!showCutlistPanel)}>📋 Cut List</button>
+                <button className={`nav-btn ${showSettingsPanel ? 'active' : ''}`} onClick={() => setShowSettingsPanel(!showSettingsPanel)}>⚙️ Settings</button>
+                <button className={`nav-btn ${showAssemblyLibrary ? 'active' : ''}`} onClick={() => setShowAssemblyLibrary(!showAssemblyLibrary)}>📦 Library</button>
+                <button className={`nav-btn ${showLightingPanel ? 'active' : ''}`} onClick={() => setShowLightingPanel(!showLightingPanel)}>💡 Lighting</button>
+                <button className={`nav-btn ${showMaterialsPanel ? 'active' : ''}`} onClick={() => setShowMaterialsPanel(!showMaterialsPanel)}>🎨 Materials</button>
                 <div className="divider"></div>
                 <button className={`nav-btn ${showDimensions ? 'active' : ''}`} onClick={() => setShowDimensions(!showDimensions)}>
                     {showDimensions ? 'Dims: ON' : 'Dims: OFF'}
