@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { PerspectiveCamera, OrthographicCamera, OrbitControls, useTexture, GizmoHelper, Text, Edges, Line, Html } from '@react-three/drei';
 import { CustomGizmoViewport } from './CustomGizmoViewport';
@@ -7,6 +7,7 @@ import useStore from '../store/useStore';
 import { computeWorldAABB, collectChildBoards, calculateGroupAABB } from '../utils/sceneGraph';
 import { formatUnit } from '../utils/units';
 import { WOOD_CATALOGUE, WOOD_TEXTURE_URLS, normalizeMaterial } from '../utils/materialCatalogue';
+import { buildTaperGeometry, normalizeTaper } from '../utils/geometryBuilders';
 
 
 // ─── SceneLights: renders all lights from the lighting store slice ────────────
@@ -306,6 +307,19 @@ const BoundingBoxVisualizer = ({ boards, groups, selectedItemIds, showBoundingBo
   );
 };
 
+// ─── Memoized custom geometry for tapered boards ─────────────────────────────
+// Rebuilds only when size or taper angles change. Returns a primitive so
+// React Three Fiber can manage the bufferGeometry lifecycle cleanly.
+const TaperGeometry = ({ b }) => {
+  const { outerCorner, angleZ, angleX } = normalizeTaper(b.taper);
+  const [w, h, d] = b.size;
+  const geo = useMemo(
+    () => buildTaperGeometry(w, h, d, outerCorner, angleZ, angleX),
+    [w, h, d, outerCorner, angleZ, angleX]
+  );
+  return <primitive object={geo} attach="geometry" />;
+};
+
 const BoardMesh = ({ b, selectedItemIds, toggleSelection, textures, showEdges, constraintTargetMode, hoveredFaceData, setHoveredFaceData, modifierActive }) => {
   if (b.visible === false) return null;
   const isSelected = selectedItemIds.includes(b.id.toString());
@@ -347,7 +361,9 @@ const BoardMesh = ({ b, selectedItemIds, toggleSelection, textures, showEdges, c
         }
       }}
     >
-      <boxGeometry args={b.size} />
+      {b.shape === 'taper'
+        ? <TaperGeometry b={b} />
+        : <boxGeometry args={b.size} />}
       {(() => {
         const matDesc = normalizeMaterial(b.material);
         // Key forces React to remount the material when type changes,
@@ -554,8 +570,7 @@ function WoodJoint({ boards, groups, selectedItemIds, toggleSelection, showEdges
 }
 
 export default function Viewport3D() {
-  const { boards, groups, selectedItemIds, setSelectedItemIds, toggleSelection, gridSnap, theme, globalBounds, showEdges, showDimensions, showBoundingBox, units, constraintTargetMode, constraints, lighting } = useStore();
-  const [isOrtho, setIsOrtho] = useState(false);
+  const { boards, groups, selectedItemIds, setSelectedItemIds, toggleSelection, gridSnap, theme, globalBounds, showEdges, showDimensions, showBoundingBox, units, constraintTargetMode, constraints, lighting, isOrtho, showGrid } = useStore();
   const [hoveredFaceData, setHoveredFaceData] = useState(null);
   const [modifierActive, setModifierActive] = useState(false);
 
@@ -586,26 +601,6 @@ export default function Viewport3D() {
 
   return (
     <div className="viewport-container" style={{ width: '100%', height: '100%', position: 'relative' }}>
-      <div className="view-toolbar" style={{ position: 'absolute', top: 20, left: 20, zIndex: 10, display: 'flex', gap: '8px', background: 'var(--panel-bg)', padding: '6px 10px', borderRadius: '8px', border: '1px solid var(--border-color)', boxShadow: '0 4px 6px rgba(0,0,0,0.05)', alignItems: 'center' }}>
-        <button
-          className="camera-toggle-btn"
-          onClick={() => setIsOrtho(!isOrtho)}
-          style={{ padding: '6px 12px', fontSize: '0.8rem', background: 'none', border: 'none', color: isOrtho ? 'var(--accent-color)' : 'var(--text-main)', boxShadow: 'none' }}
-        >
-          {isOrtho ? 'Ortho' : 'Persp'}
-        </button>
-        <div style={{ width: '1px', height: '20px', background: 'var(--border-color)', margin: '0 4px' }}></div>
-        {['Top', 'Front', 'Side'].map(v => (
-          <button
-            key={v}
-            className="camera-toggle-btn"
-            onClick={() => setIsOrtho(true)}
-            style={{ padding: '6px 12px', fontSize: '0.8rem', background: 'none', border: 'none', color: 'var(--text-main)', boxShadow: 'none' }}
-          >
-            {v}
-          </button>
-        ))}
-      </div>
 
       <Canvas shadows={lighting?.shadows ? 'soft' : false} onPointerMissed={() => setSelectedItemIds([])}>
         <SceneLights lighting={lighting} />
@@ -624,12 +619,12 @@ export default function Viewport3D() {
 
         <OrbitControls makeDefault />
         {/* Floor grid at Y=0 */}
-        {minorDivs > 0 && (
+        {showGrid && minorDivs > 0 && (
           <gridHelper key={`min_${minorDivs}_${theme}`} args={[gridRadius, minorDivs, minorColor, minorColor]} position={[0, -0.02, 0]} />
         )}
-        <gridHelper key={`maj_${majorDivs}_${theme}`} args={[gridRadius, majorDivs, majorColor, majorColor]} position={[0, 0.02, 0]} />
-        <axesHelper args={[40]} position={[0, 0.03, 0]} />
-        <FloorFrontLabel />
+        {showGrid && <gridHelper key={`maj_${majorDivs}_${theme}`} args={[gridRadius, majorDivs, majorColor, majorColor]} position={[0, 0.02, 0]} />}
+        {showGrid && <axesHelper args={[40]} position={[0, 0.03, 0]} />}
+        {showGrid && <FloorFrontLabel />}
 
         {globalBounds?.enabled && (
           <mesh position={[0, globalBounds.y / 2, 0]} raycast={() => null}>

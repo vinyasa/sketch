@@ -82,18 +82,9 @@ export const checkConstraintConflict = (proposed, constraints, boards) => {
     }
 
     if (type === 'Glue') {
-        // Rule: a board may only participate in one Glue pair
-        const existingGlueA = existing.find(c =>
-            c.enabled !== false && c.type === 'Glue' &&
-            (c.boardAId === boardAId || c.boardBId === boardAId)
-        );
-        if (existingGlueA) return 'Board A is already glued to another board.';
-
-        const existingGlueB = existing.find(c =>
-            c.enabled !== false && c.type === 'Glue' &&
-            (c.boardAId === boardBId || c.boardBId === boardBId)
-        );
-        if (existingGlueB) return 'Board B is already glued to another board.';
+        // Note: no single-glue-per-board restriction. A board may be glued to
+        // many others (e.g. a table top glued to four legs). The only invalid
+        // case is a duplicate pair, which is already caught above.
     }
 
     return null;

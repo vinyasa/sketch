@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { computeWorldAABB, collectChildBoards } from '../../utils/sceneGraph';
 import { normalizeMaterial, getMaterialDisplayColor, WOOD_CATALOGUE } from '../../utils/materialCatalogue';
+import { taperValidation, normalizeTaper } from '../../utils/geometryBuilders';
 
 import useStore from '../../store/useStore';
 
@@ -9,21 +10,64 @@ const fmt4 = (v) => parseFloat(v.toFixed(4));
 
 const InspectorPanel = () => {
     const [cloneOffset, setCloneOffset] = useState(0.75);
+    const [bulkAngleZ, setBulkAngleZ] = useState(2);
+    const [bulkAngleX, setBulkAngleX] = useState(2);
+    const [bulkDelta, setBulkDelta] = useState(['0', '0', '0']);
 
     const {
         boards, groups, selectedItemIds, constraints,
         updateVector, moveGroup,
         setBoards, setGroups, setSelectedItemIds,
         pushHistory,
-        dropBoardToFloor, dropGroupToFloor,
+        dropBoardToFloor, dropGroupToFloor, dropSelectionToFloor,
+        updateRotation, resetRotation, applyRotation,
         handleAssemblyDelete, handleComponentDelete, handleMultiDelete,
         removeConstraint, toggleConstraint,
         constraintTargetMode, setConstraintTargetMode,
         updateProceduralBox
     } = useStore();
 
+    // Cancel constraint mode if selection no longer includes the source board
+    useEffect(() => {
+        if (constraintTargetMode?.active && constraintTargetMode.sourceId) {
+            const sourceStillSelected = selectedItemIds.includes(constraintTargetMode.sourceId);
+            if (!sourceStillSelected) setConstraintTargetMode(null);
+        }
+    }, [selectedItemIds, constraintTargetMode, setConstraintTargetMode]);
+
+    // Escape key cancels constraint mode
+    useEffect(() => {
+        const onKey = (e) => { if (e.key === 'Escape' && constraintTargetMode?.active) setConstraintTargetMode(null); };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [constraintTargetMode, setConstraintTargetMode]);
+
     const selectedBoard = selectedItemIds.length === 1 && boards.find(b => b.id.toString() === selectedItemIds[0]);
     const selectedGroup = selectedItemIds.length === 1 && Object.keys(groups).find(k => k === selectedItemIds[0]);
+
+    // Sticky banner — always rendered when constraint pick mode is active
+    const ConstraintBanner = constraintTargetMode?.active ? (
+        <div style={{
+            padding: '10px 12px', marginBottom: '12px',
+            background: 'rgba(188, 138, 95, 0.12)',
+            border: '1px dashed var(--accent-color)',
+            borderRadius: '8px', textAlign: 'center',
+        }}>
+            <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--accent-color)', marginBottom: '6px' }}>
+                {constraintTargetMode.type === 'Glue'
+                    ? `Click a board to glue to…`
+                    : constraintTargetMode.step === 1
+                        ? `Click a face on the source board…`
+                        : `Click a face on the target board…`
+                }
+            </div>
+            <button className="nav-btn"
+                style={{ fontSize: '0.72rem', padding: '3px 10px', border: '1px solid var(--accent-color)' }}
+                onClick={() => setConstraintTargetMode(null)}>
+                Cancel (Esc)
+            </button>
+        </div>
+    ) : null;
 
     // ─── Assembly (Group) Inspector ──────────────────────────────────────────
     if (selectedGroup !== undefined && selectedGroup !== false) {
@@ -43,6 +87,7 @@ const InspectorPanel = () => {
 
         return (
             <>
+                {ConstraintBanner}
                 <div className="inspector-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
                     <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Assembly:</span>
                     <input 
@@ -134,46 +179,184 @@ const InspectorPanel = () => {
         });
 
         const selBoards = Array.from(selectedBoardSet);
+        let aabb = { minX: 0, maxX: 0, minY: 0, maxY: 0, minZ: 0, maxZ: 0 };
         let multiSize = [0, 0, 0];
-        let multiCenter = [0, 0, 0];
         if (selBoards.length > 0) {
-            const aabb = computeWorldAABB(selBoards);
+            aabb = computeWorldAABB(selBoards);
             multiSize = [
                 fmt4(Math.abs(aabb.maxX - aabb.minX)),
                 fmt4(Math.abs(aabb.maxY - aabb.minY)),
                 fmt4(Math.abs(aabb.maxZ - aabb.minZ))
             ];
-            multiCenter = [
-                fmt4((aabb.minX + aabb.maxX) / 2),
-                fmt4((aabb.minY + aabb.maxY) / 2),
-                fmt4((aabb.minZ + aabb.maxZ) / 2)
-            ];
         }
+
+        // For each axis: which boards have both extents touching the group AABB?
+        const SNAP = 0.01;
+        const aabbMins = [aabb.minX, aabb.minY, aabb.minZ];
+        const aabbMaxs = [aabb.maxX, aabb.maxY, aabb.maxZ];
+        const spanningBoards = [0, 1, 2].map(i =>
+            selBoards.filter(b => {
+                const bMin = b.position[i] - b.size[i] / 2;
+                const bMax = b.position[i] + b.size[i] / 2;
+                return Math.abs(bMin - aabbMins[i]) < SNAP && Math.abs(bMax - aabbMaxs[i]) < SNAP;
+            })
+        );
+        const axisEditable = spanningBoards.map(s => s.length > 0);
+
+        const handleBBSizeChange = (i, newVal) => {
+            const v = parseFloat(newVal);
+            if (isNaN(v) || v <= 0) return;
+            pushHistory();
+            const spanIds = new Set(spanningBoards[i].map(b => b.id));
+            setBoards(prev => prev.map(b => {
+                if (!spanIds.has(b.id)) return b;
+                const newSize = [...b.size];
+                newSize[i] = v;
+                const newPos = [...b.position];
+                newPos[i] = aabbMins[i] + v / 2; // anchor to min-extent side
+                return { ...b, size: newSize, position: newPos };
+            }));
+        };
+
+        const applyBulkMove = () => {
+            const [dx, dy, dz] = bulkDelta.map(v => parseFloat(v) || 0);
+            if (dx === 0 && dy === 0 && dz === 0) return;
+            pushHistory();
+            const selIds = new Set(selBoards.map(b => b.id));
+            setBoards(prev => prev.map(b =>
+                selIds.has(b.id)
+                    ? { ...b, position: [b.position[0] + dx, b.position[1] + dy, b.position[2] + dz] }
+                    : b
+            ));
+            setBulkDelta(['0', '0', '0']);
+        };
+
+        const bbRowStyle = (editable) => ({
+            opacity: editable ? 1 : 0.4,
+            transition: 'opacity 0.15s',
+        });
 
         return (
             <>
+                {ConstraintBanner}
                 <div className="inspector-title" style={{ marginBottom: '16px' }}>
                     <span style={{ opacity: 0.6, fontSize: '0.85rem' }}>{selectedItemIds.length} Items Selected</span>
                 </div>
                 <div className="inspector-section">
-                    <h4>Overall Bounding Box (in)</h4>
+                    <h4>Bounding Box (in)</h4>
+                    <p className="hint" style={{ marginTop: '2px', marginBottom: '6px' }}>
+                        Editable axes span all selected boards.
+                    </p>
                     <div className="vec3-inputs">
-                        <div style={{ backgroundColor: 'rgba(255, 60, 60, 0.15)' }}>X<input type="number" value={multiSize[0]} disabled /></div>
-                        <div style={{ backgroundColor: 'rgba(60, 200, 90, 0.15)' }}>Y<input type="number" value={multiSize[1]} disabled /></div>
-                        <div style={{ backgroundColor: 'rgba(60, 150, 255, 0.15)' }}>Z<input type="number" value={multiSize[2]} disabled /></div>
+                        <div style={{ backgroundColor: 'rgba(255, 60, 60, 0.15)', ...bbRowStyle(axisEditable[0]) }}>
+                            X<input type="number" step="0.125" value={multiSize[0]}
+                                disabled={!axisEditable[0]}
+                                onChange={e => handleBBSizeChange(0, e.target.value)} />
+                        </div>
+                        <div style={{ backgroundColor: 'rgba(60, 200, 90, 0.15)', ...bbRowStyle(axisEditable[1]) }}>
+                            Y<input type="number" step="0.125" value={multiSize[1]}
+                                disabled={!axisEditable[1]}
+                                onChange={e => handleBBSizeChange(1, e.target.value)} />
+                        </div>
+                        <div style={{ backgroundColor: 'rgba(60, 150, 255, 0.15)', ...bbRowStyle(axisEditable[2]) }}>
+                            Z<input type="number" step="0.125" value={multiSize[2]}
+                                disabled={!axisEditable[2]}
+                                onChange={e => handleBBSizeChange(2, e.target.value)} />
+                        </div>
                     </div>
+                    {axisEditable.some(Boolean) && (
+                        <div style={{ marginTop: '5px', fontSize: '0.68rem', color: 'var(--text-muted)' }}>
+                            {['X','Y','Z'].map((label, i) => axisEditable[i]
+                                ? <span key={i} style={{ marginRight: '8px' }}>{label}: {spanningBoards[i].length} board{spanningBoards[i].length !== 1 ? 's' : ''}</span>
+                                : null
+                            )}
+                        </div>
+                    )}
                 </div>
                 <div className="inspector-section">
-                    <h4>Bounding Box Center (in)</h4>
+                    <h4>Move by Δ (in)</h4>
                     <div className="vec3-inputs">
-                        <div style={{ backgroundColor: 'rgba(255, 60, 60, 0.15)' }}>X<input type="number" value={multiCenter[0]} disabled /></div>
-                        <div style={{ backgroundColor: 'rgba(60, 200, 90, 0.15)' }}>Y<input type="number" value={multiCenter[1]} disabled /></div>
-                        <div style={{ backgroundColor: 'rgba(60, 150, 255, 0.15)' }}>Z<input type="number" value={multiCenter[2]} disabled /></div>
+                        <div style={{ backgroundColor: 'rgba(255, 60, 60, 0.15)' }}>X<input type="number" step="0.125" value={bulkDelta[0]} onChange={e => setBulkDelta([e.target.value, bulkDelta[1], bulkDelta[2]])} /></div>
+                        <div style={{ backgroundColor: 'rgba(60, 200, 90, 0.15)' }}>Y<input type="number" step="0.125" value={bulkDelta[1]} onChange={e => setBulkDelta([bulkDelta[0], e.target.value, bulkDelta[2]])} /></div>
+                        <div style={{ backgroundColor: 'rgba(60, 150, 255, 0.15)' }}>Z<input type="number" step="0.125" value={bulkDelta[2]} onChange={e => setBulkDelta([bulkDelta[0], bulkDelta[1], e.target.value])} /></div>
                     </div>
+                    <button style={{ marginTop: '8px', width: '100%' }} className="primary-btn" onClick={applyBulkMove}>
+                        Apply Move
+                    </button>
                 </div>
                 <div className="inspector-section">
                     <p className="hint">{selBoards.length} board{selBoards.length !== 1 ? 's' : ''} in selection. Use AI Chat for bulk transforms.</p>
+                    <button style={{ marginTop: '8px', width: '100%' }} className="primary-btn" onClick={dropSelectionToFloor}>↓ Set on Floor</button>
                 </div>
+                {selBoards.length >= 2 && (() => {
+                    // Centroid across all selected boards in X and Z
+                    const cx = selBoards.reduce((s, b) => s + b.position[0], 0) / selBoards.length;
+                    const cz = selBoards.reduce((s, b) => s + b.position[2], 0) / selBoards.length;
+
+                    const getOuterCorner = (b) => {
+                        const xSide = b.position[0] < cx ? 'l' : 'r';
+                        const zSide = b.position[2] < cz ? 'b' : 'f';
+                        return zSide + xSide; // 'fl' | 'fr' | 'bl' | 'br'
+                    };
+
+                    const applyTaper = (angleZ, angleX) => {
+                        pushHistory();
+                        const selIds = new Set(selBoards.map(b => b.id));
+                        setBoards(prev => prev.map(b => {
+                            if (!selIds.has(b.id)) return b;
+                            return { ...b, shape: 'taper', taper: { outerCorner: getOuterCorner(b), angleZ, angleX } };
+                        }));
+                    };
+
+                    const removeTaper = () => {
+                        pushHistory();
+                        const selIds = new Set(selBoards.map(b => b.id));
+                        setBoards(prev => prev.map(b =>
+                            selIds.has(b.id) ? { ...b, shape: undefined, taper: undefined } : b
+                        ));
+                    };
+
+                    const allTapered = selBoards.every(b => b.shape === 'taper');
+
+                    return (
+                        <div className="inspector-section" style={{ borderTop: '1px solid var(--border-color)', paddingTop: '10px' }}>
+                            <h4>Bulk Shape</h4>
+                            <p className="hint" style={{ marginTop: '2px', marginBottom: '8px' }}>
+                                Outer corner is auto-detected from each board's position relative to the group centroid.
+                            </p>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '4px' }}>
+                                    <div>
+                                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Z inner face (°)</div>
+                                        <input
+                                            type="number" min="0" max="89" step="0.5"
+                                            value={bulkAngleZ}
+                                            onChange={e => setBulkAngleZ(Math.max(0, Math.min(89, parseFloat(e.target.value) || 0)))}
+                                            style={{ width: '100%', padding: '5px 8px', background: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '6px', outline: 'none', fontSize: '0.9rem' }}
+                                        />
+                                    </div>
+                                    <div>
+                                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>X inner face (°)</div>
+                                        <input
+                                            type="number" min="0" max="89" step="0.5"
+                                            value={bulkAngleX}
+                                            onChange={e => setBulkAngleX(Math.max(0, Math.min(89, parseFloat(e.target.value) || 0)))}
+                                            style={{ width: '100%', padding: '5px 8px', background: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '6px', outline: 'none', fontSize: '0.9rem' }}
+                                        />
+                                    </div>
+                                </div>
+                                <button className="primary-btn" onClick={() => applyTaper(bulkAngleZ, bulkAngleX)}>
+                                    ◢ Taper as Legs ({bulkAngleZ}° × {bulkAngleX}°)
+                                </button>
+                                {allTapered && (
+                                    <button className="nav-btn" style={{ border: '1px solid var(--border-color)', marginTop: '2px' }} onClick={removeTaper}>
+                                        ■ Remove Taper → Box
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    );
+                })()}
                 <div style={{ marginTop: '16px' }}>
                     <button
                         className="nav-btn"
@@ -241,20 +424,135 @@ const InspectorPanel = () => {
 
         return (
             <>
+                {ConstraintBanner}
                 <div className="inspector-title" style={{ marginBottom: '16px' }}>
                     <input type="text" value={selectedBoard.name} onChange={e => { const v = e.target.value; setBoards(prev => prev.map(b => b.id === selectedBoard.id ? { ...b, name: v } : b)); }} title="Click to rename component" style={{ width: '100%', background: 'rgba(128,128,128,0.15)', padding: '6px 12px', borderRadius: '6px', border: '1px solid var(--border-color)', color: 'var(--accent-color)', fontSize: 'inherit', fontWeight: 'inherit', outline: 'none' }} />
                 </div>
                 <div className="inspector-section">
                     <h4>Size (in)</h4>
                     <div className="vec3-inputs">
-                        <div style={{ backgroundColor: 'rgba(255, 60, 60, 0.15)' }}>X<input type="number" step="0.5" value={fmt4(selectedBoard.size[0])} onChange={e => updateVector('size', 0, e.target.value)} /></div>
-                        <div style={{ backgroundColor: 'rgba(60, 200, 90, 0.15)' }}>Y<input type="number" step="0.5" value={fmt4(selectedBoard.size[1])} onChange={e => updateVector('size', 1, e.target.value)} /></div>
-                        <div style={{ backgroundColor: 'rgba(60, 150, 255, 0.15)' }}>Z<input type="number" step="0.5" value={fmt4(selectedBoard.size[2])} onChange={e => updateVector('size', 2, e.target.value)} /></div>
+                        <div style={{ backgroundColor: 'rgba(255, 60, 60, 0.15)' }}>X<input type="number" step="0.125" value={fmt4(selectedBoard.size[0])} onChange={e => updateVector('size', 0, e.target.value)} /></div>
+                        <div style={{ backgroundColor: 'rgba(60, 200, 90, 0.15)' }}>Y<input type="number" step="0.125" value={fmt4(selectedBoard.size[1])} onChange={e => updateVector('size', 1, e.target.value)} /></div>
+                        <div style={{ backgroundColor: 'rgba(60, 150, 255, 0.15)' }}>Z<input type="number" step="0.125" value={fmt4(selectedBoard.size[2])} onChange={e => updateVector('size', 2, e.target.value)} /></div>
                     </div>
                     <div className="hint" style={{ marginTop: '6px', fontSize: '0.75rem' }}>
                         {sorted.map((d, i) => `${dimLabels[i]}: ${d.val.toFixed(2)}" (${['X','Y','Z'][d.idx]})`).join(' · ')}
                     </div>
                 </div>
+
+                {/* ── Shape Picker ── */}
+                <div className="inspector-section">
+                    <h4>Shape</h4>
+                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '4px' }}>
+                        {['box', 'taper'].map(s => (
+                            <button
+                                key={s}
+                                onClick={() => {
+                                    pushHistory();
+                                    const patch = s === 'box'
+                                        ? { shape: undefined, taper: undefined }
+                                        : { shape: 'taper', taper: { outerCorner: 'fl', angleZ: 2, angleX: 2 } };
+                                    setBoards(prev => prev.map(bd =>
+                                        bd.id === selectedBoard.id ? { ...bd, ...patch } : bd
+                                    ));
+                                }}
+                                style={{
+                                    padding: '5px 14px',
+                                    fontSize: '0.78rem',
+                                    fontWeight: 600,
+                                    borderRadius: '6px',
+                                    border: (selectedBoard.shape ?? 'box') === s
+                                        ? '1px solid rgba(188,138,95,0.8)'
+                                        : '1px solid var(--border-color)',
+                                    background: (selectedBoard.shape ?? 'box') === s
+                                        ? 'rgba(188,138,95,0.2)'
+                                        : 'transparent',
+                                    color: (selectedBoard.shape ?? 'box') === s
+                                        ? 'var(--accent-color)'
+                                        : 'var(--text-muted)',
+                                    cursor: 'pointer',
+                                    textTransform: 'capitalize',
+                                    transition: 'all 0.15s',
+                                }}
+                            >
+                                {s === 'box' ? '■ Box' : '◢ Taper'}
+                            </button>
+                        ))}
+                    </div>
+
+                    {selectedBoard.shape === 'taper' && (() => {
+                        const { outerCorner, angleZ, angleX } = normalizeTaper(selectedBoard.taper);
+                        const { zBottom, xBottom, zWarn, xWarn } = taperValidation(
+                            selectedBoard.size[0], selectedBoard.size[1], selectedBoard.size[2], angleZ, angleX
+                        );
+                        const zFaceLabel = outerCorner.startsWith('f') ? 'Back (Z−) inner face °' : 'Front (Z+) inner face °';
+                        const xFaceLabel = outerCorner.endsWith('l')   ? 'Right (X+) inner face °' : 'Left (X−) inner face °';
+
+                        const setCorner = (corner) => {
+                            pushHistory();
+                            setBoards(prev => prev.map(bd =>
+                                bd.id === selectedBoard.id
+                                    ? { ...bd, taper: { outerCorner: corner, angleZ, angleX } } : bd
+                            ));
+                        };
+                        const setAngle = (field, val) => {
+                            const v = Math.max(0, Math.min(89, parseFloat(val) || 0));
+                            pushHistory();
+                            setBoards(prev => prev.map(bd =>
+                                bd.id === selectedBoard.id
+                                    ? { ...bd, taper: { outerCorner, angleZ, angleX, [field]: v } } : bd
+                            ));
+                        };
+
+                        const cBtnStyle = (key) => ({
+                            width: '52px', height: '44px', fontSize: '0.68rem', fontWeight: 700,
+                            borderRadius: '6px', cursor: 'pointer', lineHeight: 1.25, whiteSpace: 'pre',
+                            border: outerCorner === key ? '2px solid rgba(188,138,95,0.9)' : '1px solid var(--border-color)',
+                            background: outerCorner === key ? 'rgba(188,138,95,0.25)' : 'rgba(0,0,0,0.2)',
+                            color: outerCorner === key ? 'var(--accent-color)' : 'var(--text-muted)',
+                            transition: 'all 0.12s',
+                        });
+
+                        return (
+                            <div style={{ marginTop: '10px' }}>
+                                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '5px' }}>Outer corner (stays fixed — does not taper):</div>
+                                <div style={{ display: 'grid', gridTemplateColumns: '52px 1fr 52px', gap: '4px', alignItems: 'center', marginBottom: '10px' }}>
+                                    <button style={cBtnStyle('fl')} onClick={() => setCorner('fl')}>{'FL\nFront\nLeft'}</button>
+                                    <div style={{ textAlign: 'center', fontSize: '0.65rem', color: 'var(--text-muted)', lineHeight: 1.8 }}>
+                                        <div>Z+ Front</div>
+                                        <div style={{ border: '1px dashed var(--border-color)', borderLeft: 'none', borderRight: 'none', padding: '2px 0', margin: '1px 0' }}>X− ↔ X+</div>
+                                        <div>Z− Back</div>
+                                    </div>
+                                    <button style={cBtnStyle('fr')} onClick={() => setCorner('fr')}>{'FR\nFront\nRight'}</button>
+                                    <button style={cBtnStyle('bl')} onClick={() => setCorner('bl')}>{'BL\nBack\nLeft'}</button>
+                                    <div />
+                                    <button style={cBtnStyle('br')} onClick={() => setCorner('br')}>{'BR\nBack\nRight'}</button>
+                                </div>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
+                                    <div>
+                                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>{zFaceLabel}</div>
+                                        <input type="number" min="0" max="89" step="0.5" value={angleZ}
+                                            onChange={e => setAngle('angleZ', e.target.value)}
+                                            style={{ width: '100%', padding: '5px 8px', background: 'var(--bg-color)', color: 'var(--text-main)', border: `1px solid ${zWarn ? '#ff3b30' : 'var(--border-color)'}`, borderRadius: '6px', outline: 'none', fontSize: '0.9rem' }} />
+                                        {zWarn && <div style={{ fontSize: '0.68rem', color: '#ff3b30', marginTop: '2px' }}>{zWarn}</div>}
+                                    </div>
+                                    <div>
+                                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>{xFaceLabel}</div>
+                                        <input type="number" min="0" max="89" step="0.5" value={angleX}
+                                            onChange={e => setAngle('angleX', e.target.value)}
+                                            style={{ width: '100%', padding: '5px 8px', background: 'var(--bg-color)', color: 'var(--text-main)', border: `1px solid ${xWarn ? '#ff3b30' : 'var(--border-color)'}`, borderRadius: '6px', outline: 'none', fontSize: '0.9rem' }} />
+                                        {xWarn && <div style={{ fontSize: '0.68rem', color: '#ff3b30', marginTop: '2px' }}>{xWarn}</div>}
+                                    </div>
+                                </div>
+                                <div style={{ padding: '7px 10px', borderRadius: '6px', fontSize: '0.75rem', background: (zWarn || xWarn) ? 'rgba(255,59,48,0.08)' : 'rgba(60,200,90,0.08)', border: `1px solid ${(zWarn || xWarn) ? 'rgba(255,59,48,0.3)' : 'rgba(60,200,90,0.25)'}`, color: 'var(--text-muted)' }}>
+                                    Bottom cross-section: <span style={{ color: xWarn ? '#ff3b30' : 'var(--text-main)', fontWeight: 600 }}>{Math.max(0, xBottom).toFixed(3)}"</span> × <span style={{ color: zWarn ? '#ff3b30' : 'var(--text-main)', fontWeight: 600 }}>{Math.max(0, zBottom).toFixed(3)}"</span> (W × D)
+                                </div>
+                                <p className="hint" style={{ marginTop: '6px' }}>The outer corner is fixed. Both inner faces slant toward it. Bounding box and constraints use full size unchanged.</p>
+                            </div>
+                        );
+                    })()}
+                </div>
+
                 <div className="inspector-section">
                     <h4>Position (in)</h4>
                     <div className="vec3-inputs">
@@ -263,6 +561,36 @@ const InspectorPanel = () => {
                         <div style={{ backgroundColor: 'rgba(60, 150, 255, 0.15)' }}>Z<input type="number" step="0.125" value={fmt4(selectedBoard.position[2])} onChange={e => updateVector('position', 2, e.target.value)} /></div>
                     </div>
                     <button style={{ marginTop: '8px', width: '100%' }} className="primary-btn" onClick={dropBoardToFloor}>↓ Set on Floor</button>
+                </div>
+                <div className="inspector-section">
+                    <h4>Rotation (°)</h4>
+                    <div className="vec3-inputs">
+                        <div style={{ backgroundColor: 'rgba(255, 60, 60, 0.15)' }}>X<input type="number" step="1" value={parseFloat(((selectedBoard.rotation?.[0] ?? 0) * 180 / Math.PI).toFixed(2))} onChange={e => updateRotation(0, parseFloat(e.target.value) || 0)} /></div>
+                        <div style={{ backgroundColor: 'rgba(60, 200, 90, 0.15)' }}>Y<input type="number" step="1" value={parseFloat(((selectedBoard.rotation?.[1] ?? 0) * 180 / Math.PI).toFixed(2))} onChange={e => updateRotation(1, parseFloat(e.target.value) || 0)} /></div>
+                        <div style={{ backgroundColor: 'rgba(60, 150, 255, 0.15)' }}>Z<input type="number" step="1" value={parseFloat(((selectedBoard.rotation?.[2] ?? 0) * 180 / Math.PI).toFixed(2))} onChange={e => updateRotation(2, parseFloat(e.target.value) || 0)} /></div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '4px', marginTop: '6px', flexWrap: 'wrap' }}>
+                        {[['Y 90°', 1, 90], ['Y -90°', 1, -90], ['Y 180°', 1, 180], ['X 90°', 0, 90]].map(([label, ax, deg]) => (
+                            <button key={label} className="nav-btn"
+                                style={{ padding: '3px 7px', fontSize: '0.68rem', border: '1px solid var(--border-color)' }}
+                                onClick={() => updateRotation(ax, (selectedBoard.rotation?.[ax] ?? 0) * 180 / Math.PI + deg)}>
+                                +{label}
+                            </button>
+                        ))}
+                        <div style={{ marginLeft: 'auto', display: 'flex', gap: '4px' }}>
+                            <button className="nav-btn"
+                                title="Bake rotation — remaps size axes to match current orientation, then zeroes rotation"
+                                style={{ padding: '3px 7px', fontSize: '0.68rem', border: '1px solid var(--accent-color)', color: 'var(--accent-color)' }}
+                                onClick={applyRotation}>
+                                Apply
+                            </button>
+                            <button className="nav-btn"
+                                style={{ padding: '3px 7px', fontSize: '0.68rem', border: '1px solid var(--border-color)' }}
+                                onClick={resetRotation}>
+                                Reset
+                            </button>
+                        </div>
+                    </div>
                 </div>
                 {/* ── Material ── */}
                 {(() => {

@@ -1,5 +1,6 @@
 /**
  * Format a numeric value (in inches) for display based on the active unit system.
+ * Rounds to the nearest 1/16" for imperial (standard woodworking precision).
  * @param {number} val - The value in inches
  * @param {string} units - 'imperial' or 'metric'
  * @returns {string} Formatted string with unit suffix
@@ -8,10 +9,10 @@ export const formatUnit = (val, units) => {
     if (units === 'metric') return `${(val * 25.4).toFixed(1)}mm`;
     
     let whole = Math.floor(val);
-    let num = Math.round((val % 1) * 8);
-    let den = 8;
+    let num = Math.round((val % 1) * 16); // 1/16" precision
+    let den = 16;
     
-    if (num === 8) {
+    if (num === 16) {
         whole += 1;
         num = 0;
     }
@@ -20,6 +21,7 @@ export const formatUnit = (val, units) => {
         return `${whole}"`;
     }
     
+    // Simplify: 2/16 → 1/8, 4/16 → 1/4, 8/16 → 1/2, etc.
     while (num % 2 === 0 && den > 1) {
         num /= 2;
         den /= 2;

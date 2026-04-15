@@ -273,7 +273,7 @@ export const createActions = (set, get) => ({
 
 
     saveWorkspace: (isNamedSave = false) => {
-        const { boards, groups, constraints, theme, units, gridSnap, defaultMaterial, showEdges, showDimensions, showBoundingBox, globalBounds, lighting, recentColors, recentFiles, setRecentFiles, showToast } = get();
+        const { boards, groups, constraints, theme, units, gridSnap, defaultMaterial, showEdges, showDimensions, showBoundingBox, globalBounds, lighting, recentColors, autosaveInterval, recentFiles, setRecentFiles, showToast } = get();
         let name = "My Design";
         if (recentFiles.length > 0) name = recentFiles[0].name;
 
@@ -283,7 +283,7 @@ export const createActions = (set, get) => ({
             name = pName;
         }
 
-        const payload = { boards, groups, constraints, theme, units, gridSnap, defaultMaterial, showEdges, showDimensions, showBoundingBox, globalBounds, lighting, recentColors };
+        const payload = { boards, groups, constraints, theme, units, gridSnap, defaultMaterial, showEdges, showDimensions, showBoundingBox, globalBounds, lighting, recentColors, autosaveInterval };
         localStorage.setItem('lucey_save_' + name, JSON.stringify(payload));
 
         let newRecents = recentFiles.filter(r => r.name !== name);
@@ -297,7 +297,7 @@ export const createActions = (set, get) => ({
     },
 
     loadWorkspace: (name) => {
-        const { setBoards, setGroups, setConstraints, setTheme, setUnits, setGridSnap, setDefaultMaterial, setShowEdges, setShowDimensions, setLighting, setRecentColors } = get();
+        const { setBoards, setGroups, setConstraints, setTheme, setUnits, setGridSnap, setDefaultMaterial, setShowEdges, setShowDimensions, setLighting, setRecentColors, setAutosaveInterval } = get();
         const key = name ? 'lucey_save_' + name : 'lucey_save';
         const s = localStorage.getItem(key);
         if (s) {
@@ -316,6 +316,7 @@ export const createActions = (set, get) => ({
                     if (p.showDimensions !== undefined) setShowDimensions(p.showDimensions);
                     if (p.lighting) setLighting(p.lighting);
                     if (p.recentColors) setRecentColors(p.recentColors);
+                    if (p.autosaveInterval) setAutosaveInterval(p.autosaveInterval);
                 }
             } catch (e) { }
         } else if (name) {
@@ -521,6 +522,99 @@ export const createActions = (set, get) => ({
         }
     },
 
+    // ─── Set absolute rotation on a board (degrees → radians) ────────────────
+    updateRotation: (axis, degrees) => {
+        const { selectedItemIds, pushHistory, boards, setBoards } = get();
+        if (selectedItemIds.length === 0) return;
+        pushHistory();
+        const radians = (degrees * Math.PI) / 180;
+        setBoards(boards.map(b => {
+            if (selectedItemIds.includes(b.id.toString())) {
+                const rot = [...(b.rotation || [0, 0, 0])];
+                rot[axis] = radians;
+                return { ...b, rotation: rot };
+            }
+            return b;
+        }));
+    },
+
+    // ─── Reset rotation on selected boards to [0,0,0] ────────────────────────
+    resetRotation: () => {
+        const { selectedItemIds, pushHistory, boards, setBoards } = get();
+        if (selectedItemIds.length === 0) return;
+        pushHistory();
+        setBoards(boards.map(b =>
+            selectedItemIds.includes(b.id.toString())
+                ? { ...b, rotation: [0, 0, 0] }
+                : b
+        ));
+    },
+
+    // ─── Bake rotation into size, reset rotation to [0,0,0] ────────────────────
+    // For each world axis, finds which local axis contributes the most after
+    // the rotation (i.e. which local axis has the largest absolute component
+    // in that world direction) and assigns that local extent to the world axis.
+    // This is exact for 90° multiples and reasonable for smaller angles.
+    // Three.js default Euler order = XYZ  =>  R = Rz × Ry × Rx
+    applyRotation: () => {
+        const { selectedItemIds, boards, constraints, pushHistory, setBoards, showToast } = get();
+        if (selectedItemIds.length === 0) return;
+
+        const hasFlush = Object.values(constraints || {}).some(c =>
+            c.type === 'Flush' && (
+                selectedItemIds.includes(c.boardAId) ||
+                selectedItemIds.includes(c.boardBId)
+            )
+        );
+
+        pushHistory();
+
+        setBoards(boards.map(b => {
+            if (!selectedItemIds.includes(b.id.toString())) return b;
+            const [rx, ry, rz] = b.rotation || [0, 0, 0];
+            if (rx === 0 && ry === 0 && rz === 0) return b;
+
+            // Snap each angle to nearest 90° to avoid floating-point noise
+            const snap = (r) => Math.round(r / (Math.PI / 2)) * (Math.PI / 2);
+            const srx = snap(rx), sry = snap(ry), srz = snap(rz);
+
+            // Use Math.round to collapse near-integer trig values to exact integers
+            const ri = (v) => Math.round(v);
+            const cx = ri(Math.cos(srx)), sx = ri(Math.sin(srx));
+            const cy = ri(Math.cos(sry)), sy = ri(Math.sin(sry));
+            const cz = ri(Math.cos(srz)), sz = ri(Math.sin(srz));
+
+            // Rotation matrix: R = Rz × Ry × Rx (Three.js XYZ euler order)
+            // R[worldRow][localCol] = how much local axis (col) projects onto world axis (row)
+            const R = [
+                // world X row
+                [cy * cz,                sx * sy * cz - cx * sz,  cx * sy * cz + sx * sz],
+                // world Y row
+                [cy * sz,                sx * sy * sz + cx * cz,  cx * sy * sz - sx * cz],
+                // world Z row
+                [-sy,                    sx * cy,                  cx * cy              ],
+            ];
+
+            const oldSize = [...b.size];
+            const newSize = [0, 0, 0];
+            // For each world axis, find the local axis that most aligns with it
+            for (let w = 0; w < 3; w++) {
+                let bestL = 0, bestAbs = 0;
+                for (let l = 0; l < 3; l++) {
+                    const a = Math.abs(R[w][l]);
+                    if (a > bestAbs) { bestAbs = a; bestL = l; }
+                }
+                newSize[w] = oldSize[bestL];
+            }
+
+            return { ...b, size: newSize, rotation: [0, 0, 0] };
+        }));
+
+        if (hasFlush) {
+            showToast('⚠ Flush constraints on rotated boards may need to be re-set.');
+        }
+    },
+
     // ─── Move all boards in a group by a delta ───────────────────────────────
     moveGroup: (groupId, axis, delta) => {
         const { pushHistory, boards, groups, constraints, setBoards } = get();
@@ -592,6 +686,27 @@ export const createActions = (set, get) => ({
         let reply = "I've processed your request.";
         let updated = false;
 
+        // Parses plain decimals, pure fractions (3/8), and mixed numbers (1 3/8)
+        const parseMeasurement = (str) => {
+            if (!str) return null;
+            const mixed = str.match(/^(-?\d+)\s+(\d+)\/(\d+)$/);
+            if (mixed) {
+                const whole = parseInt(mixed[1]);
+                const frac  = parseInt(mixed[2]) / parseInt(mixed[3]);
+                return whole + (whole < 0 ? -frac : frac);
+            }
+            const frac = str.match(/^(-?)(\d+)\/(\d+)$/);
+            if (frac) return (frac[1] === '-' ? -1 : 1) * parseInt(frac[2]) / parseInt(frac[3]);
+            const v = parseFloat(str);
+            return isNaN(v) ? null : v;
+        };
+
+        // Finds first measurement token (decimal, fraction, or mixed number) in the lowercased text
+        const extractMeasurement = (s) => {
+            const m = s.match(/(-?\d+\s+\d+\/\d+|-?\d+\/\d+|-?\d*\.?\d+)/);
+            return m ? parseMeasurement(m[1]) : null;
+        };
+
         // ── Material change ──────────────────────────────────────────────────
         if (lower.includes('walnut') || lower.includes('pine') || lower.includes('cherry') || lower.includes('oak')) {
             const mat = ['walnut', 'pine', 'cherry', 'red-oak', 'white-oak'].find(m => lower.includes(m.replace('-', ' '))) || 'walnut';
@@ -610,8 +725,8 @@ export const createActions = (set, get) => ({
             let val = 1;
             if (lower.includes('down') || lower.includes('left') || lower.includes('back')) val = -1;
 
-            const match = lower.match(/([+-]?\d*\.?\d+)/);
-            if (match) val = parseFloat(match[1]) * (val < 0 ? -1 : 1);
+            const match = lower.match(/(-?\d+\s+\d+\/\d+|-?\d+\/\d+|-?[\d.]+)/);
+            if (match) val = parseMeasurement(match[1]) * (val < 0 ? -1 : 1);
 
             const deltaVec = [0, 0, 0];
             deltaVec[axis] = val;
@@ -628,6 +743,57 @@ export const createActions = (set, get) => ({
             const axisName = ['red (X)', 'green (Y)', 'blue (Z)'][axis];
             reply = `Moved ${moveMap.size} component(s) by ${val}" along ${axisName}.`;
             updated = true;
+
+        // ── Tapered leg — add / convert / partial ──────────────────────────
+        } else if ((lower.includes('taper') || lower.includes('tapered')) && (lower.includes('leg') || lower.includes('add') || lower.includes('make') || lower.includes('convert'))) {
+            const angleMatch = lower.match(/(\d*\.?\d+)\s*(?:deg|°|degree)/i);
+            const az = angleMatch ? parseFloat(angleMatch[1]) : 2;
+            const ax = /dual|both|side/.test(lower) ? az : 0;
+
+            if (/halfway|half way|partial|lower half|bottom half/.test(lower)) {
+                // Partial taper: box upper + tapered lower, glued together
+                const totalH = 30, t = 1.5, halfH = totalH / 2;
+                const newGroupId = 'Tapered Leg ' + Math.floor(Math.random() * 1000);
+                const upperId = Date.now(), lowerId = upperId + 1;
+                setGroups(prev => ({
+                    ...prev,
+                    [newGroupId]: { parentId: 'Workspace', isExpanded: true, visible: true }
+                }));
+                const upperBoard = { id: upperId, name: 'Leg Upper', parentId: newGroupId, size: [t, halfH, t], position: [0, halfH + halfH / 2, 0], material: defaultMaterial, joint: 'None' };
+                const lowerBoard = {
+                    id: lowerId, name: 'Leg Lower', parentId: newGroupId,
+                    shape: 'taper', taper: { outerCorner: 'fl', angleZ: az, angleX: ax },
+                    size: [t, halfH, t], position: [0, halfH / 2, 0],
+                    material: defaultMaterial, joint: 'None',
+                    note: 'One piece; taper lower ' + halfH + '" only.'
+                };
+                const glueId = (Date.now() + 2).toString();
+                setBoards(prev => [...prev, upperBoard, lowerBoard]);
+                get().setConstraints(prev => ({ ...prev, [glueId]: { type: 'Glue', boardAId: upperId.toString(), boardBId: lowerId.toString(), offset: [0, halfH, 0], enabled: true } }));
+                setSelectedItemIds([newGroupId]);
+                reply = 'Partial-tapered leg: ' + halfH + '" straight upper + ' + halfH + '" tapered lower (' + az + '° back), glued as one unit.';
+                updated = true;
+
+            } else if (/make|convert|change/.test(lower) && selectedItemIds.length > 0) {
+                setBoards(prev => prev.map(b =>
+                    selectedItemIds.includes(b.id.toString())
+                        ? { ...b, shape: 'taper', taper: { outerCorner: 'fl', angleZ: az, angleX: ax } } : b
+                ));
+                reply = 'Converted to tapered — back ' + az + '°' + (ax > 0 ? ', side ' + ax + '°' : '') + '.';
+                updated = true;
+
+            } else {
+                const newId = Date.now();
+                setBoards(prev => [...prev, {
+                    id: newId, name: 'Tapered Leg', parentId: 'Workspace',
+                    shape: 'taper', taper: { outerCorner: 'fl', angleZ: az, angleX: ax },
+                    size: [1.5, 30, 1.5], position: [0, 15, 0],
+                    material: defaultMaterial, joint: 'None'
+                }]);
+                setSelectedItemIds([newId.toString()]);
+                reply = 'Added 1.5×30×1.5" tapered leg — back ' + az + '°' + (ax > 0 ? ', side ' + ax + '°' : '') + '. Bounding box unchanged.';
+                updated = true;
+            }
 
         // ── Add leg ──────────────────────────────────────────────────────────
         } else if (lower.includes('add') && lower.includes('leg')) {
@@ -779,15 +945,20 @@ export const createActions = (set, get) => ({
             updated = true;
 
         // ── Resize (cut/add/length/width/thickness) ──────────────────────────
-        } else if (/(cut|add|trim|extend|shave|chop|short|long|wide|narrow|thick|thin|reduce|increase|shrink|grow|length|width|thickness|decrease|wider|thicker|longer)/.test(lower)) {
-            const match = lower.match(/(\d*\.?\d+)/);
-            if (match) {
-                const val = parseFloat(match[1]);
-                const isNegative = /(cut|trim|shave|chop|short|narrow|thin|reduce|shrink|decrease)/.test(lower);
+        } else if (/(cut|add|trim|extend|shave|chop|short|shorter|long|wide|narrow|thick|thin|reduce|increase|shrink|grow|length|width|thickness|decrease|wider|thicker|longer|tall|taller)/.test(lower)) {
+            const val = extractMeasurement(lower);
+            if (val !== null) {
+
+                // "taller" / "shorter" = world-space height (Y axis, index 1) — not sorted dims
+                const isTall   = /(taller|tall)/.test(lower) && !/(length|longer|long)/.test(lower);
+                const isShorter = /\bshorter\b/.test(lower) && !/(length|longer|long)/.test(lower);
+
+                const isNegative = isShorter || /(cut|trim|shave|chop|short|narrow|thin|reduce|shrink|decrease)/.test(lower);
                 const delta = isNegative ? -val : val;
 
-                const isLength = /(short|long|length|tall|longer)/.test(lower);
-                const isWidth = /(wide|narrow|width|wider)/.test(lower);
+                // "longer" / "length" / "short" = sorted longest dim; "taller/shorter" handled above
+                const isLength    = !isTall && !isShorter && /(long|length|longer)/.test(lower);
+                const isWidth     = /(wide|narrow|width|wider)/.test(lower);
                 const isThickness = /(thick|thin|thicker|thinner|thickness)/.test(lower);
 
                 let targetedBoards = selectedItemIds.length > 0 ? boards.filter(b => selectedItemIds.includes(b.id.toString())) : [];
@@ -801,7 +972,6 @@ export const createActions = (set, get) => ({
 
                     setBoards(prev => prev.map(b => {
                         if (targetIds.includes(b.id.toString())) {
-                            // Sort dimensions to find length (biggest), width (middle), thickness (smallest)
                             let dims = [
                                 { idx: 0, val: b.size[0] },
                                 { idx: 1, val: b.size[1] },
@@ -810,11 +980,12 @@ export const createActions = (set, get) => ({
                             dims.sort((a, c) => c.val - a.val);
 
                             let targetIndex;
-                            if (isLength) targetIndex = dims[0].idx;        // longest
-                            else if (isWidth) targetIndex = dims[1].idx;    // middle
-                            else if (isThickness) targetIndex = dims[2].idx; // smallest
+                            if (isTall || isShorter)        targetIndex = 1;             // world Y = up/down
+                            else if (isLength)              targetIndex = dims[0].idx;   // sorted longest
+                            else if (isWidth)               targetIndex = dims[1].idx;   // sorted middle
+                            else if (isThickness)           targetIndex = dims[2].idx;   // sorted smallest
                             else {
-                                // Directional: check for axis-specific words
+                                // Axis-color / direction words
                                 if (/(right|left)/.test(lower) || lower.includes('red') || /\bx\b/.test(lower)) targetIndex = 0;
                                 else if (/(up|down|top|bottom)/.test(lower) || lower.includes('green') || /\by\b/.test(lower)) targetIndex = 1;
                                 else if (/(front|back)/.test(lower) || lower.includes('blue') || /\bz\b/.test(lower)) targetIndex = 2;
@@ -830,7 +1001,7 @@ export const createActions = (set, get) => ({
                         return b;
                     }));
 
-                    const dimLabel = isLength ? 'length' : isWidth ? 'width' : 'thickness';
+                    const dimLabel = (isTall || isShorter) ? 'height (Y)' : isLength ? 'length' : isWidth ? 'width' : 'thickness';
                     reply = `Adjusted ${dimLabel} of ${targetIds.length} component(s) by ${delta > 0 ? '+' : ''}${delta}".`;
                     updated = true;
                 } else {
@@ -839,6 +1010,58 @@ export const createActions = (set, get) => ({
                 }
             } else {
                 reply = "I didn't detect a number! Try 'make this 1 inch wider'.";
+                updated = true;
+            }
+        // ── Rotate ───────────────────────────────────────────────────────────
+        } else if (/(rotat|spin|turn|flip|orient)/.test(lower)) {
+            const degrees = extractMeasurement(lower);
+            if (degrees !== null) {
+
+                // Axis detection: color names, axis letters, or semantic words
+                let axis = 1; // default: Y (up/down spin is most common)
+                if (/(right|left|red|\bx\b)/.test(lower)) axis = 0;
+                else if (/(up|down|green|\by\b)/.test(lower)) axis = 1;
+                else if (/(front|back|blue|\bz\b)/.test(lower)) axis = 2;
+
+                let targetedBoards = selectedItemIds.length > 0
+                    ? boards.filter(b => selectedItemIds.includes(b.id.toString()))
+                    : boards.filter(b => lower.includes(b.name.toLowerCase()));
+
+                if (targetedBoards.length > 0) {
+                    const targetIds = targetedBoards.map(b => b.id.toString());
+                    const radians = (degrees * Math.PI) / 180;
+                    pushHistory();
+                    setBoards(boards.map(b => {
+                        if (!targetIds.includes(b.id.toString())) return b;
+                        const rot = [...(b.rotation || [0, 0, 0])];
+                        // 'flip' sets absolute 180°; other commands are additive
+                        if (/flip/.test(lower)) {
+                            rot[axis] = rot[axis] === 0 ? Math.PI : 0;
+                        } else {
+                            rot[axis] = rot[axis] + radians;
+                        }
+                        return { ...b, rotation: rot };
+                    }));
+                    const axisLabel = ['X (Red)', 'Y (Green)', 'Z (Blue)'][axis];
+                    reply = `Rotated ${targetIds.length} board(s) ${/flip/.test(lower) ? '180° (flipped)' : `${degrees}°`} on ${axisLabel}.`;
+                    updated = true;
+                } else {
+                    reply = "Select a board first, or name it — e.g. 'rotate Leg A 90 on Y'.";
+                    updated = true;
+                }
+            } else if (/reset/.test(lower)) {
+                // "reset rotation"
+                const targetIds = selectedItemIds;
+                if (targetIds.length > 0) {
+                    pushHistory();
+                    setBoards(boards.map(b =>
+                        targetIds.includes(b.id.toString()) ? { ...b, rotation: [0, 0, 0] } : b
+                    ));
+                    reply = `Rotation reset to 0° on ${targetIds.length} board(s).`;
+                    updated = true;
+                }
+            } else {
+                reply = "I didn't detect an angle! Try 'rotate 90 on Y' or 'rotate 45 on red'.";
                 updated = true;
             }
         }
@@ -952,6 +1175,45 @@ export const createActions = (set, get) => ({
             }
             return b;
         }));
+    },
+
+    // Drop the entire current multi-selection to the floor (works for any mix of boards and groups)
+    dropSelectionToFloor: () => {
+        const { selectedItemIds, boards, groups, pushHistory, setBoards } = get();
+        if (selectedItemIds.length === 0) return;
+
+        // Collect all boards in the selection (direct boards + children of selected groups)
+        const boardSet = new Set();
+        selectedItemIds.forEach(id => {
+            const board = boards.find(b => b.id.toString() === id);
+            if (board) {
+                boardSet.add(board);
+            } else if (groups[id]) {
+                collectChildBoards(id, boards, groups).forEach(b => boardSet.add(b));
+            }
+        });
+
+        const selBoards = Array.from(boardSet);
+        if (selBoards.length === 0) return;
+
+        // Find the lowest Y extent across all selected boards
+        let lowestY = Infinity;
+        selBoards.forEach(b => {
+            const bottomY = b.position[1] - b.size[1] / 2;
+            if (bottomY < lowestY) lowestY = bottomY;
+        });
+        if (lowestY === Infinity) return;
+
+        const delta = -lowestY; // shift so lowest point lands on Y=0
+        if (delta === 0) return;
+
+        pushHistory();
+        const selIds = new Set(selBoards.map(b => b.id.toString()));
+        setBoards(boards.map(b =>
+            selIds.has(b.id.toString())
+                ? { ...b, position: [b.position[0], b.position[1] + delta, b.position[2]] }
+                : b
+        ));
     },
 
     manualAddBoard: () => {
@@ -1084,6 +1346,10 @@ export const createActions = (set, get) => ({
         pushHistory();
         const newId = Date.now();
 
+        // Carry through shape and taper fields if set in the dialog
+        const boardShape = newBoardDialog.shape;
+        const boardTaper = newBoardDialog.taper;
+
         setBoards(prev => [...prev, {
             id: newId,
             name: newBoardDialog.name || 'New Component',
@@ -1092,7 +1358,9 @@ export const createActions = (set, get) => ({
             position: newBoardDialog.position,
             material: defaultMaterial,
             joint: 'None',
-            constraints: []
+            constraints: [],
+            ...(boardShape ? { shape: boardShape } : {}),
+            ...(boardTaper ? { taper: boardTaper } : {}),
         }]);
         setSelectedItemIds([newId.toString()]);
         setNewBoardDialog(null);

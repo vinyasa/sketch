@@ -12,6 +12,7 @@ const SettingsPanel = () => {
         showBoundingBox, setShowBoundingBox,
         globalBounds, setGlobalBounds,
         theme, setTheme,
+        autosaveInterval, setAutosaveInterval,
         showToast
     } = useStore();
     const [confirmWipe, setConfirmWipe] = useState(false);
@@ -93,6 +94,18 @@ const SettingsPanel = () => {
                     Enable Dark Mode
                 </label>
                 <p className="hint" style={{ marginTop: '4px' }}>Toggle between high-contrast layout and daylight drafting theme.</p>
+            </div>
+
+            <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '16px' }}>
+                <label style={{ fontWeight: '600', opacity: 0.85, display: 'block', marginBottom: '8px' }}>Autosave</label>
+                <select className="nav-btn" value={autosaveInterval} onChange={(e) => setAutosaveInterval(e.target.value)} style={{ width: '100%', outline: 'none' }}>
+                    <option value="off">Off</option>
+                    <option value="1">Every 1 minute</option>
+                    <option value="5">Every 5 minutes</option>
+                    <option value="10">Every 10 minutes</option>
+                    <option value="30">Every 30 minutes</option>
+                </select>
+                <p className="hint" style={{ marginTop: '4px' }}>Silently saves to local storage on the selected schedule. Does not prompt or show a toast.</p>
             </div>
 
             <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '16px' }}>

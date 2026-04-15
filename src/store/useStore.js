@@ -30,6 +30,15 @@ const useStore = create((set, get) => ({
     showCutlistPanel: false,
     setShowCutlistPanel: (v) => set({ showCutlistPanel: typeof v === 'function' ? v(get().showCutlistPanel) : v }),
 
+    isOrtho: false,
+    setIsOrtho: (v) => set({ isOrtho: typeof v === 'function' ? v(get().isOrtho) : v }),
+
+    showGrid: true,
+    setShowGrid: (v) => set({ showGrid: typeof v === 'function' ? v(get().showGrid) : v }),
+
+    autosaveInterval: loadState('autosaveInterval', '10'),
+    setAutosaveInterval: (v) => set({ autosaveInterval: typeof v === 'function' ? v(get().autosaveInterval) : v }),
+
     showSettingsPanel: false,
     setShowSettingsPanel: (v) => set({ showSettingsPanel: typeof v === 'function' ? v(get().showSettingsPanel) : v }),
 

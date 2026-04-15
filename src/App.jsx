@@ -29,7 +29,10 @@ export default function App() {
         // Settings for App mount
         theme,
         // History for focus capture
-        pushHistory
+        pushHistory,
+        // Autosave
+        autosaveInterval,
+        saveWorkspace,
     } = useStore();
 
     // Apply theme on initial mount (store handles subsequent changes via setTheme)
@@ -38,6 +41,17 @@ export default function App() {
         else document.documentElement.classList.remove('light-mode');
     }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+    // Autosave interval — silent save (no prompt, no toast)
+    useEffect(() => {
+        if (autosaveInterval === 'off') return;
+        const ms = parseInt(autosaveInterval, 10) * 60 * 1000;
+        const id = setInterval(() => {
+            const { boards, groups, constraints, theme, units, gridSnap, defaultMaterial, showEdges, showDimensions, showBoundingBox, globalBounds, lighting, recentColors, autosaveInterval: ai } = useStore.getState();
+            const payload = { boards, groups, constraints, theme, units, gridSnap, defaultMaterial, showEdges, showDimensions, showBoundingBox, globalBounds, lighting, recentColors, autosaveInterval: ai };
+            localStorage.setItem('lucey_save', JSON.stringify(payload));
+        }, ms);
+        return () => clearInterval(id);
+    }, [autosaveInterval]);
 
     return (
         <div className="app-container">

@@ -72,7 +72,7 @@ export async function renderAssemblyThumbnail(boards) {
     // 1. Bounding-sphere radius = half the AABB diagonal (worst-case extent).
     // 2. Required camera distance = radius / tan(halfFov), + 20% padding.
     //    This works for any shape: flat, tall, cubic, or anything in between.
-    let minX = Infinity,  minY = Infinity,  minZ = Infinity;
+    let minX = Infinity, minY = Infinity, minZ = Infinity;
     let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
     boards.forEach(b => {
         if (b.visible === false) return;
