@@ -440,18 +440,71 @@ const InspectorPanel = () => {
                     </div>
                 </div>
 
-                {/* ── Shape Picker ── */}
                 <div className="inspector-section">
+                    <h4>Position (in)</h4>
+                    <div className="vec3-inputs">
+                        <div style={{ backgroundColor: 'rgba(255, 60, 60, 0.15)' }}>X<input type="number" step="0.125" value={fmt4(selectedBoard.position[0])} onChange={e => updateVector('position', 0, e.target.value)} /></div>
+                        <div style={{ backgroundColor: 'rgba(60, 200, 90, 0.15)' }}>Y<input type="number" step="0.125" value={fmt4(selectedBoard.position[1])} onChange={e => updateVector('position', 1, e.target.value)} /></div>
+                        <div style={{ backgroundColor: 'rgba(60, 150, 255, 0.15)' }}>Z<input type="number" step="0.125" value={fmt4(selectedBoard.position[2])} onChange={e => updateVector('position', 2, e.target.value)} /></div>
+                    </div>
+                    <button style={{ marginTop: '8px', width: '100%' }} className="primary-btn" onClick={dropBoardToFloor}>↓ Set on Floor</button>
+                </div>
+                <div className="inspector-section">
+                    <h4>Rotation (°)</h4>
+                    <div className="vec3-inputs">
+                        <div style={{ backgroundColor: 'rgba(255, 60, 60, 0.15)' }}>X<input type="number" step="1" value={parseFloat(((selectedBoard.rotation?.[0] ?? 0) * 180 / Math.PI).toFixed(2))} onChange={e => updateRotation(0, parseFloat(e.target.value) || 0)} /></div>
+                        <div style={{ backgroundColor: 'rgba(60, 200, 90, 0.15)' }}>Y<input type="number" step="1" value={parseFloat(((selectedBoard.rotation?.[1] ?? 0) * 180 / Math.PI).toFixed(2))} onChange={e => updateRotation(1, parseFloat(e.target.value) || 0)} /></div>
+                        <div style={{ backgroundColor: 'rgba(60, 150, 255, 0.15)' }}>Z<input type="number" step="1" value={parseFloat(((selectedBoard.rotation?.[2] ?? 0) * 180 / Math.PI).toFixed(2))} onChange={e => updateRotation(2, parseFloat(e.target.value) || 0)} /></div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '4px', marginTop: '6px', flexWrap: 'wrap' }}>
+                        {[['Y 90°', 1, 90], ['Y -90°', 1, -90], ['Y 180°', 1, 180], ['X 90°', 0, 90]].map(([label, ax, deg]) => (
+                            <button key={label} className="nav-btn"
+                                style={{ padding: '3px 7px', fontSize: '0.68rem', border: '1px solid var(--border-color)' }}
+                                onClick={() => updateRotation(ax, (selectedBoard.rotation?.[ax] ?? 0) * 180 / Math.PI + deg)}>
+                                +{label}
+                            </button>
+                        ))}
+                        <div style={{ marginLeft: 'auto', display: 'flex', gap: '4px' }}>
+                            <button className="nav-btn"
+                                title="Bake rotation — remaps size axes to match current orientation, then zeroes rotation"
+                                style={{ padding: '3px 7px', fontSize: '0.68rem', border: '1px solid var(--accent-color)', color: 'var(--accent-color)' }}
+                                onClick={applyRotation}>
+                                Apply
+                            </button>
+                            <button className="nav-btn"
+                                style={{ padding: '3px 7px', fontSize: '0.68rem', border: '1px solid var(--border-color)' }}
+                                onClick={resetRotation}>
+                                Reset
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                {/* ── Shape Picker ── */}
+                <div className="inspector-card">
                     <h4>Shape</h4>
                     <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '4px' }}>
-                        {['box', 'taper'].map(s => (
+                        {['box', 'taper', 'cylinder', 'arc', 'cove', 'hole'].map(s => (
                             <button
                                 key={s}
                                 onClick={() => {
                                     pushHistory();
-                                    const patch = s === 'box'
-                                        ? { shape: undefined, taper: undefined }
-                                        : { shape: 'taper', taper: { outerCorner: 'fl', angleZ: 2, angleX: 2 } };
+                                    let patch;
+                                    if (s === 'box') {
+                                        patch = { shape: undefined, taper: undefined, cylinder: undefined, arc: undefined, cove: undefined, hole: undefined };
+                                    } else if (s === 'taper') {
+                                        patch = { shape: 'taper', taper: { outerCorner: 'fl', angleZ: 2, angleX: 2 }, cylinder: undefined, arc: undefined, cove: undefined, hole: undefined };
+                                    } else if (s === 'cylinder') {
+                                        const r = Math.min(selectedBoard.size[0], selectedBoard.size[2]) / 2;
+                                        const h = selectedBoard.size[1];
+                                        patch = { shape: 'cylinder', cylinder: { radius: r, axis: 'y' }, size: [r * 2, h, r * 2], taper: undefined, arc: undefined, cove: undefined, hole: undefined };
+                                    } else if (s === 'arc') {
+                                        patch = { shape: 'arc', arc: { startAngle: 0, endAngle: 90, innerRadius: 0, axis: 'y' }, taper: undefined, cylinder: undefined, cove: undefined, hole: undefined };
+                                    } else if (s === 'cove') {
+                                        patch = { shape: 'cove', cove: { edge: 'top', depth: 2, axis: 'z' }, taper: undefined, cylinder: undefined, arc: undefined, hole: undefined };
+                                    } else if (s === 'hole') {
+                                        patch = { shape: 'hole', hole: { radius: 2, offsetX: 0, offsetY: 0, axis: 'z' }, taper: undefined, cylinder: undefined, arc: undefined, cove: undefined };
+                                    }
                                     setBoards(prev => prev.map(bd =>
                                         bd.id === selectedBoard.id ? { ...bd, ...patch } : bd
                                     ));
@@ -475,7 +528,7 @@ const InspectorPanel = () => {
                                     transition: 'all 0.15s',
                                 }}
                             >
-                                {s === 'box' ? '■ Box' : '◢ Taper'}
+                                {s === 'box' ? '■ Box' : s === 'taper' ? '◢ Taper' : s === 'cylinder' ? '○ Cylinder' : s === 'arc' ? '◠ Arc' : s === 'cove' ? '◡ Cove' : '◎ Hole'}
                             </button>
                         ))}
                     </div>
@@ -551,46 +604,214 @@ const InspectorPanel = () => {
                             </div>
                         );
                     })()}
-                </div>
 
-                <div className="inspector-section">
-                    <h4>Position (in)</h4>
-                    <div className="vec3-inputs">
-                        <div style={{ backgroundColor: 'rgba(255, 60, 60, 0.15)' }}>X<input type="number" step="0.125" value={fmt4(selectedBoard.position[0])} onChange={e => updateVector('position', 0, e.target.value)} /></div>
-                        <div style={{ backgroundColor: 'rgba(60, 200, 90, 0.15)' }}>Y<input type="number" step="0.125" value={fmt4(selectedBoard.position[1])} onChange={e => updateVector('position', 1, e.target.value)} /></div>
-                        <div style={{ backgroundColor: 'rgba(60, 150, 255, 0.15)' }}>Z<input type="number" step="0.125" value={fmt4(selectedBoard.position[2])} onChange={e => updateVector('position', 2, e.target.value)} /></div>
-                    </div>
-                    <button style={{ marginTop: '8px', width: '100%' }} className="primary-btn" onClick={dropBoardToFloor}>↓ Set on Floor</button>
-                </div>
-                <div className="inspector-section">
-                    <h4>Rotation (°)</h4>
-                    <div className="vec3-inputs">
-                        <div style={{ backgroundColor: 'rgba(255, 60, 60, 0.15)' }}>X<input type="number" step="1" value={parseFloat(((selectedBoard.rotation?.[0] ?? 0) * 180 / Math.PI).toFixed(2))} onChange={e => updateRotation(0, parseFloat(e.target.value) || 0)} /></div>
-                        <div style={{ backgroundColor: 'rgba(60, 200, 90, 0.15)' }}>Y<input type="number" step="1" value={parseFloat(((selectedBoard.rotation?.[1] ?? 0) * 180 / Math.PI).toFixed(2))} onChange={e => updateRotation(1, parseFloat(e.target.value) || 0)} /></div>
-                        <div style={{ backgroundColor: 'rgba(60, 150, 255, 0.15)' }}>Z<input type="number" step="1" value={parseFloat(((selectedBoard.rotation?.[2] ?? 0) * 180 / Math.PI).toFixed(2))} onChange={e => updateRotation(2, parseFloat(e.target.value) || 0)} /></div>
-                    </div>
-                    <div style={{ display: 'flex', gap: '4px', marginTop: '6px', flexWrap: 'wrap' }}>
-                        {[['Y 90°', 1, 90], ['Y -90°', 1, -90], ['Y 180°', 1, 180], ['X 90°', 0, 90]].map(([label, ax, deg]) => (
-                            <button key={label} className="nav-btn"
-                                style={{ padding: '3px 7px', fontSize: '0.68rem', border: '1px solid var(--border-color)' }}
-                                onClick={() => updateRotation(ax, (selectedBoard.rotation?.[ax] ?? 0) * 180 / Math.PI + deg)}>
-                                +{label}
-                            </button>
-                        ))}
-                        <div style={{ marginLeft: 'auto', display: 'flex', gap: '4px' }}>
-                            <button className="nav-btn"
-                                title="Bake rotation — remaps size axes to match current orientation, then zeroes rotation"
-                                style={{ padding: '3px 7px', fontSize: '0.68rem', border: '1px solid var(--accent-color)', color: 'var(--accent-color)' }}
-                                onClick={applyRotation}>
-                                Apply
-                            </button>
-                            <button className="nav-btn"
-                                style={{ padding: '3px 7px', fontSize: '0.68rem', border: '1px solid var(--border-color)' }}
-                                onClick={resetRotation}>
-                                Reset
-                            </button>
-                        </div>
-                    </div>
+                    {selectedBoard.shape === 'cylinder' && (() => {
+                        const axis = selectedBoard.cylinder?.axis || 'y';
+                        const axisIdx = axis === 'x' ? 0 : axis === 'z' ? 2 : 1;
+                        
+                        const dim1 = selectedBoard.size[(axisIdx + 1) % 3];
+                        const dim2 = selectedBoard.size[(axisIdx + 2) % 3];
+                        
+                        const radius = selectedBoard.cylinder?.radius ?? Math.min(dim1, dim2) / 2;
+                        const height = selectedBoard.size[axisIdx];
+                        
+                        const setRadius = (val) => {
+                            const r = Math.max(0.0625, parseFloat(val) || 0.0625);
+                            pushHistory();
+                            setBoards(prev => prev.map(bd => {
+                                if (bd.id !== selectedBoard.id) return bd;
+                                const newSize = [...bd.size];
+                                newSize[(axisIdx + 1) % 3] = r * 2;
+                                newSize[(axisIdx + 2) % 3] = r * 2;
+                                return { ...bd, cylinder: { ...(bd.cylinder || {}), radius: r }, size: newSize };
+                            }));
+                        };
+                        const setHeight = (val) => {
+                            const h = Math.max(0.0625, parseFloat(val) || 0.0625);
+                            pushHistory();
+                            setBoards(prev => prev.map(bd => {
+                                if (bd.id !== selectedBoard.id) return bd;
+                                const newSize = [...bd.size];
+                                newSize[axisIdx] = h;
+                                return { ...bd, size: newSize };
+                            }));
+                        };
+                        return (
+                            <div style={{ marginTop: '10px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                                <div>
+                                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Radius (in)</div>
+                                    <input
+                                        type="number" min="0.0625" step="0.125" value={parseFloat(radius.toFixed(4))}
+                                        onChange={e => setRadius(e.target.value)}
+                                        style={{ width: '100%', padding: '5px 8px', background: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '6px', outline: 'none', fontSize: '0.9rem' }}
+                                    />
+                                    <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: '2px' }}>Diam: {(radius * 2).toFixed(4)}"</div>
+                                </div>
+                                <div>
+                                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Height (in)</div>
+                                    <input
+                                        type="number" min="0.0625" step="0.125" value={parseFloat(height.toFixed(4))}
+                                        onChange={e => setHeight(e.target.value)}
+                                        style={{ width: '100%', padding: '5px 8px', background: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '6px', outline: 'none', fontSize: '0.9rem' }}
+                                    />
+                                </div>
+                                <p className="hint" style={{ gridColumn: '1 / -1', marginTop: '2px' }}>
+                                    AABB (for constraints): {selectedBoard.size[0].toFixed(3)}" × {selectedBoard.size[1].toFixed(3)}" × {selectedBoard.size[2].toFixed(3)}"
+                                </p>
+                            </div>
+                        );
+                    })()}
+
+                    {/* ── Arc controls ── */}
+                    {selectedBoard.shape === 'arc' && (() => {
+                        const { startAngle = 0, endAngle = 90, innerRadius = 0, axis = 'y' } = selectedBoard.arc || {};
+                        const setArc = (patch) => {
+                            pushHistory();
+                            setBoards(prev => prev.map(bd =>
+                                bd.id === selectedBoard.id ? { ...bd, arc: { ...bd.arc, ...patch } } : bd
+                            ));
+                        };
+                        return (
+                            <div style={{ marginTop: '10px' }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                                    <div>
+                                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Start Angle (°)</div>
+                                        <input
+                                            type="number" step="1" value={startAngle}
+                                            onChange={e => setArc({ startAngle: parseFloat(e.target.value) || 0 })}
+                                            style={{ width: '100%', padding: '5px 8px', background: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '6px', outline: 'none', fontSize: '0.9rem' }}
+                                        />
+                                    </div>
+                                    <div>
+                                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>End Angle (°)</div>
+                                        <input
+                                            type="number" step="1" value={endAngle}
+                                            onChange={e => setArc({ endAngle: parseFloat(e.target.value) || 0 })}
+                                            style={{ width: '100%', padding: '5px 8px', background: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '6px', outline: 'none', fontSize: '0.9rem' }}
+                                        />
+                                    </div>
+                                    <div>
+                                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Cutout to Leave (in)</div>
+                                        <input
+                                            type="number" min="0" step="0.25" value={parseFloat(innerRadius.toFixed(4))}
+                                            onChange={e => setArc({ innerRadius: Math.max(0, parseFloat(e.target.value) || 0) })}
+                                            style={{ width: '100%', padding: '5px 8px', background: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '6px', outline: 'none', fontSize: '0.9rem' }}
+                                        />
+                                    </div>
+                                    <div>
+                                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Extrude Axis</div>
+                                        <div style={{ display: 'flex', gap: '2px' }}>
+                                            {['x', 'y', 'z'].map(a => (
+                                                <button key={a} onClick={() => setArc({ axis: a })} style={{ flex: 1, padding: '5px', fontSize: '0.8rem', borderRadius: '4px', border: axis === a ? '1px solid rgba(188,138,95,0.8)' : '1px solid var(--border-color)', background: axis === a ? 'rgba(188,138,95,0.2)' : 'transparent', color: axis === a ? 'var(--accent-color)' : 'var(--text-muted)', cursor: 'pointer' }}>
+                                                    {a.toUpperCase()}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                                <p className="hint" style={{ marginTop: '6px' }}>Arc fits exactly inside the Bounding Box Size section above.</p>
+                            </div>
+                        );
+                    })()}
+
+                    {/* ── Cove controls ── */}
+                    {selectedBoard.shape === 'cove' && (() => {
+                        const { edge = 'top', depth = 2, axis = 'y' } = selectedBoard.cove || {};
+                        const setCove = (patch) => {
+                            pushHistory();
+                            setBoards(prev => prev.map(bd =>
+                                bd.id === selectedBoard.id ? { ...bd, cove: { ...bd.cove, ...patch } } : bd
+                            ));
+                        };
+                        return (
+                            <div style={{ marginTop: '10px' }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                                    <div>
+                                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Edge</div>
+                                        <select
+                                            value={edge}
+                                            onChange={e => setCove({ edge: e.target.value })}
+                                            style={{ width: '100%', padding: '5px 8px', background: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '6px', outline: 'none', fontSize: '0.9rem', cursor: 'pointer' }}
+                                        >
+                                            <option value="top">Top</option>
+                                            <option value="bottom">Bottom</option>
+                                            <option value="left">Left</option>
+                                            <option value="right">Right</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Depth (in)</div>
+                                        <input
+                                            type="number" min="0" step="0.25" value={parseFloat(depth.toFixed(4))}
+                                            onChange={e => setCove({ depth: Math.max(0, parseFloat(e.target.value) || 0) })}
+                                            style={{ width: '100%', padding: '5px 8px', background: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '6px', outline: 'none', fontSize: '0.9rem' }}
+                                        />
+                                    </div>
+                                    <div style={{ gridColumn: '1 / -1' }}>
+                                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Axis</div>
+                                        <div style={{ display: 'flex', gap: '2px' }}>
+                                            {['x', 'y', 'z'].map(a => (
+                                                <button key={a} onClick={() => setCove({ axis: a })} style={{ flex: 1, padding: '5px', fontSize: '0.8rem', borderRadius: '4px', border: axis === a ? '1px solid rgba(188,138,95,0.8)' : '1px solid var(--border-color)', background: axis === a ? 'rgba(188,138,95,0.2)' : 'transparent', color: axis === a ? 'var(--accent-color)' : 'var(--text-muted)', cursor: 'pointer' }}>
+                                                    {a.toUpperCase()}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })()}
+
+                    {/* ── Hole controls ── */}
+                    {selectedBoard.shape === 'hole' && (() => {
+                        const { radius = 2, offsetX = 0, offsetY = 0, axis = 'y' } = selectedBoard.hole || {};
+                        const setHole = (patch) => {
+                            pushHistory();
+                            setBoards(prev => prev.map(bd =>
+                                bd.id === selectedBoard.id ? { ...bd, hole: { ...bd.hole, ...patch } } : bd
+                            ));
+                        };
+                        return (
+                            <div style={{ marginTop: '10px' }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '8px' }}>
+                                    <div style={{ gridColumn: '1 / -1' }}>
+                                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Hole Radius (in)</div>
+                                        <input
+                                            type="number" min="0.125" step="0.125" value={parseFloat(radius.toFixed(4))}
+                                            onChange={e => setHole({ radius: Math.max(0, parseFloat(e.target.value) || 0) })}
+                                            style={{ width: '100%', padding: '5px 8px', background: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '6px', outline: 'none', fontSize: '0.9rem' }}
+                                        />
+                                    </div>
+                                    <div>
+                                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Offset X (in)</div>
+                                        <input
+                                            type="number" step="0.25" value={parseFloat(offsetX.toFixed(4))}
+                                            onChange={e => setHole({ offsetX: parseFloat(e.target.value) || 0 })}
+                                            style={{ width: '100%', padding: '5px 8px', background: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '6px', outline: 'none', fontSize: '0.9rem' }}
+                                        />
+                                    </div>
+                                    <div>
+                                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Offset Y (in)</div>
+                                        <input
+                                            type="number" step="0.25" value={parseFloat(offsetY.toFixed(4))}
+                                            onChange={e => setHole({ offsetY: parseFloat(e.target.value) || 0 })}
+                                            style={{ width: '100%', padding: '5px 8px', background: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '6px', outline: 'none', fontSize: '0.9rem' }}
+                                        />
+                                    </div>
+                                    <div style={{ gridColumn: '1 / -1' }}>
+                                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Axis</div>
+                                        <div style={{ display: 'flex', gap: '2px' }}>
+                                            {['x', 'y', 'z'].map(a => (
+                                                <button key={a} onClick={() => setHole({ axis: a })} style={{ flex: 1, padding: '5px', fontSize: '0.8rem', borderRadius: '4px', border: axis === a ? '1px solid rgba(188,138,95,0.8)' : '1px solid var(--border-color)', background: axis === a ? 'rgba(188,138,95,0.2)' : 'transparent', color: axis === a ? 'var(--accent-color)' : 'var(--text-muted)', cursor: 'pointer' }}>
+                                                    {a.toUpperCase()}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })()}
                 </div>
                 {/* ── Material ── */}
                 {(() => {
@@ -600,7 +821,7 @@ const InspectorPanel = () => {
                         ? 'Paint'
                         : (WOOD_CATALOGUE[mat.id]?.label ?? mat.id);
                     return (
-                        <div className="inspector-section">
+                        <div className="inspector-card">
                             <h4>Material</h4>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '4px' }}>
                                 <div style={{
@@ -753,7 +974,7 @@ const InspectorPanel = () => {
                     };
 
                     return (
-                        <div className="inspector-section">
+                        <div className="inspector-card">
                             <h4>Joint</h4>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
                                 <button
@@ -776,7 +997,7 @@ const InspectorPanel = () => {
                         </div>
                     );
                 })()}
-                <div className="inspector-section">
+                <div className="inspector-card">
                     <h4>Active Constraints</h4>
                     {boardConstraints.length === 0 ? (
                         <div className="hint" style={{ marginTop: 0 }}>No relational constraints set.</div>
@@ -838,11 +1059,11 @@ const InspectorPanel = () => {
                         </div>
                     )}
                 </div>
-                <div className="inspector-section">
+                <div className="inspector-card">
                     <h4>Parent Node:</h4>
                     <div style={{ fontSize: '0.85rem', color: 'var(--text-main)', marginBottom: '8px' }}><strong>{selectedBoard.parentId}</strong></div>
                 </div>
-                <div className="inspector-section">
+                <div className="inspector-card">
                     <h4>Clone Component</h4>
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '8px' }}>
                         <span style={{ fontSize: '0.82rem' }}>Offset (in):</span>

@@ -48,6 +48,12 @@ const useStore = create((set, get) => ({
     showMaterialsPanel: false,
     setShowMaterialsPanel: (v) => set({ showMaterialsPanel: typeof v === 'function' ? v(get().showMaterialsPanel) : v }),
 
+    showAddComponentPanel: false,
+    setShowAddComponentPanel: (v) => set({ showAddComponentPanel: typeof v === 'function' ? v(get().showAddComponentPanel) : v }),
+
+    showOutlinerPanel: true,
+    setShowOutlinerPanel: (v) => set({ showOutlinerPanel: typeof v === 'function' ? v(get().showOutlinerPanel) : v }),
+
     isRightPanelOpen: true,
     setIsRightPanelOpen: (v) => set({ isRightPanelOpen: typeof v === 'function' ? v(get().isRightPanelOpen) : v }),
 

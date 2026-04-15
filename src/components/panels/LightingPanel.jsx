@@ -79,7 +79,7 @@ const LightEditor = ({ light, onUpdate, onRemove }) => {
     const isRectArea = light.type === 'rectarea';
 
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '10px', background: 'rgba(0,0,0,0.12)', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '10px', background: 'rgba(0,0,0,0.25)', borderRadius: '0 0 6px 6px', border: '1px solid var(--border-color)', borderTop: 'none', margin: 0, marginTop: '-1px' }}>
             {/* Name */}
             <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                 <input
@@ -273,16 +273,16 @@ const LightingPanel = () => {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', height: '100%' }}>
 
             {/* ── Preset row ── */}
-            <div>
+            <div className="inspector-card">
                 <span style={label}>Preset</span>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '6px' }}>
                     {PRESET_KEYS.map(key => (
                         <button
                             key={key}
                             onClick={() => applyPreset(key)}
                             style={{
-                                padding: '4px 10px', fontSize: '0.72rem', borderRadius: '12px', cursor: 'pointer',
-                                background: lighting?.presetKey === key ? 'rgba(188,138,95,0.25)' : 'rgba(0,0,0,0.12)',
+                                padding: '4px 10px', fontSize: '0.72rem', borderRadius: '4px', cursor: 'pointer',
+                                background: lighting?.presetKey === key ? 'rgba(188,138,95,0.25)' : 'rgba(0,0,0,0.2)',
                                 border: `1px solid ${lighting?.presetKey === key ? 'var(--accent-color)' : 'var(--border-color)'}`,
                                 color: lighting?.presetKey === key ? 'var(--accent-color)' : 'var(--text-muted)',
                                 fontWeight: lighting?.presetKey === key ? 700 : 400,
@@ -315,12 +315,13 @@ const LightingPanel = () => {
                     <div key={light.id}>
                         {/* Summary row — always visible */}
                         <div
+                            className="inspector-card"
                             style={{
                                 display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 8px',
-                                background: expandedId === light.id ? 'rgba(188,138,95,0.08)' : 'rgba(0,0,0,0.08)',
+                                background: expandedId === light.id ? 'rgba(188,138,95,0.08)' : 'rgba(255,255,255,0.03)',
                                 border: `1px solid ${expandedId === light.id ? 'var(--accent-color)' : 'var(--border-color)'}`,
                                 borderRadius: expandedId === light.id ? '6px 6px 0 0' : '6px',
-                                cursor: 'pointer', transition: 'all 0.15s',
+                                cursor: 'pointer', transition: 'all 0.15s', margin: 0
                             }}
                             onClick={() => setExpandedId(expandedId === light.id ? null : light.id)}
                         >
@@ -353,7 +354,7 @@ const LightingPanel = () => {
 
                         {/* Expanded editor */}
                         {expandedId === light.id && (
-                            <div style={{ borderTop: 'none', borderRadius: '0 0 6px 6px', overflow: 'hidden' }}>
+                            <div>
                                 <LightEditor
                                     light={light}
                                     onUpdate={patch => patchLight(light.id, patch)}

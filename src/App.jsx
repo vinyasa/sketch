@@ -12,6 +12,7 @@ import CutListPanel from './components/panels/CutListPanel';
 import AssemblyLibraryPanel from './components/panels/AssemblyLibraryPanel';
 import LightingPanel from './components/panels/LightingPanel';
 import MaterialsPanel from './components/panels/MaterialsPanel';
+import AddComponentPanel from './components/panels/AddComponentPanel';
 import NewBoardDialog from './components/dialogs/NewBoardDialog';
 import useStore from './store/useStore';
 
@@ -23,7 +24,10 @@ export default function App() {
         showAssemblyLibrary,
         showLightingPanel,
         showMaterialsPanel,
+        showAddComponentPanel,
+        showOutlinerPanel,
         isRightPanelOpen,
+        selectedItemIds,
         toast,
         confirmDialog, setConfirmDialog,
         // Settings for App mount
@@ -82,13 +86,17 @@ export default function App() {
                                 </DraggablePanel>
                             )}
 
-                            <DraggablePanel title="Outliner" defaultPosition={{ x: window.innerWidth - 270, y: 80 }}>
-                                <OutlinerPanel />
-                            </DraggablePanel>
+                            {showOutlinerPanel && (
+                                <DraggablePanel title="Outliner" defaultPosition={{ x: window.innerWidth - 270, y: 80 }}>
+                                    <OutlinerPanel />
+                                </DraggablePanel>
+                            )}
 
-                            <DraggablePanel title="Inspector" defaultPosition={{ x: window.innerWidth - 540, y: 80 }} onFocusCapture={(e) => { if (e.target.tagName === 'INPUT') pushHistory(); }}>
-                                <InspectorPanel />
-                            </DraggablePanel>
+                            {selectedItemIds.length > 0 && (
+                                <DraggablePanel title="Inspector" defaultPosition={{ x: window.innerWidth - 540, y: 80 }} defaultSize={{ width: 375 }} onFocusCapture={(e) => { if (e.target.tagName === 'INPUT') pushHistory(); }}>
+                                    <InspectorPanel />
+                                </DraggablePanel>
+                            )}
                         </div>
                     </aside>
 
@@ -113,6 +121,12 @@ export default function App() {
                     {showMaterialsPanel && (
                         <DraggablePanel title="🎨 Materials" defaultPosition={{ x: 700, y: 100 }} defaultSize={{ width: 290 }}>
                             <MaterialsPanel />
+                        </DraggablePanel>
+                    )}
+
+                    {showAddComponentPanel && (
+                        <DraggablePanel title="＋ Add Component" defaultPosition={{ x: window.innerWidth / 2 - 130, y: 100 }} defaultSize={{ width: 260 }}>
+                            <AddComponentPanel />
                         </DraggablePanel>
                     )}
                 </main>

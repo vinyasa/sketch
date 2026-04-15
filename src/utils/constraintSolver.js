@@ -1,3 +1,5 @@
+import { Box3, Euler, Matrix4, Vector3 } from 'three';
+
 /**
  * Constraint Solver — Central Index Edition
  *
@@ -20,10 +22,62 @@ export const faceToAxis = (faceStr) => {
     return c === 'x' ? 0 : c === 'y' ? 1 : 2;
 };
 
-/** World-space position of a face center on a (non-rotated) board. */
+/**
+ * Compute the true world-space AABB of a board, accounting for any rotation.
+ * For unrotated boards this is just position ± size/2 per axis.
+ * For rotated boards we transform all 8 corners and recompute the enclosing box.
+ *
+ * @param {Object} board  — { position, size, rotation? }
+ * @returns {THREE.Box3}
+ */
+export const getRotatedBoardAABB = (board) => {
+    const [px, py, pz] = board.position;
+    const [sx, sy, sz] = board.size;
+
+    // Local box centred at origin
+    const box = new Box3(
+        new Vector3(-sx / 2, -sy / 2, -sz / 2),
+        new Vector3( sx / 2,  sy / 2,  sz / 2)
+    );
+
+    const [rx, ry, rz] = board.rotation || [0, 0, 0];
+    if (rx === 0 && ry === 0 && rz === 0) {
+        // Fast path — just translate
+        box.translate(new Vector3(px, py, pz));
+        return box;
+    }
+
+    // Build rotation + translation matrix (Three.js XYZ Euler order)
+    const matrix = new Matrix4();
+    matrix.makeRotationFromEuler(new Euler(rx, ry, rz, 'XYZ'));
+    matrix.setPosition(px, py, pz);
+
+    // applyMatrix4 transforms all 8 corners and recomputes the enclosing AABB
+    box.applyMatrix4(matrix);
+    return box;
+};
+
+/**
+ * World-space position of a face centre on a board.
+ * For rotated boards the face position is the AABB extremal extent on that axis
+ * (the furthest point the board reaches in that direction), which is the
+ * geometrically correct attachment point for Flush/Glue constraint lines.
+ */
 export const getFaceWorldPos = (board, faceStr) => {
     const axis = faceToAxis(faceStr);
     const sign = faceStr[1] === '+' ? 1 : -1;
+
+    const [rx, ry, rz] = board.rotation || [0, 0, 0];
+    if (rx !== 0 || ry !== 0 || rz !== 0) {
+        const aabb  = getRotatedBoardAABB(board);
+        const extent = aabb.toArray(); // [minX,minY,minZ, maxX,maxY,maxZ]
+        // min is indices 0-2, max is 3-5
+        const pos = [...board.position];
+        pos[axis] = sign === 1 ? aabb.max.getComponent(axis) : aabb.min.getComponent(axis);
+        return pos;
+    }
+
+    // Fast path for unrotated boards
     const pos = [...board.position];
     pos[axis] += (board.size[axis] / 2) * sign;
     return pos;
@@ -214,18 +268,37 @@ export const propagateMove = (movingIds, delta, constraints) => {
  * @returns {number[]|null} New [x,y,z] position for boardA
  */
 export const solveFlushSnap = (boardA, faceA, boardB, faceB) => {
-    const axis = faceToAxis(faceA);
+    const axis  = faceToAxis(faceA);
     const signA = faceA[1] === '+' ? 1 : -1;
     const signB = faceB[1] === '+' ? 1 : -1;
 
-    // Target plane: boardB's faceB world position
-    const targetPlane = boardB.position[axis] + (boardB.size[axis] / 2) * signB;
+    // ── Target plane: where boardB's faceB sits in world space ──────────────
+    const [rbx, rby, rbz] = boardB.rotation || [0, 0, 0];
+    let targetPlane;
+    if (rbx !== 0 || rby !== 0 || rbz !== 0) {
+        const aabbB = getRotatedBoardAABB(boardB);
+        targetPlane = signB === 1
+            ? aabbB.max.getComponent(axis)
+            : aabbB.min.getComponent(axis);
+    } else {
+        targetPlane = boardB.position[axis] + (boardB.size[axis] / 2) * signB;
+    }
 
-    // boardA's faceA offset from its center
-    const offsetA = (boardA.size[axis] / 2) * signA;
+    // ── Half-extent of boardA's face from its centre ─────────────────────────
+    const [rax, ray, raz] = boardA.rotation || [0, 0, 0];
+    let halfExtentA;
+    if (rax !== 0 || ray !== 0 || raz !== 0) {
+        const aabbA = getRotatedBoardAABB(boardA);
+        // Distance from boardA's centre to its AABB face on this axis
+        halfExtentA = signA === 1
+            ? aabbA.max.getComponent(axis) - boardA.position[axis]
+            : boardA.position[axis] - aabbA.min.getComponent(axis);
+    } else {
+        halfExtentA = boardA.size[axis] / 2;
+    }
 
-    // New center for boardA: targetPlane = boardA.position[axis] + offsetA
+    // New centre for boardA so that its AABB face lands on targetPlane
     const newPos = [...boardA.position];
-    newPos[axis] = targetPlane - offsetA;
+    newPos[axis] = targetPlane - halfExtentA * signA;
     return newPos;
 };

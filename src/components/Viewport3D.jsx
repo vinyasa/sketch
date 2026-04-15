@@ -320,6 +320,237 @@ const TaperGeometry = ({ b }) => {
   return <primitive object={geo} attach="geometry" />;
 };
 
+const CylinderShapeGeometry = ({ b }) => {
+  const axis = b.cylinder?.axis || 'y';
+  const axisIdx = axis === 'x' ? 0 : axis === 'z' ? 2 : 1;
+  
+  // Radius is determined by the two dimensions that are NOT the primary axis.
+  const dim1 = b.size[(axisIdx + 1) % 3];
+  const dim2 = b.size[(axisIdx + 2) % 3];
+  const radius = Math.min(dim1, dim2) / 2;
+  const height = b.size[axisIdx];
+  
+  const geo = useMemo(() => {
+    const g = new THREE.CylinderGeometry(radius, radius, height, 64, 1);
+    // Cylinder geometry intrinsically runs along the Y axis.
+    if (axis === 'x') g.rotateZ(Math.PI / 2);
+    if (axis === 'z') g.rotateX(Math.PI / 2);
+    return g;
+  }, [radius, height, axis]);
+
+  return <primitive object={geo} attach="geometry" />;
+};
+
+const ArcShapeGeometry = ({ b }) => {
+  const { startAngle = 0, endAngle = 90, innerRadius = 0, axis = 'y' } = b.arc || {};
+  const axisIdx = axis === 'x' ? 0 : axis === 'z' ? 2 : 1;
+  const thickness = b.size[axisIdx];
+  
+  // Map world AABB dimensions to the local drawing plane (XY)
+  let dimX, dimY;
+  if (axis === 'y') {
+    // rotateX(-PI/2): Local X -> World X. Local Y -> World -Z.
+    dimX = b.size[0];
+    dimY = b.size[2];
+  } else if (axis === 'x') {
+    // rotateY(PI/2): Local X -> World -Z. Local Y -> World Y.
+    dimX = b.size[2];
+    dimY = b.size[1];
+  } else {
+    // No rotation (z-axis extrude): Local X -> World X. Local Y -> World Y.
+    dimX = b.size[0];
+    dimY = b.size[1];
+  }
+
+  const geo = useMemo(() => {
+    const shape = new THREE.Shape();
+    const startRad = THREE.MathUtils.degToRad(startAngle);
+    const endRad = THREE.MathUtils.degToRad(endAngle);
+    
+    // Draw the outer curve
+    shape.absellipse(0, 0, dimX, dimY, startRad, endRad, false, 0);
+    
+    if (innerRadius === 0) {
+      shape.lineTo(0, 0);
+    } else {
+      const irX = Math.max(0.01, dimX - innerRadius);
+      const irY = Math.max(0.01, dimY - innerRadius);
+      shape.lineTo(Math.cos(endRad) * irX, Math.sin(endRad) * irY);
+      // Reverse inner curve to create the hollow border
+      shape.absellipse(0, 0, irX, irY, endRad, startRad, true, 0);
+    }
+    
+    const extrudeSettings = { depth: thickness, bevelEnabled: false, curveSegments: 32 };
+    const g = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+    
+    // Center the extrusion locally
+    g.computeBoundingBox();
+    const center = new THREE.Vector3();
+    g.boundingBox.getCenter(center);
+    g.translate(-center.x, -center.y, -center.z);
+    
+    // Rotate to match the requested axis (ExtrudeGeometry extrudes along Z)
+    if (axis === 'y') g.rotateX(-Math.PI / 2);
+    if (axis === 'x') g.rotateY(Math.PI / 2);
+    
+    // Force scale so its visual bounding box perfectly matches the component's AABB
+    g.computeBoundingBox();
+    const size = new THREE.Vector3();
+    g.boundingBox.getSize(size);
+    const scaleX = b.size[0] / (size.x || 1);
+    const scaleY = b.size[1] / (size.y || 1);
+    const scaleZ = b.size[2] / (size.z || 1);
+    g.scale(scaleX, scaleY, scaleZ);
+
+    return g;
+  }, [b.size, startAngle, endAngle, innerRadius, axis, thickness, dimX, dimY]);
+
+  return <primitive object={geo} attach="geometry" />;
+};
+
+const CoveShapeGeometry = ({ b }) => {
+  const { edge = 'top', depth = 2, axis = 'y' } = b.cove || {};
+  const axisIdx = axis === 'x' ? 0 : axis === 'z' ? 2 : 1;
+  const thickness = b.size[axisIdx];
+  
+  let dimX, dimY;
+  if (axis === 'y') { dimX = b.size[0]; dimY = b.size[2]; }
+  else if (axis === 'x') { dimX = b.size[2]; dimY = b.size[1]; }
+  else { dimX = b.size[0]; dimY = b.size[1]; }
+
+  const geo = useMemo(() => {
+    const shape = new THREE.Shape();
+    
+    // Bottom edge
+    if (edge === 'bottom') {
+      shape.moveTo(0, 0);
+      shape.absellipse(dimX / 2, 0, dimX / 2, depth, Math.PI, 0, true, 0);
+    } else {
+      shape.moveTo(0, 0);
+      shape.lineTo(dimX, 0);
+    }
+    
+    // Right edge
+    if (edge === 'right') {
+      shape.absellipse(dimX, dimY / 2, depth, dimY / 2, -Math.PI / 2, Math.PI / 2, true, 0);
+    } else {
+      shape.lineTo(dimX, dimY);
+    }
+    
+    // Top edge
+    if (edge === 'top') {
+      shape.absellipse(dimX / 2, dimY, dimX / 2, depth, 0, Math.PI, true, 0);
+    } else {
+      shape.lineTo(0, dimY);
+    }
+    
+    // Left edge
+    if (edge === 'left') {
+      shape.absellipse(0, dimY / 2, depth, dimY / 2, Math.PI / 2, -Math.PI / 2, true, 0);
+    } else {
+      shape.lineTo(0, 0);
+    }
+
+    const extrudeSettings = { depth: thickness, bevelEnabled: false, curveSegments: 32 };
+    const g = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+    
+    g.translate(-dimX/2, -dimY/2, -thickness/2);
+    if (axis === 'y') g.rotateX(-Math.PI / 2);
+    if (axis === 'x') g.rotateY(Math.PI / 2);
+    
+    // Explicit scale to enforce exact AABB if floating point error occurs.
+    g.computeBoundingBox();
+    const size = new THREE.Vector3();
+    g.boundingBox.getSize(size);
+    const scaleX = b.size[0] / (size.x || 1);
+    const scaleY = b.size[1] / (size.y || 1);
+    const scaleZ = b.size[2] / (size.z || 1);
+    g.scale(scaleX, scaleY, scaleZ);
+
+    return g;
+  }, [b.size, edge, depth, axis, thickness, dimX, dimY]);
+
+  return <primitive object={geo} attach="geometry" />;
+};
+
+const HoleShapeGeometry = ({ b }) => {
+  const { radius = 2, offsetX = 0, offsetY = 0, axis = 'y' } = b.hole || {};
+  const axisIdx = axis === 'x' ? 0 : axis === 'z' ? 2 : 1;
+  const thickness = b.size[axisIdx];
+  
+  let dimX, dimY;
+  if (axis === 'y') { dimX = b.size[0]; dimY = b.size[2]; }
+  else if (axis === 'x') { dimX = b.size[2]; dimY = b.size[1]; }
+  else { dimX = b.size[0]; dimY = b.size[1]; }
+
+  const geo = useMemo(() => {
+    const shape = new THREE.Shape();
+    shape.moveTo(0, 0);
+    shape.lineTo(dimX, 0);
+    shape.lineTo(dimX, dimY);
+    shape.lineTo(0, dimY);
+    shape.lineTo(0, 0);
+    
+    const hole = new THREE.Path();
+    const holeCenter = { x: dimX / 2 + offsetX, y: dimY / 2 + offsetY };
+    hole.absellipse(holeCenter.x, holeCenter.y, radius, radius, 0, Math.PI * 2, false, 0);
+    shape.holes.push(hole);
+    
+    const extrudeSettings = { depth: thickness, bevelEnabled: false, curveSegments: 32 };
+    const g = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+    
+    g.translate(-dimX/2, -dimY/2, -thickness/2);
+    if (axis === 'y') g.rotateX(-Math.PI / 2);
+    if (axis === 'x') g.rotateY(Math.PI / 2);
+    
+    g.computeBoundingBox();
+    const size = new THREE.Vector3();
+    g.boundingBox.getSize(size);
+    const scaleX = b.size[0] / (size.x || 1);
+    const scaleY = b.size[1] / (size.y || 1);
+    const scaleZ = b.size[2] / (size.z || 1);
+    g.scale(scaleX, scaleY, scaleZ);
+
+    return g;
+  }, [b.size, radius, offsetX, offsetY, axis, thickness, dimX, dimY]);
+
+  return <primitive object={geo} attach="geometry" />;
+};
+
+const getSemanticFace = (e, b) => {
+  const hasBoxFaces = !b.shape || b.shape === 'taper';
+  if (hasBoxFaces && e.faceIndex !== undefined) {
+    return ['x+', 'x-', 'y+', 'y-', 'z+', 'z-'][Math.floor(e.faceIndex / 2)];
+  }
+  // For curved geometries (cylinder/disc), the mesh triangles don't map to the 6 bounding box faces.
+  // Instead, convert the click point to local space and see which AABB plane it's closest to.
+  // E.g. clicking the side of a cylinder at (R, 0, 0) will be closest to the x+ plane (x=R).
+  if (e.point && e.object) {
+    const localPt = e.object.worldToLocal(e.point.clone());
+    const hw = b.size[0] / 2;
+    const hh = b.size[1] / 2;
+    const hd = b.size[2] / 2;
+    const dists = {
+      'x+': Math.abs(hw - localPt.x),
+      'x-': Math.abs(-hw - localPt.x),
+      'y+': Math.abs(hh - localPt.y),
+      'y-': Math.abs(-hh - localPt.y),
+      'z+': Math.abs(hd - localPt.z),
+      'z-': Math.abs(-hd - localPt.z),
+    };
+    let bestFace = null;
+    let minDist = Infinity;
+    for (const [face, d] of Object.entries(dists)) {
+      if (d < minDist) {
+        minDist = d;
+        bestFace = face;
+      }
+    }
+    return bestFace;
+  }
+  return null;
+};
+
 const BoardMesh = ({ b, selectedItemIds, toggleSelection, textures, showEdges, constraintTargetMode, hoveredFaceData, setHoveredFaceData, modifierActive }) => {
   if (b.visible === false) return null;
   const isSelected = selectedItemIds.includes(b.id.toString());
@@ -340,18 +571,16 @@ const BoardMesh = ({ b, selectedItemIds, toggleSelection, textures, showEdges, c
       receiveShadow
       onClick={(e) => {
         e.stopPropagation(); // stop from bubbling to Canvas onPointerMissed only
-        const faceStr = e.faceIndex !== undefined ? ['x+', 'x-', 'y+', 'y-', 'z+', 'z-'][Math.floor(e.faceIndex / 2)] : null;
+        const faceStr = getSemanticFace(e, b);
         toggleSelection(b.id.toString(), e.shiftKey || e.ctrlKey || e.metaKey, faceStr);
       }}
       onPointerMove={(e) => {
         const isActiveMode = constraintTargetMode && constraintTargetMode.active;
         if (isSelected || isActiveMode) {
           e.stopPropagation();
-          if (e.faceIndex !== undefined) {
-            const fStr = ['x+', 'x-', 'y+', 'y-', 'z+', 'z-'][Math.floor(e.faceIndex / 2)];
-            if (!hoveredFaceData || hoveredFaceData.id !== b.id.toString() || hoveredFaceData.faceStr !== fStr) {
-              setHoveredFaceData({ id: b.id.toString(), faceStr: fStr });
-            }
+          const fStr = getSemanticFace(e, b);
+          if (fStr && (!hoveredFaceData || hoveredFaceData.id !== b.id.toString() || hoveredFaceData.faceStr !== fStr)) {
+            setHoveredFaceData({ id: b.id.toString(), faceStr: fStr });
           }
         }
       }}
@@ -363,7 +592,15 @@ const BoardMesh = ({ b, selectedItemIds, toggleSelection, textures, showEdges, c
     >
       {b.shape === 'taper'
         ? <TaperGeometry b={b} />
-        : <boxGeometry args={b.size} />}
+        : b.shape === 'cylinder'
+          ? <CylinderShapeGeometry b={b} />
+          : b.shape === 'arc'
+            ? <ArcShapeGeometry b={b} />
+            : b.shape === 'cove'
+              ? <CoveShapeGeometry b={b} />
+              : b.shape === 'hole'
+                ? <HoleShapeGeometry b={b} />
+                : <boxGeometry args={b.size} />}
       {(() => {
         const matDesc = normalizeMaterial(b.material);
         // Key forces React to remount the material when type changes,
@@ -397,6 +634,8 @@ const BoardMesh = ({ b, selectedItemIds, toggleSelection, textures, showEdges, c
       {showEdges && <Edges scale={1} threshold={15} color={isSelected ? '#ffffff' : '#222222'} />}
       {((isSelected || (constraintTargetMode && constraintTargetMode.active)) && hoveredFaceData && hoveredFaceData.id === b.id.toString()) && (() => {
         const faceStr = hoveredFaceData.faceStr;
+        // Guard: faceStr may be undefined for curved shapes — bail out cleanly
+        if (!faceStr) return null;
         let pos = [0, 0, 0], rot = [0, 0, 0];
         const w = b.size[0] / 2 + 0.01;
         const h = b.size[1] / 2 + 0.01;

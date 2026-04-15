@@ -597,17 +597,142 @@ export const createActions = (set, get) => ({
 
             const oldSize = [...b.size];
             const newSize = [0, 0, 0];
+            
+            const mapLocalToWorld = []; // index `l` maps to -> { w, sign }
             // For each world axis, find the local axis that most aligns with it
             for (let w = 0; w < 3; w++) {
-                let bestL = 0, bestAbs = 0;
+                let bestL = 0, bestVal = 0, bestAbs = 0;
                 for (let l = 0; l < 3; l++) {
                     const a = Math.abs(R[w][l]);
-                    if (a > bestAbs) { bestAbs = a; bestL = l; }
+                    if (a > bestAbs) { bestAbs = a; bestVal = R[w][l]; bestL = l; }
                 }
                 newSize[w] = oldSize[bestL];
+                mapLocalToWorld[bestL] = { w, sign: Math.sign(bestVal) };
             }
 
-            return { ...b, size: newSize, rotation: [0, 0, 0] };
+            const patch = { size: newSize, rotation: [0, 0, 0] };
+            
+            if (b.shape === 'cylinder') {
+                const oldAxisIdx = b.cylinder?.axis === 'x' ? 0 : b.cylinder?.axis === 'z' ? 2 : 1;
+                const newAxisIdx = mapLocalToWorld[oldAxisIdx]?.w ?? oldAxisIdx;
+                patch.cylinder = { ...b.cylinder, axis: ['x', 'y', 'z'][newAxisIdx] };
+            } 
+            else if (b.shape === 'taper') {
+                const taper = b.taper || { outerCorner: 'fl', angleZ: 2, angleX: 2 };
+                const xSign = taper.outerCorner.endsWith('l') ? -1 : 1;
+                const zSign = taper.outerCorner.startsWith('f') ? 1 : -1;
+                // Map local corner to world
+                const worldX = R[0][0]*xSign + R[0][2]*zSign;
+                const worldZ = R[2][0]*xSign + R[2][2]*zSign;
+                const newCorner = (worldZ > 0 ? 'f' : 'b') + (worldX > 0 ? 'r' : 'l');
+                
+                const mappedToX = [0,1,2].find(l => mapLocalToWorld[l]?.w === 0);
+                const mappedToZ = [0,1,2].find(l => mapLocalToWorld[l]?.w === 2);
+                const newAngleX = mappedToX === 0 ? taper.angleX : mappedToX === 2 ? taper.angleZ : taper.angleX;
+                const newAngleZ = mappedToZ === 2 ? taper.angleZ : mappedToZ === 0 ? taper.angleX : taper.angleZ;
+                
+                patch.taper = { ...taper, outerCorner: newCorner, angleX: newAngleX, angleZ: newAngleZ };
+            }
+            else if (b.shape === 'arc') {
+                const arc = b.arc || { startAngle: 0, endAngle: 90, innerRadius: 0, axis: 'y' };
+                const oldAxisIdx = arc.axis === 'x' ? 0 : arc.axis === 'z' ? 2 : 1;
+                const newAxisIdx = mapLocalToWorld[oldAxisIdx]?.w ?? oldAxisIdx;
+                
+                const rad = d => d * Math.PI / 180;
+                const deg = r => { let d = r * 180 / Math.PI; while(d < 0) d+=360; return d; };
+                
+                const get3DVec = (angle, ax) => {
+                    const r = rad(angle), v = [0, 0, 0];
+                    if (ax === 1) { v[0] = Math.cos(r); v[2] = Math.sin(r); }
+                    else if (ax === 0) { v[2] = Math.cos(r); v[1] = Math.sin(r); }
+                    else { v[0] = Math.cos(r); v[1] = Math.sin(r); }
+                    return v;
+                };
+                
+                const get2DAngle = (v, ax) => {
+                    if (ax === 1) return deg(Math.atan2(v[2], v[0]));
+                    if (ax === 0) return deg(Math.atan2(v[1], v[2]));
+                    return deg(Math.atan2(v[1], v[0]));
+                };
+                
+                const getMappedAngle = (ang) => {
+                    const localV = get3DVec(ang, oldAxisIdx);
+                    const worldV = [
+                        R[0][0]*localV[0] + R[0][1]*localV[1] + R[0][2]*localV[2],
+                        R[1][0]*localV[0] + R[1][1]*localV[1] + R[1][2]*localV[2],
+                        R[2][0]*localV[0] + R[2][1]*localV[1] + R[2][2]*localV[2],
+                    ];
+                    return get2DAngle(worldV, newAxisIdx);
+                };
+                
+                let sA = Math.round(getMappedAngle(arc.startAngle));
+                let eA = Math.round(getMappedAngle(arc.endAngle));
+                
+                // Normalization guarantees continuous clockwise sweep
+                if (Math.abs(eA - sA) > 180) {
+                    if (sA > eA) eA += 360; else sA += 360;
+                }
+                if (sA > eA) { const t = sA; sA = eA; eA = t; }
+                
+                patch.arc = { ...arc, axis: ['x','y','z'][newAxisIdx], startAngle: sA % 360, endAngle: eA % 360 };
+            }
+
+            else if (b.shape === 'cove') {
+                const cove = b.cove || { edge: 'top', depth: 2, axis: 'z' };
+                const oldAxisIdx = cove.axis === 'x' ? 0 : cove.axis === 'z' ? 2 : 1;
+                const newAxisIdx = mapLocalToWorld[oldAxisIdx]?.w ?? oldAxisIdx;
+                
+                const oldDimXIdx = oldAxisIdx === 1 ? 0 : oldAxisIdx === 0 ? 2 : 0;
+                const oldDimYIdx = oldAxisIdx === 1 ? 2 : oldAxisIdx === 0 ? 1 : 1;
+                
+                const mappedToX = mapLocalToWorld[oldDimXIdx];
+                const mappedToY = mapLocalToWorld[oldDimYIdx];
+                
+                const newDimXIdx = newAxisIdx === 1 ? 0 : newAxisIdx === 0 ? 2 : 0;
+                const newDimYIdx = newAxisIdx === 1 ? 2 : newAxisIdx === 0 ? 1 : 1;
+                
+                const oldEdge = cove.edge;
+                let oldVec = [0,0];
+                if (oldEdge === 'right') oldVec = [1, 0];
+                else if (oldEdge === 'left') oldVec = [-1, 0];
+                else if (oldEdge === 'top') oldVec = [0, 1];
+                else if (oldEdge === 'bottom') oldVec = [0, -1];
+                
+                const worldVec = [0, 0, 0];
+                worldVec[mappedToX.w] = oldVec[0] * mappedToX.sign;
+                worldVec[mappedToY.w] = oldVec[1] * mappedToY.sign;
+                
+                const newVec = [worldVec[newDimXIdx], worldVec[newDimYIdx]];
+                let newEdge = cove.edge;
+                if (newVec[0] > 0.5) newEdge = 'right';
+                else if (newVec[0] < -0.5) newEdge = 'left';
+                else if (newVec[1] > 0.5) newEdge = 'top';
+                else if (newVec[1] < -0.5) newEdge = 'bottom';
+                
+                patch.cove = { ...cove, axis: ['x','y','z'][newAxisIdx], edge: newEdge };
+            }
+            else if (b.shape === 'hole') {
+                const hole = b.hole || { radius: 2, offsetX: 0, offsetY: 0, axis: 'z' };
+                const oldAxisIdx = hole.axis === 'x' ? 0 : hole.axis === 'z' ? 2 : 1;
+                const newAxisIdx = mapLocalToWorld[oldAxisIdx]?.w ?? oldAxisIdx;
+                
+                const oldDimXIdx = oldAxisIdx === 1 ? 0 : oldAxisIdx === 0 ? 2 : 0;
+                const oldDimYIdx = oldAxisIdx === 1 ? 2 : oldAxisIdx === 0 ? 1 : 1;
+                
+                const mappedToX = mapLocalToWorld[oldDimXIdx];
+                const mappedToY = mapLocalToWorld[oldDimYIdx];
+                
+                const newDimXIdx = newAxisIdx === 1 ? 0 : newAxisIdx === 0 ? 2 : 0;
+                const newDimYIdx = newAxisIdx === 1 ? 2 : newAxisIdx === 0 ? 1 : 1;
+                
+                const worldOffset = [0, 0, 0];
+                worldOffset[mappedToX.w] = hole.offsetX * mappedToX.sign;
+                worldOffset[mappedToY.w] = hole.offsetY * mappedToY.sign;
+                
+                patch.hole = { ...hole, axis: ['x','y','z'][newAxisIdx], offsetX: worldOffset[newDimXIdx], offsetY: worldOffset[newDimYIdx] };
+            }
+
+            return { ...b, ...patch };
         }));
 
         if (hasFlush) {
@@ -1232,6 +1357,85 @@ export const createActions = (set, get) => ({
         });
     },
 
+    manualAddCylinder: () => {
+        const { selectedItemIds, boards, groups, setNewBoardDialog } = get();
+        const selectedBoard = selectedItemIds.length === 1 && boards.find(b => b.id.toString() === selectedItemIds[0]);
+        const selectedGroup = selectedItemIds.length === 1 && Object.keys(groups).find(k => k === selectedItemIds[0]);
+        const targetParent = selectedGroup || (selectedBoard ? selectedBoard.parentId : 'Workspace');
+
+        const radius = 0.875;    // 1.75" diameter — typical round furniture leg
+        const height = 12;
+        const diameter = radius * 2;
+        setNewBoardDialog({
+            name: 'Cylinder',
+            parentId: targetParent,
+            shape: 'cylinder',
+            cylinder: { radius, axis: 'y' },
+            sizeX: diameter,
+            sizeY: height,
+            sizeZ: diameter,
+            position: [0, height / 2, 0],
+        });
+    },
+
+    manualAddArc: () => {
+        const { selectedItemIds, boards, groups, setNewBoardDialog } = get();
+        const selectedBoard = selectedItemIds.length === 1 && boards.find(b => b.id.toString() === selectedItemIds[0]);
+        const selectedGroup = selectedItemIds.length === 1 && Object.keys(groups).find(k => k === selectedItemIds[0]);
+        const targetParent = selectedGroup || (selectedBoard ? selectedBoard.parentId : 'Workspace');
+
+        const radius = 12; // 12" radius corner piece
+        const thickness = 0.75; // 3/4" material
+        setNewBoardDialog({
+            name: 'Arc / Curve',
+            parentId: targetParent,
+            shape: 'arc',
+            arc: { startAngle: 0, endAngle: 90, innerRadius: 0, axis: 'y' },
+            sizeX: radius,
+            sizeY: thickness,
+            sizeZ: radius,
+            position: [0, thickness / 2, 0],
+        });
+    },
+
+    manualAddCove: () => {
+        const { selectedItemIds, boards, groups, setNewBoardDialog } = get();
+        const selectedBoard = selectedItemIds.length === 1 && boards.find(b => b.id.toString() === selectedItemIds[0]);
+        const selectedGroup = selectedItemIds.length === 1 && Object.keys(groups).find(k => k === selectedItemIds[0]);
+        const targetParent = selectedGroup || (selectedBoard ? selectedBoard.parentId : 'Workspace');
+
+        const width = 12;
+        const height = 4;
+        const thickness = 0.75;
+        setNewBoardDialog({
+            name: 'Cove / Arch',
+            parentId: targetParent,
+            shape: 'cove',
+            cove: { edge: 'top', depth: 2, axis: 'z' },
+            sizeX: width,
+            sizeY: height,
+            sizeZ: thickness,
+            position: [0, height / 2, 0],
+        });
+    },
+
+    manualAddHole: () => {
+        const { selectedItemIds, boards, groups, setNewBoardDialog } = get();
+        const selectedBoard = selectedItemIds.length === 1 && boards.find(b => b.id.toString() === selectedItemIds[0]);
+        const selectedGroup = selectedItemIds.length === 1 && Object.keys(groups).find(k => k === selectedItemIds[0]);
+        const targetParent = selectedGroup || (selectedBoard ? selectedBoard.parentId : 'Workspace');
+
+        const sizeX = 12, sizeY = 12, sizeZ = 0.75;
+        setNewBoardDialog({
+            name: 'Panel with Hole',
+            parentId: targetParent,
+            shape: 'hole',
+            hole: { radius: 2, offsetX: 0, offsetY: 0, axis: 'z' },
+            sizeX, sizeY, sizeZ,
+            position: [0, sizeY / 2, 0],
+        });
+    },
+
     handleAssemblyDelete: () => {
         const { setConfirmDialog, selectedItemIds, groups, pushHistory, boards, setGroups, setBoards, setSelectedItemIds } = get();
         const selectedGroup = selectedItemIds.length === 1 && Object.keys(groups).find(k => k === selectedItemIds[0]);
@@ -1346,9 +1550,13 @@ export const createActions = (set, get) => ({
         pushHistory();
         const newId = Date.now();
 
-        // Carry through shape and taper fields if set in the dialog
-        const boardShape = newBoardDialog.shape;
-        const boardTaper = newBoardDialog.taper;
+        // Carry through shape, taper, and cylinder fields if set in the dialog
+        const boardShape    = newBoardDialog.shape;
+        const boardTaper    = newBoardDialog.taper;
+        const boardCylinder = newBoardDialog.cylinder;
+        const boardArc      = newBoardDialog.arc;
+        const boardCove     = newBoardDialog.cove;
+        const boardHole     = newBoardDialog.hole;
 
         setBoards(prev => [...prev, {
             id: newId,
@@ -1359,8 +1567,12 @@ export const createActions = (set, get) => ({
             material: defaultMaterial,
             joint: 'None',
             constraints: [],
-            ...(boardShape ? { shape: boardShape } : {}),
-            ...(boardTaper ? { taper: boardTaper } : {}),
+            ...(boardShape    ? { shape: boardShape }       : {}),
+            ...(boardTaper    ? { taper: boardTaper }       : {}),
+            ...(boardCylinder ? { cylinder: boardCylinder } : {}),
+            ...(boardArc      ? { arc: boardArc }           : {}),
+            ...(boardCove     ? { cove: boardCove }         : {}),
+            ...(boardHole     ? { hole: boardHole }         : {}),
         }]);
         setSelectedItemIds([newId.toString()]);
         setNewBoardDialog(null);

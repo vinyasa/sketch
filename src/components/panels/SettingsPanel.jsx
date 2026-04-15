@@ -19,7 +19,7 @@ const SettingsPanel = () => {
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', padding: '8px', color: 'var(--text-main)' }}>
 
-            <div>
+            <div className="inspector-card">
                 <label style={{ fontWeight: '600', opacity: 0.85, display: 'block', marginBottom: '8px' }}>Measurement System</label>
                 <select className="nav-btn" value={units} onChange={(e) => setUnits(e.target.value)} style={{ width: '100%', outline: 'none' }}>
                     <option value="imperial">Imperial (Inches / Fractions)</option>
@@ -28,7 +28,7 @@ const SettingsPanel = () => {
                 <p className="hint" style={{ marginTop: '4px' }}>Viewport vectors will automatically convert to your selected unit standard.</p>
             </div>
 
-            <div>
+            <div className="inspector-card">
                 <label style={{ fontWeight: '600', opacity: 0.85, display: 'block', marginBottom: '8px' }}>Global Grid Snapping</label>
                 <select className="nav-btn" value={gridSnap} onChange={(e) => setGridSnap(e.target.value)} style={{ width: '100%', outline: 'none' }}>
                     <option value="off">Off (Free floating)</option>
@@ -39,7 +39,7 @@ const SettingsPanel = () => {
                 <p className="hint" style={{ marginTop: '4px' }}>Controls the bounding lock when nudging components via the AI or inspector.</p>
             </div>
 
-            <div>
+            <div className="inspector-card">
                 <label style={{ fontWeight: '600', opacity: 0.85, display: 'block', marginBottom: '8px' }}>Default Board Material</label>
                 <select className="nav-btn" value={defaultMaterial} onChange={(e) => setDefaultMaterial(e.target.value)} style={{ width: '100%', outline: 'none', textTransform: 'capitalize' }}>
                     {['pine', 'cherry', 'walnut', 'red-oak', 'white-oak'].map(m => <option key={m} value={m}>{m.replace('-', ' ')}</option>)}
@@ -47,7 +47,7 @@ const SettingsPanel = () => {
                 <p className="hint" style={{ marginTop: '4px' }}>Default lumber allocated when generating new boards or assemblies.</p>
             </div>
 
-            <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '16px' }}>
+            <div className="inspector-card">
                 <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: '600', opacity: 0.85 }}>
                     <input type="checkbox" checked={showEdges} onChange={(e) => setShowEdges(e.target.checked)} style={{ width: '18px', height: '18px' }} />
                     Show Architectural Edges
@@ -55,7 +55,7 @@ const SettingsPanel = () => {
                 <p className="hint" style={{ marginTop: '4px' }}>Renders high-contrast boundary lines around all structural components.</p>
             </div>
 
-            <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '16px' }}>
+            <div className="inspector-card">
                 <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: '600', opacity: 0.85 }}>
                     <input type="checkbox" checked={showDimensions} onChange={(e) => setShowDimensions(e.target.checked)} style={{ width: '18px', height: '18px' }} />
                     Show Dimensions
@@ -63,7 +63,7 @@ const SettingsPanel = () => {
                 <p className="hint" style={{ marginTop: '4px' }}>Renders 3D bounding dimension lines and text in the viewport.</p>
             </div>
 
-            <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '16px' }}>
+            <div className="inspector-card">
                 <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: '600', opacity: 0.85 }}>
                     <input type="checkbox" checked={showBoundingBox} onChange={(e) => setShowBoundingBox(e.target.checked)} style={{ width: '18px', height: '18px' }} />
                     Show Selection Envelope
@@ -71,7 +71,7 @@ const SettingsPanel = () => {
                 <p className="hint" style={{ marginTop: '4px' }}>Renders an absolute 3D bounding box indicating total geometric size of selected components.</p>
             </div>
 
-            <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '16px' }}>
+            <div className="inspector-card">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <label style={{ fontWeight: '600', opacity: 0.85, margin: 0 }}>Project Volume Bounds</label>
                     <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: 'normal', fontSize: '0.8rem', color: 'var(--accent-color)' }}>
@@ -88,7 +88,7 @@ const SettingsPanel = () => {
                 )}
             </div>
 
-            <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '16px' }}>
+            <div className="inspector-card">
                 <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: 'bold' }}>
                     <input type="checkbox" checked={theme === 'dark'} onChange={(e) => setTheme(e.target.checked ? 'dark' : 'light')} style={{ width: '18px', height: '18px' }} />
                     Enable Dark Mode
@@ -96,7 +96,7 @@ const SettingsPanel = () => {
                 <p className="hint" style={{ marginTop: '4px' }}>Toggle between high-contrast layout and daylight drafting theme.</p>
             </div>
 
-            <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '16px' }}>
+            <div className="inspector-card">
                 <label style={{ fontWeight: '600', opacity: 0.85, display: 'block', marginBottom: '8px' }}>Autosave</label>
                 <select className="nav-btn" value={autosaveInterval} onChange={(e) => setAutosaveInterval(e.target.value)} style={{ width: '100%', outline: 'none' }}>
                     <option value="off">Off</option>
@@ -108,7 +108,7 @@ const SettingsPanel = () => {
                 <p className="hint" style={{ marginTop: '4px' }}>Silently saves to local storage on the selected schedule. Does not prompt or show a toast.</p>
             </div>
 
-            <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '16px' }}>
+            <div className="inspector-card" style={{ borderColor: 'rgba(255,59,48,0.3)', background: 'rgba(255,59,48,0.05)' }}>
                 <strong style={{ color: '#ff3b30' }}>System Storage Cache</strong>
                 <p className="hint" style={{ marginTop: '4px', marginBottom: '8px' }}>Permanently destroy the browser's local memory reserve.</p>
                 {!confirmWipe ? (

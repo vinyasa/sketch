@@ -8,6 +8,13 @@ const NewBoardDialog = () => {
 
     const shape = dialog.shape ?? 'box';
     const { outerCorner: outerC, angleZ: dAz, angleX: dAx } = normalizeTaper(dialog.taper ?? {});
+    // Cylinder values derived from dialog
+    const cylRadius = dialog.cylinder?.radius ?? dialog.sizeX / 2;
+    const cylHeight = dialog.sizeY;
+    
+    const arcParams = dialog.arc ?? { startAngle: 0, endAngle: 90, innerRadius: 0, axis: 'y' };
+    const coveParams = dialog.cove ?? { edge: 'top', depth: 2, axis: 'z' };
+    const holeParams = dialog.hole ?? { radius: 2, offsetX: 0, offsetY: 0, axis: 'z' };
 
     const btnStyle = (active) => ({
         padding: '5px 14px', fontSize: '0.78rem', fontWeight: 600,
@@ -82,7 +89,7 @@ const NewBoardDialog = () => {
             <div className="glass-panel" style={{ padding: '24px', width: '400px', borderRadius: '12px', display: 'flex', flexDirection: 'column', gap: '16px', maxHeight: '90vh', overflowY: 'auto' }}>
                 <h2 style={{ margin: 0 }}>Add New Component</h2>
 
-                <div className="inspector-section" style={{ margin: 0 }}>
+                <div className="inspector-card" style={{ margin: 0 }}>
                     <h4>Component Name</h4>
                     <input
                         type="text" value={dialog.name}
@@ -91,7 +98,7 @@ const NewBoardDialog = () => {
                     />
                 </div>
 
-                <div className="inspector-section" style={{ margin: 0 }}>
+                <div className="inspector-card" style={{ margin: 0 }}>
                     <h4>Parent Assembly</h4>
                     <select
                         value={dialog.parentId}
@@ -109,27 +116,194 @@ const NewBoardDialog = () => {
                     </select>
                 </div>
 
-                <div className="inspector-section" style={{ margin: 0 }}>
+                <div className="inspector-card" style={{ margin: 0 }}>
                     <h4>Shape</h4>
                     <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '4px' }}>
-                        {['box', 'taper'].map(s => (
+                        {['box', 'taper', 'cylinder', 'arc', 'cove', 'hole'].map(s => (
                             <button
                                 key={s}
                                 style={btnStyle(shape === s)}
-                                onClick={() => setDialog(p => ({
-                                    ...p,
-                                    shape: s === 'box' ? undefined : 'taper',
-                                    taper: s === 'taper' ? (p.taper ?? { outerCorner: 'fl', angleZ: 2, angleX: 2 }) : undefined,
-                                }))}
+                                onClick={() => {
+                                    if (s === 'box') {
+                                        setDialog(p => ({ ...p, shape: undefined, taper: undefined, cylinder: undefined, arc: undefined, cove: undefined, hole: undefined }));
+                                    } else if (s === 'taper') {
+                                        setDialog(p => ({ ...p, shape: 'taper', taper: p.taper ?? { outerCorner: 'fl', angleZ: 2, angleX: 2 }, cylinder: undefined, arc: undefined, cove: undefined, hole: undefined }));
+                                    } else if (s === 'cylinder') {
+                                        const r = dialog.sizeX / 2;
+                                        setDialog(p => ({ ...p, shape: 'cylinder', cylinder: { radius: r, axis: 'y' }, sizeX: r * 2, sizeZ: r * 2, taper: undefined, arc: undefined, cove: undefined, hole: undefined }));
+                                    } else if (s === 'arc') {
+                                        setDialog(p => ({ ...p, shape: 'arc', arc: { startAngle: 0, endAngle: 90, innerRadius: 0, axis: 'y' }, sizeX: 12, sizeY: 0.75, sizeZ: 12, position: [p.position[0], 0.375, p.position[2]], taper: undefined, cylinder: undefined, cove: undefined, hole: undefined }));
+                                    } else if (s === 'cove') {
+                                        setDialog(p => ({ ...p, shape: 'cove', cove: { edge: 'top', depth: 2, axis: 'z' }, sizeX: 12, sizeY: 4, sizeZ: 0.75, position: [p.position[0], 2, p.position[2]], taper: undefined, cylinder: undefined, arc: undefined, hole: undefined }));
+                                    } else if (s === 'hole') {
+                                        setDialog(p => ({ ...p, shape: 'hole', hole: { radius: 2, offsetX: 0, offsetY: 0, axis: 'z' }, sizeX: 12, sizeY: 12, sizeZ: 0.75, position: [p.position[0], 6, p.position[2]], taper: undefined, cylinder: undefined, arc: undefined, cove: undefined }));
+                                    }
+                                }}
                             >
-                                {s === 'box' ? '\u25a0 Box' : '\u25e2 Taper'}
+                                {s === 'box' ? '■ Box' : s === 'taper' ? '◢ Taper' : s === 'cylinder' ? '○ Cylinder' : s === 'arc' ? '◠ Arc' : s === 'cove' ? '◡ Cove' : '◎ Hole'}
                             </button>
                         ))}
                     </div>
                     {taperPreview}
+
+                    {/* ── Cylinder inputs ── */}
+                    {shape === 'cylinder' && (
+                        <div style={{ marginTop: '10px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                            <div>
+                                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Radius (in)</div>
+                                <input
+                                    type="number" min="0.0625" step="0.125" value={parseFloat(cylRadius.toFixed(4))}
+                                    onChange={e => {
+                                        const r = Math.max(0.0625, parseFloat(e.target.value) || 0.0625);
+                                        setDialog(p => ({ ...p, cylinder: { radius: r }, sizeX: r * 2, sizeZ: r * 2 }));
+                                    }}
+                                    style={{ width: '100%', padding: '5px 8px', background: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '6px', outline: 'none', fontSize: '0.9rem' }}
+                                />
+                                <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: '2px' }}>Diam: {(cylRadius * 2).toFixed(3)}"</div>
+                            </div>
+                            <div>
+                                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Height (in)</div>
+                                <input
+                                    type="number" min="0.0625" step="0.125" value={parseFloat(cylHeight.toFixed(4))}
+                                    onChange={e => {
+                                        const h = Math.max(0.0625, parseFloat(e.target.value) || 0.0625);
+                                        setDialog(p => ({ ...p, sizeY: h, position: [p.position[0], h / 2, p.position[2]] }));
+                                    }}
+                                    style={{ width: '100%', padding: '5px 8px', background: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '6px', outline: 'none', fontSize: '0.9rem' }}
+                                />
+                            </div>
+                            <p className="hint" style={{ gridColumn: '1 / -1', marginTop: '0' }}>
+                                AABB: {(cylRadius*2).toFixed(3)}" × {cylHeight.toFixed(3)}" × {(cylRadius*2).toFixed(3)}" — used unchanged by constraints.
+                            </p>
+                        </div>
+                    )}
+
+                    {/* ── Arc inputs ── */}
+                    {shape === 'arc' && (
+                        <div style={{ marginTop: '10px' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                                <div>
+                                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Start Angle (°)</div>
+                                    <input
+                                        type="number" step="1" value={arcParams.startAngle}
+                                        onChange={e => setDialog(p => ({ ...p, arc: { ...arcParams, startAngle: parseFloat(e.target.value) || 0 } }))}
+                                        style={{ width: '100%', padding: '5px 8px', background: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '6px', outline: 'none', fontSize: '0.9rem' }}
+                                    />
+                                </div>
+                                <div>
+                                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>End Angle (°)</div>
+                                    <input
+                                        type="number" step="1" value={arcParams.endAngle}
+                                        onChange={e => setDialog(p => ({ ...p, arc: { ...arcParams, endAngle: parseFloat(e.target.value) || 0 } }))}
+                                        style={{ width: '100%', padding: '5px 8px', background: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '6px', outline: 'none', fontSize: '0.9rem' }}
+                                    />
+                                </div>
+                                <div>
+                                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Cutout to Leave (in)</div>
+                                    <input
+                                        type="number" min="0" step="0.25" value={parseFloat(arcParams.innerRadius.toFixed(4))}
+                                        onChange={e => setDialog(p => ({ ...p, arc: { ...arcParams, innerRadius: Math.max(0, parseFloat(e.target.value) || 0) } }))}
+                                        style={{ width: '100%', padding: '5px 8px', background: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '6px', outline: 'none', fontSize: '0.9rem' }}
+                                    />
+                                </div>
+                                <div>
+                                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Axis</div>
+                                    <div style={{ display: 'flex', gap: '2px' }}>
+                                        {['x', 'y', 'z'].map(a => (
+                                            <button key={a} onClick={() => setDialog(p => ({ ...p, arc: { ...arcParams, axis: a } }))} style={{ flex: 1, padding: '5px', fontSize: '0.8rem', borderRadius: '4px', border: arcParams.axis === a ? '1px solid rgba(188,138,95,0.8)' : '1px solid var(--border-color)', background: arcParams.axis === a ? 'rgba(188,138,95,0.2)' : 'transparent', color: arcParams.axis === a ? 'var(--accent-color)' : 'var(--text-muted)', cursor: 'pointer' }}>
+                                                {a.toUpperCase()}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                            <p className="hint" style={{ marginTop: '6px' }}>Arc fits exactly inside the Bounding Box size below.</p>
+                        </div>
+                    )}
+
+                    {/* ── Cove inputs ── */}
+                    {shape === 'cove' && (
+                        <div style={{ marginTop: '10px' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                                <div>
+                                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Edge</div>
+                                    <select
+                                        value={coveParams.edge}
+                                        onChange={e => setDialog(p => ({ ...p, cove: { ...coveParams, edge: e.target.value } }))}
+                                        style={{ width: '100%', padding: '5px 8px', background: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '6px', outline: 'none', fontSize: '0.9rem', cursor: 'pointer' }}
+                                    >
+                                        <option value="top">Top</option>
+                                        <option value="bottom">Bottom</option>
+                                        <option value="left">Left</option>
+                                        <option value="right">Right</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Depth (in)</div>
+                                    <input
+                                        type="number" min="0" step="0.25" value={parseFloat(coveParams.depth.toFixed(4))}
+                                        onChange={e => setDialog(p => ({ ...p, cove: { ...coveParams, depth: Math.max(0, parseFloat(e.target.value) || 0) } }))}
+                                        style={{ width: '100%', padding: '5px 8px', background: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '6px', outline: 'none', fontSize: '0.9rem' }}
+                                    />
+                                </div>
+                                <div style={{ gridColumn: '1 / -1' }}>
+                                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Axis</div>
+                                    <div style={{ display: 'flex', gap: '2px' }}>
+                                        {['x', 'y', 'z'].map(a => (
+                                            <button key={a} onClick={() => setDialog(p => ({ ...p, cove: { ...coveParams, axis: a } }))} style={{ flex: 1, padding: '5px', fontSize: '0.8rem', borderRadius: '4px', border: coveParams.axis === a ? '1px solid rgba(188,138,95,0.8)' : '1px solid var(--border-color)', background: coveParams.axis === a ? 'rgba(188,138,95,0.2)' : 'transparent', color: coveParams.axis === a ? 'var(--accent-color)' : 'var(--text-muted)', cursor: 'pointer' }}>
+                                                {a.toUpperCase()}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ── Hole inputs ── */}
+                    {shape === 'hole' && (
+                        <div style={{ marginTop: '10px' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '8px' }}>
+                                <div style={{ gridColumn: '1 / -1' }}>
+                                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Hole Radius (in)</div>
+                                    <input
+                                        type="number" min="0.125" step="0.125" value={parseFloat(holeParams.radius.toFixed(4))}
+                                        onChange={e => setDialog(p => ({ ...p, hole: { ...holeParams, radius: Math.max(0, parseFloat(e.target.value) || 0) } }))}
+                                        style={{ width: '100%', padding: '5px 8px', background: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '6px', outline: 'none', fontSize: '0.9rem' }}
+                                    />
+                                </div>
+                                <div>
+                                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Offset X (in)</div>
+                                    <input
+                                        type="number" step="0.25" value={parseFloat(holeParams.offsetX.toFixed(4))}
+                                        onChange={e => setDialog(p => ({ ...p, hole: { ...holeParams, offsetX: parseFloat(e.target.value) || 0 } }))}
+                                        style={{ width: '100%', padding: '5px 8px', background: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '6px', outline: 'none', fontSize: '0.9rem' }}
+                                    />
+                                </div>
+                                <div>
+                                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Offset Y (in)</div>
+                                    <input
+                                        type="number" step="0.25" value={parseFloat(holeParams.offsetY.toFixed(4))}
+                                        onChange={e => setDialog(p => ({ ...p, hole: { ...holeParams, offsetY: parseFloat(e.target.value) || 0 } }))}
+                                        style={{ width: '100%', padding: '5px 8px', background: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '6px', outline: 'none', fontSize: '0.9rem' }}
+                                    />
+                                </div>
+                                <div style={{ gridColumn: '1 / -1' }}>
+                                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Axis</div>
+                                    <div style={{ display: 'flex', gap: '2px' }}>
+                                        {['x', 'y', 'z'].map(a => (
+                                            <button key={a} onClick={() => setDialog(p => ({ ...p, hole: { ...holeParams, axis: a } }))} style={{ flex: 1, padding: '5px', fontSize: '0.8rem', borderRadius: '4px', border: holeParams.axis === a ? '1px solid rgba(188,138,95,0.8)' : '1px solid var(--border-color)', background: holeParams.axis === a ? 'rgba(188,138,95,0.2)' : 'transparent', color: holeParams.axis === a ? 'var(--accent-color)' : 'var(--text-muted)', cursor: 'pointer' }}>
+                                                {a.toUpperCase()}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </div>
 
-                <div className="inspector-section" style={{ margin: 0 }}>
+                <div className="inspector-card" style={{ margin: 0 }}>
                     <h4>Size (in) — Bounding Box</h4>
                     <div className="vec3-inputs">
                         <div style={{ backgroundColor: 'rgba(255, 60, 60, 0.15)' }} title="X: width">X<input type="number" step="0.5" value={dialog.sizeX} onChange={e => { const v = parseFloat(e.target.value) || 0; setDialog(p => ({ ...p, sizeX: v })) }} /></div>
@@ -139,7 +313,7 @@ const NewBoardDialog = () => {
                     <p className="hint" style={{ marginTop: '4px' }}>X = Red (left/right) · Y = Green (height) · Z = Blue (depth)</p>
                 </div>
 
-                <div className="inspector-section" style={{ margin: 0 }}>
+                <div className="inspector-card" style={{ margin: 0 }}>
                     <h4>Spawn Position (in)</h4>
                     <div className="vec3-inputs">
                         <div style={{ backgroundColor: 'rgba(255, 60, 60, 0.15)' }}>X<input type="number" step="1" value={dialog.position[0]} onChange={e => { const v = parseFloat(e.target.value) || 0; setDialog(p => ({ ...p, position: [v, p.position[1], p.position[2]] })) }} /></div>

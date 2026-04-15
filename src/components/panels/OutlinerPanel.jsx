@@ -7,7 +7,7 @@ const OutlinerPanel = () => {
         groups, boards, selectedItemIds,
         toggleSelection, toggleGroupVisibility, toggleBoardVisibility,
         setGroups, handleDragStart: onDragStart, handleDrop: onDrop,
-        manualAddBoard: onAddBoard, manualAddAssembly: onAddAssembly
+        manualAddAssembly: onAddAssembly
     } = useStore();
 
     const onDragOver = (e) => { e.preventDefault(); e.stopPropagation(); };
@@ -105,11 +105,10 @@ const OutlinerPanel = () => {
             <div className="tree-view" style={{ paddingBottom: '24px' }}>
                 {rootNodes.map(k => renderTree(k))}
 
-                <div style={{ marginTop: '14px', display: 'flex', gap: '6px', padding: '0 6px' }}>
-                    <button className="nav-btn" style={{ flex: 1, border: '1px solid var(--border-color)', background: 'rgba(0,0,0,0.05)', fontSize: '0.7rem', padding: '4px 8px' }} onClick={onAddBoard}>+ New Board</button>
-                    <button className="nav-btn" style={{ flex: 1, border: '1px solid var(--border-color)', background: 'rgba(0,0,0,0.05)', fontSize: '0.7rem', padding: '4px 8px' }} onClick={onAddAssembly}>+ Assembly</button>
+                <div style={{ marginTop: '14px', padding: '0 6px' }}>
+                    <button className="nav-btn" style={{ width: '100%', border: '1px solid var(--border-color)', background: 'rgba(0,0,0,0.05)', fontSize: '0.7rem', padding: '4px 8px' }} onClick={onAddAssembly}>+ Assembly</button>
                 </div>
-                <p className="hint" style={{ textAlign: 'center', marginTop: '4px' }}>Generates pieces inside your selected group.</p>
+                <p className="hint" style={{ textAlign: 'center', marginTop: '4px' }}>Use ＋ Add in the toolbar to add components.</p>
             </div>
         </div>
     );

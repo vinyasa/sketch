@@ -120,7 +120,7 @@ const SaveForm = ({ groupName, onSave, onCancel, boards, existingEntry }) => {
     };
 
     return (
-        <div style={{ background: 'rgba(0,0,0,0.15)', borderRadius: '8px', border: '1px solid var(--border-color)', padding: '12px', display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '8px' }}>
+        <div className="inspector-card" style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '8px' }}>
             {/* Thumbnail preview */}
             <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
                 <div style={{ width: 72, height: 72, borderRadius: '6px', overflow: 'hidden', background: '#1a1a1a', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--border-color)' }}>
@@ -344,7 +344,7 @@ const LibraryCard = ({ entry, onPlace, onDelete, onEdit }) => {
             style={{
                 width: '130px',
                 flexShrink: 0,
-                background: hovered ? 'rgba(188,138,95,0.08)' : 'rgba(0,0,0,0.12)',
+                background: hovered ? 'rgba(188,138,95,0.08)' : 'rgba(0,0,0,0.25)',
                 border: `1px solid ${hovered ? 'var(--accent-color)' : 'var(--border-color)'}`,
                 borderRadius: '8px',
                 overflow: 'hidden',
@@ -352,7 +352,7 @@ const LibraryCard = ({ entry, onPlace, onDelete, onEdit }) => {
                 flexDirection: 'column',
                 transition: 'all 0.18s ease',
                 transform: hovered ? 'translateY(-2px)' : 'none',
-                boxShadow: hovered ? '0 6px 16px rgba(0,0,0,0.3)' : 'none',
+                boxShadow: hovered ? '0 6px 16px rgba(0,0,0,0.3)' : '0 2px 4px rgba(0,0,0,0.1)',
             }}
         >
             {/* Thumbnail */}
