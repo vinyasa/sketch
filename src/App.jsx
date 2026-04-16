@@ -14,6 +14,7 @@ import LightingPanel from './components/panels/LightingPanel';
 import MaterialsPanel from './components/panels/MaterialsPanel';
 import AddComponentPanel from './components/panels/AddComponentPanel';
 import NewBoardDialog from './components/dialogs/NewBoardDialog';
+import ErrorBoundary from './components/layout/ErrorBoundary';
 import useStore from './store/useStore';
 
 export default function App() {
@@ -29,6 +30,7 @@ export default function App() {
         isRightPanelOpen,
         selectedItemIds,
         toast,
+        computingMessage,
         confirmDialog, setConfirmDialog,
         // Settings for App mount
         theme,
@@ -58,6 +60,7 @@ export default function App() {
     }, [autosaveInterval]);
 
     return (
+        <ErrorBoundary>
         <div className="app-container">
             {toast && (
                 <div style={{ position: 'fixed', bottom: '24px', left: '50%', transform: 'translateX(-50%)', background: 'var(--accent-color)', color: '#fff', padding: '12px 24px', borderRadius: '24px', boxShadow: '0 4px 12px rgba(0,0,0,0.3)', zIndex: 10000, fontWeight: 'bold' }}>
@@ -131,6 +134,15 @@ export default function App() {
                     )}
                 </main>
 
+                {computingMessage && (
+                    <div style={{ position: 'fixed', inset: 0, zIndex: 10000, background: 'rgba(0,0,0,0.4)', display: 'flex', justifyContent: 'center', alignItems: 'center', backdropFilter: 'blur(2px)' }}>
+                        <div style={{ background: 'var(--panel-bg, #1e1e1e)', border: '1px solid var(--border-color)', borderRadius: '12px', padding: '28px 40px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '14px', boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }}>
+                            <div style={{ width: '32px', height: '32px', border: '3px solid rgba(188,138,95,0.3)', borderTop: '3px solid var(--accent-color)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+                            <span style={{ color: 'var(--text-main)', fontSize: '0.95rem', fontWeight: 600 }}>{computingMessage}</span>
+                        </div>
+                    </div>
+                )}
+
                 {confirmDialog && (
                     <div className="app-overlay" style={{ background: 'rgba(0,0,0,0.6)', zIndex: 10001, display: 'flex', justifyContent: 'center', alignItems: 'center', position: 'fixed', inset: 0 }} onClick={() => setConfirmDialog(null)}>
                         <div className="glass-panel" style={{ padding: '24px', width: '380px', borderRadius: '12px', display: 'flex', flexDirection: 'column', gap: '16px' }} onClick={e => e.stopPropagation()}>
@@ -147,5 +159,6 @@ export default function App() {
                 <NewBoardDialog />
             </div>
         </div>
+        </ErrorBoundary>
     )
 }

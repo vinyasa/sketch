@@ -354,7 +354,7 @@ export const createActions = (set, get) => ({
     },
 
     importWorkspace: (e) => {
-        const { setBoards, setGroups, resetHistory } = get();
+        const { setBoards, setGroups, setConstraints, resetHistory } = get();
         const file = e.target.files[0];
         if (!file) return;
         const reader = new FileReader();
@@ -362,8 +362,20 @@ export const createActions = (set, get) => ({
             try {
                 const p = JSON.parse(event.target.result);
                 if (p.boards && p.groups) {
-                    setBoards(p.boards);
+                    // Sanitize boards: ensure required fields exist and strip legacy constraints
+                    const sanitized = p.boards.map(b => {
+                        const { constraints: _, ...rest } = b;
+                        return {
+                            ...rest,
+                            size: Array.isArray(b.size) && b.size.length === 3 ? b.size : [1, 1, 1],
+                            position: Array.isArray(b.position) && b.position.length === 3 ? b.position : [0, 0.5, 0],
+                            operations: Array.isArray(b.operations) ? b.operations : [],
+                            shape: b.shape || 'box',
+                        };
+                    });
+                    setBoards(sanitized);
                     setGroups(p.groups);
+                    if (p.constraints) setConstraints(p.constraints);
                     resetHistory();
                 }
             } catch (e) { alert("Failed to parse project file."); }
@@ -466,6 +478,43 @@ export const createActions = (set, get) => ({
         const { pushHistory, setBoards, boards, selectedItemIds } = get();
         pushHistory();
         setBoards(boards.map(b => selectedItemIds.includes(b.id.toString()) ? { ...b, [key]: value } : b));
+    },
+
+    // ─── CSG Operation CRUD ──────────────────────────────────────────────────
+    addOperation: (boardId, opType) => {
+        const { pushHistory, setBoards } = get();
+        pushHistory();
+        const defaults = {
+            hole:  { type: 'hole',  radius: 1,   offsetX: 0, offsetY: 0, axis: 'y' },
+            cove:  { type: 'cove',  edge: 'top', depth: 1,   axis: 'y' },
+            arc:   { type: 'arc',   startAngle: 0, endAngle: 90, innerRadius: 0, axis: 'y' },
+        };
+        const op = { id: Date.now(), ...(defaults[opType] ?? { type: opType }) };
+        setBoards(prev => prev.map(b =>
+            b.id.toString() === boardId.toString()
+                ? { ...b, operations: [...(b.operations || []), op] }
+                : b
+        ));
+    },
+
+    updateOperation: (boardId, opId, patch) => {
+        const { pushHistory, setBoards } = get();
+        pushHistory();
+        setBoards(prev => prev.map(b =>
+            b.id.toString() === boardId.toString()
+                ? { ...b, operations: (b.operations || []).map(o => o.id === opId ? { ...o, ...patch } : o) }
+                : b
+        ));
+    },
+
+    removeOperation: (boardId, opId) => {
+        const { pushHistory, setBoards } = get();
+        pushHistory();
+        setBoards(prev => prev.map(b =>
+            b.id.toString() === boardId.toString()
+                ? { ...b, operations: (b.operations || []).filter(o => o.id !== opId) }
+                : b
+        ));
     },
 
     toggleBoardVisibility: (id) => {
@@ -616,120 +665,125 @@ export const createActions = (set, get) => ({
                 const oldAxisIdx = b.cylinder?.axis === 'x' ? 0 : b.cylinder?.axis === 'z' ? 2 : 1;
                 const newAxisIdx = mapLocalToWorld[oldAxisIdx]?.w ?? oldAxisIdx;
                 patch.cylinder = { ...b.cylinder, axis: ['x', 'y', 'z'][newAxisIdx] };
-            } 
+            }
             else if (b.shape === 'taper') {
                 const taper = b.taper || { outerCorner: 'fl', angleZ: 2, angleX: 2 };
                 const xSign = taper.outerCorner.endsWith('l') ? -1 : 1;
                 const zSign = taper.outerCorner.startsWith('f') ? 1 : -1;
-                // Map local corner to world
                 const worldX = R[0][0]*xSign + R[0][2]*zSign;
                 const worldZ = R[2][0]*xSign + R[2][2]*zSign;
                 const newCorner = (worldZ > 0 ? 'f' : 'b') + (worldX > 0 ? 'r' : 'l');
-                
                 const mappedToX = [0,1,2].find(l => mapLocalToWorld[l]?.w === 0);
                 const mappedToZ = [0,1,2].find(l => mapLocalToWorld[l]?.w === 2);
                 const newAngleX = mappedToX === 0 ? taper.angleX : mappedToX === 2 ? taper.angleZ : taper.angleX;
                 const newAngleZ = mappedToZ === 2 ? taper.angleZ : mappedToZ === 0 ? taper.angleX : taper.angleZ;
-                
                 patch.taper = { ...taper, outerCorner: newCorner, angleX: newAngleX, angleZ: newAngleZ };
             }
-            else if (b.shape === 'arc') {
-                const arc = b.arc || { startAngle: 0, endAngle: 90, innerRadius: 0, axis: 'y' };
-                const oldAxisIdx = arc.axis === 'x' ? 0 : arc.axis === 'z' ? 2 : 1;
-                const newAxisIdx = mapLocalToWorld[oldAxisIdx]?.w ?? oldAxisIdx;
-                
-                const rad = d => d * Math.PI / 180;
-                const deg = r => { let d = r * 180 / Math.PI; while(d < 0) d+=360; return d; };
-                
-                const get3DVec = (angle, ax) => {
-                    const r = rad(angle), v = [0, 0, 0];
-                    if (ax === 1) { v[0] = Math.cos(r); v[2] = Math.sin(r); }
-                    else if (ax === 0) { v[2] = Math.cos(r); v[1] = Math.sin(r); }
-                    else { v[0] = Math.cos(r); v[1] = Math.sin(r); }
-                    return v;
-                };
-                
-                const get2DAngle = (v, ax) => {
-                    if (ax === 1) return deg(Math.atan2(v[2], v[0]));
-                    if (ax === 0) return deg(Math.atan2(v[1], v[2]));
-                    return deg(Math.atan2(v[1], v[0]));
-                };
-                
-                const getMappedAngle = (ang) => {
-                    const localV = get3DVec(ang, oldAxisIdx);
-                    const worldV = [
-                        R[0][0]*localV[0] + R[0][1]*localV[1] + R[0][2]*localV[2],
-                        R[1][0]*localV[0] + R[1][1]*localV[1] + R[1][2]*localV[2],
-                        R[2][0]*localV[0] + R[2][1]*localV[1] + R[2][2]*localV[2],
-                    ];
-                    return get2DAngle(worldV, newAxisIdx);
-                };
-                
-                let sA = Math.round(getMappedAngle(arc.startAngle));
-                let eA = Math.round(getMappedAngle(arc.endAngle));
-                
-                // Normalization guarantees continuous clockwise sweep
-                if (Math.abs(eA - sA) > 180) {
-                    if (sA > eA) eA += 360; else sA += 360;
-                }
-                if (sA > eA) { const t = sA; sA = eA; eA = t; }
-                
-                patch.arc = { ...arc, axis: ['x','y','z'][newAxisIdx], startAngle: sA % 360, endAngle: eA % 360 };
-            }
 
-            else if (b.shape === 'cove') {
-                const cove = b.cove || { edge: 'top', depth: 2, axis: 'z' };
-                const oldAxisIdx = cove.axis === 'x' ? 0 : cove.axis === 'z' ? 2 : 1;
-                const newAxisIdx = mapLocalToWorld[oldAxisIdx]?.w ?? oldAxisIdx;
-                
-                const oldDimXIdx = oldAxisIdx === 1 ? 0 : oldAxisIdx === 0 ? 2 : 0;
-                const oldDimYIdx = oldAxisIdx === 1 ? 2 : oldAxisIdx === 0 ? 1 : 1;
-                
-                const mappedToX = mapLocalToWorld[oldDimXIdx];
-                const mappedToY = mapLocalToWorld[oldDimYIdx];
-                
-                const newDimXIdx = newAxisIdx === 1 ? 0 : newAxisIdx === 0 ? 2 : 0;
-                const newDimYIdx = newAxisIdx === 1 ? 2 : newAxisIdx === 0 ? 1 : 1;
-                
-                const oldEdge = cove.edge;
-                let oldVec = [0,0];
-                if (oldEdge === 'right') oldVec = [1, 0];
-                else if (oldEdge === 'left') oldVec = [-1, 0];
-                else if (oldEdge === 'top') oldVec = [0, 1];
-                else if (oldEdge === 'bottom') oldVec = [0, -1];
-                
-                const worldVec = [0, 0, 0];
-                worldVec[mappedToX.w] = oldVec[0] * mappedToX.sign;
-                worldVec[mappedToY.w] = oldVec[1] * mappedToY.sign;
-                
-                const newVec = [worldVec[newDimXIdx], worldVec[newDimYIdx]];
-                let newEdge = cove.edge;
-                if (newVec[0] > 0.5) newEdge = 'right';
-                else if (newVec[0] < -0.5) newEdge = 'left';
-                else if (newVec[1] > 0.5) newEdge = 'top';
-                else if (newVec[1] < -0.5) newEdge = 'bottom';
-                
-                patch.cove = { ...cove, axis: ['x','y','z'][newAxisIdx], edge: newEdge };
-            }
-            else if (b.shape === 'hole') {
-                const hole = b.hole || { radius: 2, offsetX: 0, offsetY: 0, axis: 'z' };
-                const oldAxisIdx = hole.axis === 'x' ? 0 : hole.axis === 'z' ? 2 : 1;
-                const newAxisIdx = mapLocalToWorld[oldAxisIdx]?.w ?? oldAxisIdx;
-                
-                const oldDimXIdx = oldAxisIdx === 1 ? 0 : oldAxisIdx === 0 ? 2 : 0;
-                const oldDimYIdx = oldAxisIdx === 1 ? 2 : oldAxisIdx === 0 ? 1 : 1;
-                
-                const mappedToX = mapLocalToWorld[oldDimXIdx];
-                const mappedToY = mapLocalToWorld[oldDimYIdx];
-                
-                const newDimXIdx = newAxisIdx === 1 ? 0 : newAxisIdx === 0 ? 2 : 0;
-                const newDimYIdx = newAxisIdx === 1 ? 2 : newAxisIdx === 0 ? 1 : 1;
-                
-                const worldOffset = [0, 0, 0];
-                worldOffset[mappedToX.w] = hole.offsetX * mappedToX.sign;
-                worldOffset[mappedToY.w] = hole.offsetY * mappedToY.sign;
-                
-                patch.hole = { ...hole, axis: ['x','y','z'][newAxisIdx], offsetX: worldOffset[newDimXIdx], offsetY: worldOffset[newDimYIdx] };
+            // ── Remap operations[] axis fields through the rotation transform ──
+            if (b.operations && b.operations.length > 0) {
+                const remapAxis = (oldAxis) => {
+                    const oldIdx = oldAxis === 'x' ? 0 : oldAxis === 'z' ? 2 : 1;
+                    const newIdx = mapLocalToWorld[oldIdx]?.w ?? oldIdx;
+                    return ['x', 'y', 'z'][newIdx];
+                };
+                const remapEdge = (edge, oldAxis) => {
+                    const oldAxisIdx = oldAxis === 'x' ? 0 : oldAxis === 'z' ? 2 : 1;
+                    const oldDimXIdx = oldAxisIdx === 1 ? 0 : oldAxisIdx === 0 ? 2 : 0;
+                    const oldDimYIdx = oldAxisIdx === 1 ? 2 : oldAxisIdx === 0 ? 1 : 1;
+                    const mX = mapLocalToWorld[oldDimXIdx];
+                    const mY = mapLocalToWorld[oldDimYIdx];
+                    const newAxisIdx = mapLocalToWorld[oldAxisIdx]?.w ?? oldAxisIdx;
+                    const newDimXIdx = newAxisIdx === 1 ? 0 : newAxisIdx === 0 ? 2 : 0;
+                    const newDimYIdx = newAxisIdx === 1 ? 2 : newAxisIdx === 0 ? 1 : 1;
+                    let oldVec = [0, 0];
+                    if (edge === 'right')  oldVec = [ 1,  0];
+                    else if (edge === 'left')   oldVec = [-1,  0];
+                    else if (edge === 'top')    oldVec = [ 0,  1];
+                    else if (edge === 'bottom') oldVec = [ 0, -1];
+                    const wv = [0, 0, 0];
+                    wv[mX.w] = oldVec[0] * mX.sign;
+                    wv[mY.w] = oldVec[1] * mY.sign;
+                    const nv = [wv[newDimXIdx], wv[newDimYIdx]];
+                    if (nv[0] > 0.5) return 'right';
+                    if (nv[0] < -0.5) return 'left';
+                    if (nv[1] > 0.5) return 'top';
+                    if (nv[1] < -0.5) return 'bottom';
+                    return edge;
+                };
+
+                patch.operations = b.operations.map(op => {
+                    const newOp = { ...op };
+                    if (op.type === 'hole') {
+                        const oldAxisIdx = op.axis === 'x' ? 0 : op.axis === 'z' ? 2 : 1;
+                        const oldDimXIdx = oldAxisIdx === 1 ? 0 : oldAxisIdx === 0 ? 2 : 0;
+                        const oldDimYIdx = oldAxisIdx === 1 ? 2 : oldAxisIdx === 0 ? 1 : 1;
+                        const mX = mapLocalToWorld[oldDimXIdx];
+                        const mY = mapLocalToWorld[oldDimYIdx];
+                        const newAxisIdx = mapLocalToWorld[oldAxisIdx]?.w ?? oldAxisIdx;
+                        const newDimXIdx = newAxisIdx === 1 ? 0 : newAxisIdx === 0 ? 2 : 0;
+                        const newDimYIdx = newAxisIdx === 1 ? 2 : newAxisIdx === 0 ? 1 : 1;
+                        const worldOffset = [0, 0, 0];
+                        worldOffset[mX.w] = op.offsetX * mX.sign;
+                        worldOffset[mY.w] = op.offsetY * mY.sign;
+                        newOp.axis = ['x', 'y', 'z'][newAxisIdx];
+                        newOp.offsetX = worldOffset[newDimXIdx];
+                        newOp.offsetY = worldOffset[newDimYIdx];
+                    } else if (op.type === 'cove') {
+                        newOp.edge = remapEdge(op.edge, op.axis);
+                        newOp.axis = remapAxis(op.axis);
+                    } else if (op.type === 'arc') {
+                        newOp.axis = remapAxis(op.axis);
+
+                        // Remap startAngle / endAngle so the arc faces the same
+                        // world direction after the rotation is baked to zero.
+                        //
+                        // Step 1 — convert angle θ to local 3D position using the
+                        //          arc's axis geometry convention:
+                        //   axis='y': local=(cosθ, 0,    −sinθ)  [XZ via rotateX(−π/2)]
+                        //   axis='x': local=(0,    sinθ, −cosθ)  [YZ via rotateY(+π/2)]
+                        //   axis='z': local=(cosθ, sinθ,  0)     [XY, no rotation]
+                        //
+                        // Step 2 — transform to world space through board rotation R.
+                        //
+                        // Step 3 — extract new angle from the world vector using the
+                        //          NEW axis convention (after remapAxis).
+                        //
+                        // Step 4 — if the rotation reversed orientation in the sweep
+                        //          plane the remapped delta wraps > 180°; swap
+                        //          start/end to keep the compact arc.
+
+                        const remapArcAngle = (deg) => {
+                            const r = deg * Math.PI / 180;
+                            const c = Math.cos(r), s = Math.sin(r);
+                            let lx = 0, ly = 0, lz = 0;
+                            if      (op.axis === 'y') { lx = c;  lz = -s; }
+                            else if (op.axis === 'x') { ly = s;  lz = -c; }
+                            else if (op.axis === 'z') { lx = c;  ly = s;  }
+                            const wx = R[0][0]*lx + R[0][1]*ly + R[0][2]*lz;
+                            const wy = R[1][0]*lx + R[1][1]*ly + R[1][2]*lz;
+                            const wz = R[2][0]*lx + R[2][1]*ly + R[2][2]*lz;
+                            const na = newOp.axis;
+                            if (na === 'y') return Math.round(Math.atan2(-wz,  wx) * 180 / Math.PI);
+                            if (na === 'x') return Math.round(Math.atan2( wy, -wz) * 180 / Math.PI);
+                            if (na === 'z') return Math.round(Math.atan2( wy,  wx) * 180 / Math.PI);
+                            return deg;
+                        };
+
+                        let S = remapArcAngle(op.startAngle ?? 0);
+                        let E = remapArcAngle(op.endAngle   ?? 90);
+
+                        // Orientation reversal check: if the mapped sweep wraps the
+                        // long way around (> 180°), swap S and E to restore the
+                        // compact arc.
+                        const normDelta = ((E - S) % 360 + 360) % 360;
+                        if (normDelta > 180) { const tmp = S; S = E; E = tmp; }
+
+                        newOp.startAngle = S;
+                        newOp.endAngle   = E;
+                    }
+                    return newOp;
+                });
             }
 
             return { ...b, ...patch };
@@ -884,12 +938,12 @@ export const createActions = (set, get) => ({
                     ...prev,
                     [newGroupId]: { parentId: 'Workspace', isExpanded: true, visible: true }
                 }));
-                const upperBoard = { id: upperId, name: 'Leg Upper', parentId: newGroupId, size: [t, halfH, t], position: [0, halfH + halfH / 2, 0], material: defaultMaterial, joint: 'None' };
+                const upperBoard = { id: upperId, name: 'Leg Upper', parentId: newGroupId, size: [t, halfH, t], position: [0, halfH + halfH / 2, 0], material: defaultMaterial, joint: 'None', operations: [] };
                 const lowerBoard = {
                     id: lowerId, name: 'Leg Lower', parentId: newGroupId,
                     shape: 'taper', taper: { outerCorner: 'fl', angleZ: az, angleX: ax },
                     size: [t, halfH, t], position: [0, halfH / 2, 0],
-                    material: defaultMaterial, joint: 'None',
+                    material: defaultMaterial, joint: 'None', operations: [],
                     note: 'One piece; taper lower ' + halfH + '" only.'
                 };
                 const glueId = (Date.now() + 2).toString();
@@ -913,7 +967,7 @@ export const createActions = (set, get) => ({
                     id: newId, name: 'Tapered Leg', parentId: 'Workspace',
                     shape: 'taper', taper: { outerCorner: 'fl', angleZ: az, angleX: ax },
                     size: [1.5, 30, 1.5], position: [0, 15, 0],
-                    material: defaultMaterial, joint: 'None'
+                    material: defaultMaterial, joint: 'None', operations: []
                 }]);
                 setSelectedItemIds([newId.toString()]);
                 reply = 'Added 1.5×30×1.5" tapered leg — back ' + az + '°' + (ax > 0 ? ', side ' + ax + '°' : '') + '. Bounding box unchanged.';
@@ -921,9 +975,60 @@ export const createActions = (set, get) => ({
             }
 
         // ── Add leg ──────────────────────────────────────────────────────────
+        // ── Add/drill hole operation on selected board ───────────────────────
+        } else if (selectedItemIds.length > 0 && /(drill|bore|add).*(hole|pocket)|(hole|pocket).*(drill|bore|add)/i.test(lower)) {
+            const r = extractMeasurement(lower) ?? 1;
+            let axis = 'y';
+            if (/(through x|along x|\bx axis\b)/.test(lower)) axis = 'x';
+            else if (/(through z|along z|\bz axis\b)/.test(lower)) axis = 'z';
+            const op = { id: Date.now(), type: 'hole', radius: Math.abs(r), offsetX: 0, offsetY: 0, axis };
+            setBoards(prev => prev.map(b =>
+                selectedItemIds.includes(b.id.toString())
+                    ? { ...b, operations: [...(b.operations || []), op] }
+                    : b
+            ));
+            reply = `Added ${r}" radius hole (${axis}-axis) to ${selectedItemIds.length} board(s). Adjust offset in the Inspector.`;
+            updated = true;
+
+        // ── Add cove operation on selected board ──────────────────────────────
+        } else if (selectedItemIds.length > 0 && /(add|cut|make).*(cove|hollow)|(cove|hollow).*(add|cut|make)/i.test(lower)) {
+            const depth = extractMeasurement(lower) ?? 1;
+            let edge = 'top';
+            if (/bottom/.test(lower)) edge = 'bottom';
+            else if (/left/.test(lower)) edge = 'left';
+            else if (/right/.test(lower)) edge = 'right';
+            let axis = 'y';
+            if (/(\bx axis\b|along x)/.test(lower)) axis = 'x';
+            else if (/(\bz axis\b|along z)/.test(lower)) axis = 'z';
+            const op = { id: Date.now(), type: 'cove', edge, depth: Math.abs(depth), axis };
+            setBoards(prev => prev.map(b =>
+                selectedItemIds.includes(b.id.toString())
+                    ? { ...b, operations: [...(b.operations || []), op] }
+                    : b
+            ));
+            reply = `Added ${depth}" ${edge}-edge cove to ${selectedItemIds.length} board(s).`;
+            updated = true;
+
+        // ── Add arc operation on selected board ───────────────────────────────
+        } else if (selectedItemIds.length > 0 && /(add|make|cut).*(arc|curve|cutout)|(arc|curve|cutout).*(add|make|cut)/i.test(lower)) {
+            const angleMatch = lower.match(/(\d+)\s*(?:to|-|through)\s*(\d+)/);
+            const startAngle = angleMatch ? parseInt(angleMatch[1]) : 0;
+            const endAngle   = angleMatch ? parseInt(angleMatch[2]) : 90;
+            let axis = 'y';
+            if (/(\bx axis\b|along x)/.test(lower)) axis = 'x';
+            else if (/(\bz axis\b|along z)/.test(lower)) axis = 'z';
+            const op = { id: Date.now(), type: 'arc', startAngle, endAngle, innerRadius: 0, axis };
+            setBoards(prev => prev.map(b =>
+                selectedItemIds.includes(b.id.toString())
+                    ? { ...b, operations: [...(b.operations || []), op] }
+                    : b
+            ));
+            reply = `Added arc modifier (${startAngle}°–${endAngle}°, ${axis}-axis) to ${selectedItemIds.length} board(s).`;
+            updated = true;
+
         } else if (lower.includes('add') && lower.includes('leg')) {
             const newId = Date.now();
-            setBoards(prev => [...prev, { id: newId, name: 'New Leg', parentId: 'Workspace', size: [1.5, 12, 1.5], position: [0, 6, 0], material: defaultMaterial, joint: 'Butt 1' }]);
+            setBoards(prev => [...prev, { id: newId, name: 'New Leg', parentId: 'Workspace', size: [1.5, 12, 1.5], position: [0, 6, 0], material: defaultMaterial, joint: 'Butt 1', operations: [] }]);
             setSelectedItemIds([newId.toString()]);
             reply = `Added a new 1.5×12×1.5 leg at origin, sitting on floor.`;
             updated = true;
@@ -973,7 +1078,7 @@ export const createActions = (set, get) => ({
                     size: [newWidth, thickness, newDepth],
                     position: [newX, newY, newZ],
                     material: defaultMaterial,
-                    joint: 'None'
+                    joint: 'None', operations: []
                 }]);
                 setSelectedItemIds([newId.toString()]);
                 reply = `Generated top at Y=${newY.toFixed(2)}".`;
@@ -1011,6 +1116,7 @@ export const createActions = (set, get) => ({
                 parentId: newGroupId,
                 material: defaultMaterial,
                 joint: 'None',
+                operations: [],
             }));
 
             setBoards(prev => [...prev, ...cubeBoards]);
@@ -1061,7 +1167,8 @@ export const createActions = (set, get) => ({
                 size: wd.size,
                 position: [wd.position[0] + newX, wd.position[1] + baseY, wd.position[2] + newZ],
                 material: defaultMaterial,
-                joint: 'None'
+                joint: 'None',
+                operations: [],
             }));
 
             setBoards(prev => [...prev, ...newBoards]);
@@ -1550,13 +1657,25 @@ export const createActions = (set, get) => ({
         pushHistory();
         const newId = Date.now();
 
-        // Carry through shape, taper, and cylinder fields if set in the dialog
+        // Carry through base shapes (box, taper, cylinder)
         const boardShape    = newBoardDialog.shape;
         const boardTaper    = newBoardDialog.taper;
         const boardCylinder = newBoardDialog.cylinder;
+        
+        // Translate cutting shapes into operations
         const boardArc      = newBoardDialog.arc;
         const boardCove     = newBoardDialog.cove;
         const boardHole     = newBoardDialog.hole;
+
+        const operations = [];
+        if (boardArc)  operations.push({ id: Date.now() + 1, type: 'arc',  ...boardArc });
+        if (boardCove) operations.push({ id: Date.now() + 2, type: 'cove', ...boardCove });
+        if (boardHole) operations.push({ id: Date.now() + 3, type: 'hole', ...boardHole });
+
+        let finalShape = boardShape || 'box';
+        if (['arc', 'cove', 'hole'].includes(finalShape)) {
+             finalShape = 'box';
+        }
 
         setBoards(prev => [...prev, {
             id: newId,
@@ -1566,13 +1685,10 @@ export const createActions = (set, get) => ({
             position: newBoardDialog.position,
             material: defaultMaterial,
             joint: 'None',
-            constraints: [],
-            ...(boardShape    ? { shape: boardShape }       : {}),
+            shape: finalShape,
+            operations,
             ...(boardTaper    ? { taper: boardTaper }       : {}),
             ...(boardCylinder ? { cylinder: boardCylinder } : {}),
-            ...(boardArc      ? { arc: boardArc }           : {}),
-            ...(boardCove     ? { cove: boardCove }         : {}),
-            ...(boardHole     ? { hole: boardHole }         : {}),
         }]);
         setSelectedItemIds([newId.toString()]);
         setNewBoardDialog(null);

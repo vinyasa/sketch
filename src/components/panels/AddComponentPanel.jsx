@@ -24,28 +24,8 @@ const SHAPES = [
         description: 'Round leg, post, disc — set radius & height in the dialog',
         color: '#7ea0bc',
     },
-    {
-        id: 'arc',
-        label: 'Arc / Curve',
-        icon: '◠',
-        description: 'Sweep angle & cutout for curves, aprons, and corner rails',
-        color: '#c07e99',
-    },
-    {
-        id: 'cove',
-        label: 'Cove / Scoop',
-        icon: '◡',
-        description: 'Sweeping arch or scoop removed from a flat edge',
-        color: '#bd86c2',
-    },
-    {
-        id: 'hole',
-        label: 'Panel with Hole',
-        icon: '◎',
-        description: 'Solid panel with a circular cutout entirely through it',
-        color: '#9e7ab5',
-    },
 ];
+
 
 // ─── Shape card ───────────────────────────────────────────────────────────────
 const ShapeCard = ({ shape, onAdd }) => {
@@ -99,19 +79,7 @@ const ShapeCard = ({ shape, onAdd }) => {
 
 // ─── Panel ────────────────────────────────────────────────────────────────────
 const AddComponentPanel = () => {
-    const { manualAddBoard, manualAddCylinder, manualAddArc, manualAddCove, manualAddHole, processAiCommand, selectedItemIds, groups } = useStore();
-
-    // Resolve target parent: selected group > selected board's parent > Workspace
-    const resolveParent = () => {
-        const { boards, groups: g } = useStore.getState();
-        if (selectedItemIds.length === 1) {
-            const id = selectedItemIds[0];
-            if (g[id]) return id;
-            const board = boards.find(b => b.id.toString() === id);
-            if (board) return board.parentId;
-        }
-        return 'Workspace';
-    };
+    const { manualAddBoard, manualAddCylinder, processAiCommand } = useStore();
 
     const handleAdd = (shape) => {
         if (shape.id === 'box') {
@@ -120,14 +88,9 @@ const AddComponentPanel = () => {
             processAiCommand('add a tapered leg 2 degrees');
         } else if (shape.id === 'cylinder') {
             manualAddCylinder();
-        } else if (shape.id === 'arc') {
-            manualAddArc();
-        } else if (shape.id === 'cove') {
-            manualAddCove();
-        } else if (shape.id === 'hole') {
-            manualAddHole();
         }
     };
+
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>

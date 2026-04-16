@@ -8,6 +8,10 @@ import { computeWorldAABB, collectChildBoards, calculateGroupAABB } from '../uti
 import { formatUnit } from '../utils/units';
 import { WOOD_CATALOGUE, WOOD_TEXTURE_URLS, normalizeMaterial } from '../utils/materialCatalogue';
 import { buildTaperGeometry, normalizeTaper } from '../utils/geometryBuilders';
+import { Evaluator, SUBTRACTION, INTERSECTION, Brush } from 'three-bvh-csg';
+
+// CSG Evaluator instance
+const csgEvaluator = new Evaluator();
 
 
 // ─── SceneLights: renders all lights from the lighting store slice ────────────
@@ -24,8 +28,6 @@ const SceneLights = ({ lighting }) => {
             return <hemisphereLight key={l.id} args={[l.color, l.groundColor ?? '#333333', l.intensity]} />;
 
           case 'directional': {
-            const target = new THREE.Object3D();
-            target.position.set(...(l.target ?? [0, 0, 0]));
             return (
               <group key={l.id}>
                 <directionalLight
@@ -42,7 +44,6 @@ const SceneLights = ({ lighting }) => {
                   shadow-camera-top={40}
                   shadow-camera-bottom={-40}
                   shadow-bias={-0.0004}
-                  target-position={l.target ?? [0, 0, 0]}
                 />
               </group>
             );
@@ -74,7 +75,6 @@ const SceneLights = ({ lighting }) => {
                 shadow-mapSize-width={l.shadowMapSize ?? 1024}
                 shadow-mapSize-height={l.shadowMapSize ?? 1024}
                 shadow-bias={-0.0004}
-                target-position={l.target ?? [0, 0, 0]}
               />
             );
           }
@@ -307,212 +307,220 @@ const BoundingBoxVisualizer = ({ boards, groups, selectedItemIds, showBoundingBo
   );
 };
 
-// ─── Memoized custom geometry for tapered boards ─────────────────────────────
-// Rebuilds only when size or taper angles change. Returns a primitive so
-// React Three Fiber can manage the bufferGeometry lifecycle cleanly.
-const TaperGeometry = ({ b }) => {
-  const { outerCorner, angleZ, angleX } = normalizeTaper(b.taper);
-  const [w, h, d] = b.size;
-  const geo = useMemo(
-    () => buildTaperGeometry(w, h, d, outerCorner, angleZ, angleX),
-    [w, h, d, outerCorner, angleZ, angleX]
-  );
-  return <primitive object={geo} attach="geometry" />;
-};
-
-const CylinderShapeGeometry = ({ b }) => {
-  const axis = b.cylinder?.axis || 'y';
+const _buildArcTool = (size, op) => {
+  const { startAngle = 0, endAngle = 90, innerRadius = 0, axis = 'y' } = op;
   const axisIdx = axis === 'x' ? 0 : axis === 'z' ? 2 : 1;
+  const thickness = size[axisIdx];
   
-  // Radius is determined by the two dimensions that are NOT the primary axis.
-  const dim1 = b.size[(axisIdx + 1) % 3];
-  const dim2 = b.size[(axisIdx + 2) % 3];
-  const radius = Math.min(dim1, dim2) / 2;
-  const height = b.size[axisIdx];
-  
-  const geo = useMemo(() => {
-    const g = new THREE.CylinderGeometry(radius, radius, height, 64, 1);
-    // Cylinder geometry intrinsically runs along the Y axis.
-    if (axis === 'x') g.rotateZ(Math.PI / 2);
-    if (axis === 'z') g.rotateX(Math.PI / 2);
-    return g;
-  }, [radius, height, axis]);
-
-  return <primitive object={geo} attach="geometry" />;
-};
-
-const ArcShapeGeometry = ({ b }) => {
-  const { startAngle = 0, endAngle = 90, innerRadius = 0, axis = 'y' } = b.arc || {};
-  const axisIdx = axis === 'x' ? 0 : axis === 'z' ? 2 : 1;
-  const thickness = b.size[axisIdx];
-  
-  // Map world AABB dimensions to the local drawing plane (XY)
   let dimX, dimY;
-  if (axis === 'y') {
-    // rotateX(-PI/2): Local X -> World X. Local Y -> World -Z.
-    dimX = b.size[0];
-    dimY = b.size[2];
-  } else if (axis === 'x') {
-    // rotateY(PI/2): Local X -> World -Z. Local Y -> World Y.
-    dimX = b.size[2];
-    dimY = b.size[1];
-  } else {
-    // No rotation (z-axis extrude): Local X -> World X. Local Y -> World Y.
-    dimX = b.size[0];
-    dimY = b.size[1];
+  if (axis === 'y') { dimX = size[0]; dimY = size[2]; }
+  else if (axis === 'x') { dimX = size[2]; dimY = size[1]; }
+  else { dimX = size[0]; dimY = size[1]; }
+
+  const shape = new THREE.Shape();
+  const startRad = THREE.MathUtils.degToRad(startAngle);
+  const endRad = THREE.MathUtils.degToRad(endAngle);
+  
+  shape.absellipse(0, 0, dimX, dimY, startRad, endRad, false, 0);
+  if (innerRadius === 0) shape.lineTo(0, 0);
+  else {
+    const irX = Math.max(0.01, dimX - innerRadius);
+    const irY = Math.max(0.01, dimY - innerRadius);
+    shape.lineTo(Math.cos(endRad) * irX, Math.sin(endRad) * irY);
+    shape.absellipse(0, 0, irX, irY, endRad, startRad, true, 0);
   }
-
-  const geo = useMemo(() => {
-    const shape = new THREE.Shape();
-    const startRad = THREE.MathUtils.degToRad(startAngle);
-    const endRad = THREE.MathUtils.degToRad(endAngle);
-    
-    // Draw the outer curve
-    shape.absellipse(0, 0, dimX, dimY, startRad, endRad, false, 0);
-    
-    if (innerRadius === 0) {
-      shape.lineTo(0, 0);
-    } else {
-      const irX = Math.max(0.01, dimX - innerRadius);
-      const irY = Math.max(0.01, dimY - innerRadius);
-      shape.lineTo(Math.cos(endRad) * irX, Math.sin(endRad) * irY);
-      // Reverse inner curve to create the hollow border
-      shape.absellipse(0, 0, irX, irY, endRad, startRad, true, 0);
-    }
-    
-    const extrudeSettings = { depth: thickness, bevelEnabled: false, curveSegments: 32 };
-    const g = new THREE.ExtrudeGeometry(shape, extrudeSettings);
-    
-    // Center the extrusion locally
-    g.computeBoundingBox();
-    const center = new THREE.Vector3();
-    g.boundingBox.getCenter(center);
-    g.translate(-center.x, -center.y, -center.z);
-    
-    // Rotate to match the requested axis (ExtrudeGeometry extrudes along Z)
-    if (axis === 'y') g.rotateX(-Math.PI / 2);
-    if (axis === 'x') g.rotateY(Math.PI / 2);
-    
-    // Force scale so its visual bounding box perfectly matches the component's AABB
-    g.computeBoundingBox();
-    const size = new THREE.Vector3();
-    g.boundingBox.getSize(size);
-    const scaleX = b.size[0] / (size.x || 1);
-    const scaleY = b.size[1] / (size.y || 1);
-    const scaleZ = b.size[2] / (size.z || 1);
-    g.scale(scaleX, scaleY, scaleZ);
-
-    return g;
-  }, [b.size, startAngle, endAngle, innerRadius, axis, thickness, dimX, dimY]);
-
-  return <primitive object={geo} attach="geometry" />;
+  
+  const g = new THREE.ExtrudeGeometry(shape, { depth: thickness, bevelEnabled: false, curveSegments: 12 });
+  g.computeBoundingBox();
+  const center = new THREE.Vector3();
+  g.boundingBox.getCenter(center);
+  g.translate(-center.x, -center.y, -center.z);
+  
+  if (axis === 'y') g.rotateX(-Math.PI / 2);
+  if (axis === 'x') g.rotateY(Math.PI / 2);
+  
+  g.computeBoundingBox();
+  const bboxSize = new THREE.Vector3();
+  g.boundingBox.getSize(bboxSize);
+  g.scale(size[0] / (bboxSize.x || 1), size[1] / (bboxSize.y || 1), size[2] / (bboxSize.z || 1));
+  return g;
 };
 
-const CoveShapeGeometry = ({ b }) => {
-  const { edge = 'top', depth = 2, axis = 'y' } = b.cove || {};
+const _buildCoveTool = (size, op) => {
+  const { edge = 'top', depth = 2, axis = 'y' } = op;
   const axisIdx = axis === 'x' ? 0 : axis === 'z' ? 2 : 1;
-  const thickness = b.size[axisIdx];
-  
+  const thickness = size[axisIdx];
   let dimX, dimY;
-  if (axis === 'y') { dimX = b.size[0]; dimY = b.size[2]; }
-  else if (axis === 'x') { dimX = b.size[2]; dimY = b.size[1]; }
-  else { dimX = b.size[0]; dimY = b.size[1]; }
+  if (axis === 'y') { dimX = size[0]; dimY = size[2]; }
+  else if (axis === 'x') { dimX = size[2]; dimY = size[1]; }
+  else { dimX = size[0]; dimY = size[1]; }
 
-  const geo = useMemo(() => {
-    const shape = new THREE.Shape();
-    
-    // Bottom edge
-    if (edge === 'bottom') {
-      shape.moveTo(0, 0);
-      shape.absellipse(dimX / 2, 0, dimX / 2, depth, Math.PI, 0, true, 0);
-    } else {
-      shape.moveTo(0, 0);
-      shape.lineTo(dimX, 0);
-    }
-    
-    // Right edge
-    if (edge === 'right') {
-      shape.absellipse(dimX, dimY / 2, depth, dimY / 2, -Math.PI / 2, Math.PI / 2, true, 0);
-    } else {
-      shape.lineTo(dimX, dimY);
-    }
-    
-    // Top edge
-    if (edge === 'top') {
-      shape.absellipse(dimX / 2, dimY, dimX / 2, depth, 0, Math.PI, true, 0);
-    } else {
-      shape.lineTo(0, dimY);
-    }
-    
-    // Left edge
-    if (edge === 'left') {
-      shape.absellipse(0, dimY / 2, depth, dimY / 2, Math.PI / 2, -Math.PI / 2, true, 0);
-    } else {
-      shape.lineTo(0, 0);
-    }
+  const shape = new THREE.Shape();
+  if (edge === 'bottom') { shape.moveTo(0, 0); shape.absellipse(dimX / 2, 0, dimX / 2, depth, Math.PI, 0, true, 0); } else { shape.moveTo(0, 0); shape.lineTo(dimX, 0); }
+  if (edge === 'right') { shape.absellipse(dimX, dimY / 2, depth, dimY / 2, -Math.PI / 2, Math.PI / 2, true, 0); } else { shape.lineTo(dimX, dimY); }
+  if (edge === 'top') { shape.absellipse(dimX / 2, dimY, dimX / 2, depth, 0, Math.PI, true, 0); } else { shape.lineTo(0, dimY); }
+  if (edge === 'left') { shape.absellipse(0, dimY / 2, depth, dimY / 2, Math.PI / 2, -Math.PI / 2, true, 0); } else { shape.lineTo(0, 0); }
 
-    const extrudeSettings = { depth: thickness, bevelEnabled: false, curveSegments: 32 };
-    const g = new THREE.ExtrudeGeometry(shape, extrudeSettings);
-    
-    g.translate(-dimX/2, -dimY/2, -thickness/2);
-    if (axis === 'y') g.rotateX(-Math.PI / 2);
-    if (axis === 'x') g.rotateY(Math.PI / 2);
-    
-    // Explicit scale to enforce exact AABB if floating point error occurs.
-    g.computeBoundingBox();
-    const size = new THREE.Vector3();
-    g.boundingBox.getSize(size);
-    const scaleX = b.size[0] / (size.x || 1);
-    const scaleY = b.size[1] / (size.y || 1);
-    const scaleZ = b.size[2] / (size.z || 1);
-    g.scale(scaleX, scaleY, scaleZ);
-
-    return g;
-  }, [b.size, edge, depth, axis, thickness, dimX, dimY]);
-
-  return <primitive object={geo} attach="geometry" />;
+  const g = new THREE.ExtrudeGeometry(shape, { depth: thickness, bevelEnabled: false, curveSegments: 12 });
+  g.translate(-dimX/2, -dimY/2, -thickness/2);
+  if (axis === 'y') g.rotateX(-Math.PI / 2);
+  if (axis === 'x') g.rotateY(Math.PI / 2);
+  
+  g.computeBoundingBox();
+  const bboxSize = new THREE.Vector3();
+  g.boundingBox.getSize(bboxSize);
+  g.scale(size[0] / (bboxSize.x || 1), size[1] / (bboxSize.y || 1), size[2] / (bboxSize.z || 1));
+  return g;
 };
 
-const HoleShapeGeometry = ({ b }) => {
-  const { radius = 2, offsetX = 0, offsetY = 0, axis = 'y' } = b.hole || {};
-  const axisIdx = axis === 'x' ? 0 : axis === 'z' ? 2 : 1;
-  const thickness = b.size[axisIdx];
-  
-  let dimX, dimY;
-  if (axis === 'y') { dimX = b.size[0]; dimY = b.size[2]; }
-  else if (axis === 'x') { dimX = b.size[2]; dimY = b.size[1]; }
-  else { dimX = b.size[0]; dimY = b.size[1]; }
+const CSGGeometry = ({ b }) => {
+  // Serialize only the fields that actually affect geometry.
+  const targetKey = JSON.stringify({
+    shape: b.shape,
+    size: b.size,
+    taper: b.taper,
+    cylinder: b.cylinder,
+    operations: b.operations,
+  });
 
   const geo = useMemo(() => {
-    const shape = new THREE.Shape();
-    shape.moveTo(0, 0);
-    shape.lineTo(dimX, 0);
-    shape.lineTo(dimX, dimY);
-    shape.lineTo(0, dimY);
-    shape.lineTo(0, 0);
-    
-    const hole = new THREE.Path();
-    const holeCenter = { x: dimX / 2 + offsetX, y: dimY / 2 + offsetY };
-    hole.absellipse(holeCenter.x, holeCenter.y, radius, radius, 0, Math.PI * 2, false, 0);
-    shape.holes.push(hole);
-    
-    const extrudeSettings = { depth: thickness, bevelEnabled: false, curveSegments: 32 };
-    const g = new THREE.ExtrudeGeometry(shape, extrudeSettings);
-    
-    g.translate(-dimX/2, -dimY/2, -thickness/2);
-    if (axis === 'y') g.rotateX(-Math.PI / 2);
-    if (axis === 'x') g.rotateY(Math.PI / 2);
-    
-    g.computeBoundingBox();
-    const size = new THREE.Vector3();
-    g.boundingBox.getSize(size);
-    const scaleX = b.size[0] / (size.x || 1);
-    const scaleY = b.size[1] / (size.y || 1);
-    const scaleZ = b.size[2] / (size.z || 1);
-    g.scale(scaleX, scaleY, scaleZ);
+    const MAX_TRIS = 250000; // Safety limit — real hangs happen at millions, 250K is fine for modern GPUs
+    let baseGeo;
+    try {
+      if (b.shape === 'taper') {
+        const { outerCorner, angleZ, angleX } = normalizeTaper(b.taper);
+        baseGeo = buildTaperGeometry(b.size[0], b.size[1], b.size[2], outerCorner, angleZ, angleX);
+      } else if (b.shape === 'cylinder') {
+        const axis = b.cylinder?.axis || 'y';
+        const axisIdx = axis === 'x' ? 0 : axis === 'z' ? 2 : 1;
+        const dim1 = b.size[(axisIdx + 1) % 3];
+        const dim2 = b.size[(axisIdx + 2) % 3];
+        const radius = Math.min(dim1, dim2) / 2;
+        const height = b.size[axisIdx];
+        baseGeo = new THREE.CylinderGeometry(radius, radius, height, 64, 1);
+        if (axis === 'x') baseGeo.rotateZ(Math.PI / 2);
+        if (axis === 'z') baseGeo.rotateX(Math.PI / 2);
+      } else {
+        baseGeo = new THREE.BoxGeometry(b.size[0], b.size[1], b.size[2]);
+      }
 
-    return g;
-  }, [b.size, radius, offsetX, offsetY, axis, thickness, dimX, dimY]);
+      if (!b.operations || b.operations.length === 0) return baseGeo;
+
+      // Helper: count triangles in a geometry/brush
+      const triCount = (brush) => {
+        const g = brush.geometry || brush;
+        if (g.index) return g.index.count / 3;
+        const pos = g.getAttribute?.('position');
+        return pos ? pos.count / 3 : 0;
+      };
+
+      // ── CSG strategy ────────────────────────────────────────────────────────
+      const subOps    = b.operations.filter(op => op.type === 'hole');
+      const intersOps = b.operations.filter(op => op.type === 'arc' || op.type === 'cove');
+
+      let resultBrush = new Brush(baseGeo);
+      resultBrush.updateMatrixWorld();
+
+      // ── 1. Subtractions (holes) ────────────────────────────────────────────
+      for (const op of subOps) {
+        try {
+          const axis = op.axis || 'y';
+          const r = Math.max(0.01, op.radius || 1);
+          const hLength = Math.max(...b.size) + 10;
+          const cyl = new THREE.CylinderGeometry(r, r, hLength, 32);
+          const opBrush = new Brush(cyl);
+          if (axis === 'x') opBrush.rotation.z = Math.PI / 2;
+          else if (axis === 'z') opBrush.rotation.x = Math.PI / 2;
+          const ox = op.offsetX || 0;
+          const oy = op.offsetY || 0;
+          if (axis === 'z') opBrush.position.set(ox, oy, 0);
+          else if (axis === 'x') opBrush.position.set(0, oy, ox);
+          else opBrush.position.set(ox, 0, oy);
+          opBrush.updateMatrixWorld();
+
+          const prevGeometry = resultBrush.geometry;
+          resultBrush = csgEvaluator.evaluate(resultBrush, opBrush, SUBTRACTION);
+          resultBrush.updateMatrixWorld();
+          if (prevGeometry !== baseGeo) prevGeometry?.dispose();
+          opBrush.geometry?.dispose();
+
+          // Safety check
+          if (triCount(resultBrush) > MAX_TRIS) {
+            console.warn(`[CSG] Triangle limit exceeded after hole op on "${b.name}" (${triCount(resultBrush)} tris). Falling back.`);
+            return new THREE.BoxGeometry(b.size[0], b.size[1], b.size[2]);
+          }
+        } catch (e) {
+          console.error('CSG hole error:', e);
+        }
+      }
+
+      // ── 2. Intersections (arc / cove) — hybrid strategy ───────────────────
+      //   • Same-axis ops are merged into one tool first (cheap — tools
+      //     overlap cleanly on the same plane).
+      //   • Then each axis group is applied sequentially to the base mesh.
+      //     Each pass carves material away, keeping the mesh manageable
+      //     for multi-axis cuts.
+      if (intersOps.length > 0) {
+        const buildTool = (op) => {
+          if (op.type === 'arc')  return new Brush(_buildArcTool(b.size, op));
+          if (op.type === 'cove') return new Brush(_buildCoveTool(b.size, op));
+          return null;
+        };
+
+        // Group operations by axis
+        const byAxis = {};
+        for (const op of intersOps) {
+          const a = op.axis || 'y';
+          (byAxis[a] ??= []).push(op);
+        }
+
+        // Process each axis group
+        for (const [axisKey, ops] of Object.entries(byAxis)) {
+          try {
+            // Build first tool for this axis
+            let axisTool = buildTool(ops[0]);
+            if (!axisTool) continue;
+            axisTool.updateMatrixWorld();
+
+            // Merge additional same-axis tools (cheap — same-plane overlap)
+            for (let i = 1; i < ops.length; i++) {
+              const nextTool = buildTool(ops[i]);
+              if (!nextTool) continue;
+              nextTool.updateMatrixWorld();
+              const prevGeo = axisTool.geometry;
+              axisTool = csgEvaluator.evaluate(axisTool, nextTool, INTERSECTION);
+              axisTool.updateMatrixWorld();
+              prevGeo?.dispose();
+              nextTool.geometry?.dispose();
+            }
+
+            // Apply merged axis tool to the running result
+            const prevGeometry = resultBrush.geometry;
+            resultBrush = csgEvaluator.evaluate(resultBrush, axisTool, INTERSECTION);
+            resultBrush.updateMatrixWorld();
+            if (prevGeometry !== baseGeo) prevGeometry?.dispose();
+            axisTool.geometry?.dispose();
+
+            const tris = triCount(resultBrush);
+            if (tris > MAX_TRIS) {
+              console.warn(`[CSG] Triangle limit exceeded after ${axisKey}-axis ops on "${b.name}" (${tris} tris). Falling back.`);
+              return new THREE.BoxGeometry(b.size[0], b.size[1], b.size[2]);
+            }
+          } catch (e) {
+            console.error(`CSG ${axisKey}-axis error on "${b.name}":`, e);
+          }
+        }
+      }
+
+      return resultBrush.geometry;
+    } catch (e) {
+      console.error('CSG base error:', e);
+      // Fall back to plain box so the board is still visible
+      return new THREE.BoxGeometry(b.size[0], b.size[1], b.size[2]);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [targetKey]);
+
 
   return <primitive object={geo} attach="geometry" />;
 };
@@ -590,17 +598,7 @@ const BoardMesh = ({ b, selectedItemIds, toggleSelection, textures, showEdges, c
         }
       }}
     >
-      {b.shape === 'taper'
-        ? <TaperGeometry b={b} />
-        : b.shape === 'cylinder'
-          ? <CylinderShapeGeometry b={b} />
-          : b.shape === 'arc'
-            ? <ArcShapeGeometry b={b} />
-            : b.shape === 'cove'
-              ? <CoveShapeGeometry b={b} />
-              : b.shape === 'hole'
-                ? <HoleShapeGeometry b={b} />
-                : <boxGeometry args={b.size} />}
+      <CSGGeometry b={b} />
       {(() => {
         const matDesc = normalizeMaterial(b.material);
         // Key forces React to remount the material when type changes,
@@ -793,6 +791,12 @@ function WoodJoint({ boards, groups, selectedItemIds, toggleSelection, showEdges
   const rootGroups = Object.keys(groups).filter(k => groups[k].parentId === null);
   const rootBoards = boards.filter(b => b.parentId === 'Workspace');
 
+  // Orphaned boards: parentId references a group that doesn't exist in the groups map.
+  // Render them as root-level boards so they're never invisible.
+  const allGroupIds = new Set(Object.keys(groups));
+  allGroupIds.add('Workspace');
+  const orphanedBoards = boards.filter(b => !allGroupIds.has(b.parentId));
+
   return (
     <group>
       {rootGroups.map(k => (
@@ -800,6 +804,9 @@ function WoodJoint({ boards, groups, selectedItemIds, toggleSelection, showEdges
       ))}
       {rootBoards.map(b => (
         <BoardMesh key={`root_${b.id}`} b={b} selectedItemIds={selectedItemIds} toggleSelection={toggleSelection} textures={textures} showEdges={showEdges} constraintTargetMode={constraintTargetMode} hoveredFaceData={hoveredFaceData} setHoveredFaceData={setHoveredFaceData} modifierActive={modifierActive} />
+      ))}
+      {orphanedBoards.map(b => (
+        <BoardMesh key={`orphan_${b.id}`} b={b} selectedItemIds={selectedItemIds} toggleSelection={toggleSelection} textures={textures} showEdges={showEdges} constraintTargetMode={constraintTargetMode} hoveredFaceData={hoveredFaceData} setHoveredFaceData={setHoveredFaceData} modifierActive={modifierActive} />
       ))}
       <ConstraintVisualizer boards={boards} groups={groups} selectedItemIds={selectedItemIds} constraints={constraints} />
       <BoundingBoxVisualizer boards={boards} groups={groups} selectedItemIds={selectedItemIds} showBoundingBox={showBoundingBox} theme={theme} />
@@ -815,9 +822,15 @@ export default function Viewport3D() {
 
   useEffect(() => {
     const handleKey = (e) => setModifierActive(e.shiftKey || e.altKey);
+    const handleBlur = () => setModifierActive(false);   // reset if focus lost while Shift held
     window.addEventListener('keydown', handleKey);
     window.addEventListener('keyup', handleKey);
-    return () => { window.removeEventListener('keydown', handleKey); window.removeEventListener('keyup', handleKey); };
+    window.addEventListener('blur', handleBlur);
+    return () => {
+      window.removeEventListener('keydown', handleKey);
+      window.removeEventListener('keyup', handleKey);
+      window.removeEventListener('blur', handleBlur);
+    };
   }, []);
 
   const isDark = theme === 'dark';
@@ -872,7 +885,13 @@ export default function Viewport3D() {
           </mesh>
         )}
 
-        <React.Suspense fallback={null}>
+        <React.Suspense fallback={
+          <Html center>
+            <div style={{ color: '#bc8a5f', fontSize: '1rem', fontWeight: 'bold', textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}>
+              Loading textures…
+            </div>
+          </Html>
+        }>
           <WoodJoint
             boards={boards}
             groups={groups}

@@ -3,15 +3,34 @@ import { createActions } from './actions';
 import { loadLibrarySync, loadLibraryFromDiskIfNeeded, loadStoredHandle } from '../utils/libraryPersistence';
 import { DEFAULT_LIGHTING } from '../utils/lightingPresets';
 
+// ─── Fresh-start flag: append ?fresh to the URL to skip localStorage ─────────
+const FRESH_START = typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('fresh');
+if (FRESH_START) console.info('%c[FRESH START] Skipping localStorage — using hardcoded defaults.', 'color: #bc8a5f; font-weight: bold;');
+
 // ─── Helper: load persisted state from localStorage ──────────────────────────
 const loadState = (key, def) => {
+    if (FRESH_START) return def;
     try {
         const s = localStorage.getItem('lucey_save');
         if (s) {
             const p = JSON.parse(s);
-            return p[key] !== undefined ? p[key] : def;
+            if (p[key] !== undefined) {
+                // Sanitize boards on load to prevent silent crashes
+                if (key === 'boards' && Array.isArray(p[key])) {
+                    return p[key].map(b => ({
+                        ...b,
+                        size: Array.isArray(b.size) && b.size.length === 3 ? b.size : [1, 1, 1],
+                        position: Array.isArray(b.position) && b.position.length === 3 ? b.position : [0, 0.5, 0],
+                        operations: Array.isArray(b.operations) ? b.operations : [],
+                        shape: b.shape || 'box',
+                    }));
+                }
+                return p[key];
+            }
         }
-    } catch (e) { }
+    } catch (e) {
+        console.error('[loadState] Failed to parse saved data for key:', key, e);
+    }
     return def;
 };
 
@@ -29,6 +48,10 @@ const useStore = create((set, get) => ({
     // ── 2A: UI Toggle State ──────────────────────────────────────────────────
     showCutlistPanel: false,
     setShowCutlistPanel: (v) => set({ showCutlistPanel: typeof v === 'function' ? v(get().showCutlistPanel) : v }),
+
+    // ── Computing overlay ────────────────────────────────────────────────────
+    computingMessage: null,
+    setComputingMessage: (msg) => set({ computingMessage: msg }),
 
     isOrtho: false,
     setIsOrtho: (v) => set({ isOrtho: typeof v === 'function' ? v(get().isOrtho) : v }),
@@ -167,11 +190,11 @@ const useStore = create((set, get) => ({
     // Position: [x, y, z] = center of the board in world space
     // Note: boards no longer carry a constraints[] array — see root `constraints` map.
     boards: loadState('boards', [
-        { id: 1, name: 'Table Top', parentId: 'Table Base', size: [36, 0.75, 24], position: [0, 12.375, 0], material: 'pine', joint: 'Butt 1' },
-        { id: 2, name: 'Leg A',     parentId: 'Table Base', size: [1.5, 12, 1.5], position: [16.5, 6, 10.5],   material: 'white-oak', joint: 'Butt 1' },
-        { id: 3, name: 'Leg B',     parentId: 'Table Base', size: [1.5, 12, 1.5], position: [-16.5, 6, 10.5],  material: 'white-oak', joint: 'Butt 1' },
-        { id: 4, name: 'Leg C',     parentId: 'Table Base', size: [1.5, 12, 1.5], position: [16.5, 6, -10.5],  material: 'white-oak', joint: 'Butt 1' },
-        { id: 5, name: 'Leg D',     parentId: 'Table Base', size: [1.5, 12, 1.5], position: [-16.5, 6, -10.5], material: 'white-oak', joint: 'Butt 1' },
+        { id: 1, name: 'Table Top', parentId: 'Table Base', size: [36, 0.75, 24], position: [0, 12.375, 0], material: 'pine', joint: 'Butt 1', shape: 'box', operations: [] },
+        { id: 2, name: 'Leg A',     parentId: 'Table Base', size: [1.5, 12, 1.5], position: [16.5, 6, 10.5],   material: 'white-oak', joint: 'Butt 1', shape: 'box', operations: [] },
+        { id: 3, name: 'Leg B',     parentId: 'Table Base', size: [1.5, 12, 1.5], position: [-16.5, 6, 10.5],  material: 'white-oak', joint: 'Butt 1', shape: 'box', operations: [] },
+        { id: 4, name: 'Leg C',     parentId: 'Table Base', size: [1.5, 12, 1.5], position: [16.5, 6, -10.5],  material: 'white-oak', joint: 'Butt 1', shape: 'box', operations: [] },
+        { id: 5, name: 'Leg D',     parentId: 'Table Base', size: [1.5, 12, 1.5], position: [-16.5, 6, -10.5], material: 'white-oak', joint: 'Butt 1', shape: 'box', operations: [] },
     ]),
     setBoards: (v) => set({ boards: typeof v === 'function' ? v(get().boards) : v }),
 

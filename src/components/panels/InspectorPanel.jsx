@@ -14,6 +14,11 @@ const InspectorPanel = () => {
     const [bulkAngleX, setBulkAngleX] = useState(2);
     const [bulkDelta, setBulkDelta] = useState(['0', '0', '0']);
 
+    // Staged modifier edits — changes are held locally until "Apply" is clicked
+    const [stagedOps, setStagedOps] = useState({});
+    // New modifiers that haven't been committed to the store yet
+    const [pendingNewOps, setPendingNewOps] = useState([]);
+
     const {
         boards, groups, selectedItemIds, constraints,
         updateVector, moveGroup,
@@ -24,8 +29,14 @@ const InspectorPanel = () => {
         handleAssemblyDelete, handleComponentDelete, handleMultiDelete,
         removeConstraint, toggleConstraint,
         constraintTargetMode, setConstraintTargetMode,
-        updateProceduralBox
+        updateProceduralBox,
+        addOperation, updateOperation, removeOperation,
+        setComputingMessage,
     } = useStore();
+
+    // Clear staged modifier edits when the selected board changes
+    const selectedBoardId = selectedItemIds?.[0];
+    useEffect(() => { setStagedOps({}); setPendingNewOps([]); }, [selectedBoardId]);
 
     // Cancel constraint mode if selection no longer includes the source board
     useEffect(() => {
@@ -90,9 +101,9 @@ const InspectorPanel = () => {
                 {ConstraintBanner}
                 <div className="inspector-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
                     <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Assembly:</span>
-                    <input 
-                        type="text" 
-                        value={selectedGroup} 
+                    <input
+                        type="text"
+                        value={selectedGroup}
                         disabled={isWorkspace}
                         title={isWorkspace ? 'Root workspace cannot be renamed' : 'Click to rename assembly'}
                         onChange={(e) => {
@@ -109,7 +120,7 @@ const InspectorPanel = () => {
                             setBoards(boards.map(bd => bd.parentId === selectedGroup ? { ...bd, parentId: newName } : bd));
                             setSelectedItemIds(selectedItemIds.map(id => id === selectedGroup ? newName : id));
                         }}
-                        style={{ flex: 1, width: '100%', background: isWorkspace ? 'transparent' : 'rgba(128,128,128,0.15)', padding: '6px 12px', borderRadius: '6px', border: '1px solid', borderColor: isWorkspace ? 'transparent' : 'var(--border-color)', color: 'var(--accent-color)', fontSize: 'inherit', fontWeight: 'inherit', outline: 'none' }} 
+                        style={{ flex: 1, width: '100%', background: isWorkspace ? 'transparent' : 'rgba(128,128,128,0.15)', padding: '6px 12px', borderRadius: '6px', border: '1px solid', borderColor: isWorkspace ? 'transparent' : 'var(--border-color)', color: 'var(--accent-color)', fontSize: 'inherit', fontWeight: 'inherit', outline: 'none' }}
                     />
                 </div>
                 <div className="inspector-section">
@@ -124,9 +135,9 @@ const InspectorPanel = () => {
                     <div className="inspector-section">
                         <h4>Move Group (delta in)</h4>
                         <div className="vec3-inputs">
-                            <div style={{ backgroundColor: 'rgba(255, 60, 60, 0.15)' }}>X<input type="number" step="0.5" defaultValue={0} onBlur={e => { const v = parseFloat(e.target.value) || 0; if (v !== 0) { moveGroup(selectedGroup, 0, v); e.target.value = 0; }}} onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); }} /></div>
-                            <div style={{ backgroundColor: 'rgba(60, 200, 90, 0.15)' }}>Y<input type="number" step="0.5" defaultValue={0} onBlur={e => { const v = parseFloat(e.target.value) || 0; if (v !== 0) { moveGroup(selectedGroup, 1, v); e.target.value = 0; }}} onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); }} /></div>
-                            <div style={{ backgroundColor: 'rgba(60, 150, 255, 0.15)' }}>Z<input type="number" step="0.5" defaultValue={0} onBlur={e => { const v = parseFloat(e.target.value) || 0; if (v !== 0) { moveGroup(selectedGroup, 2, v); e.target.value = 0; }}} onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); }} /></div>
+                            <div style={{ backgroundColor: 'rgba(255, 60, 60, 0.15)' }}>X<input type="number" step="0.5" defaultValue={0} onBlur={e => { const v = parseFloat(e.target.value) || 0; if (v !== 0) { moveGroup(selectedGroup, 0, v); e.target.value = 0; } }} onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); }} /></div>
+                            <div style={{ backgroundColor: 'rgba(60, 200, 90, 0.15)' }}>Y<input type="number" step="0.5" defaultValue={0} onBlur={e => { const v = parseFloat(e.target.value) || 0; if (v !== 0) { moveGroup(selectedGroup, 1, v); e.target.value = 0; } }} onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); }} /></div>
+                            <div style={{ backgroundColor: 'rgba(60, 150, 255, 0.15)' }}>Z<input type="number" step="0.5" defaultValue={0} onBlur={e => { const v = parseFloat(e.target.value) || 0; if (v !== 0) { moveGroup(selectedGroup, 2, v); e.target.value = 0; } }} onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); }} /></div>
                         </div>
                         <button style={{ marginTop: '8px', width: '100%' }} className="primary-btn" onClick={dropGroupToFloor}>↓ Set on Floor</button>
                         <p className="hint" style={{ marginTop: '6px' }}>Enter a delta value and press Enter to shift all children.</p>
@@ -266,7 +277,7 @@ const InspectorPanel = () => {
                     </div>
                     {axisEditable.some(Boolean) && (
                         <div style={{ marginTop: '5px', fontSize: '0.68rem', color: 'var(--text-muted)' }}>
-                            {['X','Y','Z'].map((label, i) => axisEditable[i]
+                            {['X', 'Y', 'Z'].map((label, i) => axisEditable[i]
                                 ? <span key={i} style={{ marginRight: '8px' }}>{label}: {spanningBoards[i].length} board{spanningBoards[i].length !== 1 ? 's' : ''}</span>
                                 : null
                             )}
@@ -388,35 +399,35 @@ const InspectorPanel = () => {
             // Clone along the thinnest axis direction
             const minSize = Math.min(...selectedBoard.size);
             const thickAxis = selectedBoard.size.indexOf(minSize);
-            
+
             const maxId = Math.max(...boards.map(b => parseInt(b.id) || 0), 0);
             const newId = maxId + 1;
-            
+
             const newPos = [...selectedBoard.position];
             newPos[thickAxis] += cloneOffset;
-            
+
             const newBoard = {
                 ...selectedBoard,
                 id: newId,
                 position: newPos,
                 constraints: []
             };
-            
+
             const match = selectedBoard.name.match(/^(.*?)(\sCopy\s\d+|\sCopy)?$/);
             const baseName = match ? match[1] : selectedBoard.name;
             let maxCopyIdx = 0;
             boards.forEach(b => {
-                 const m = b.name.match(new RegExp(`^${baseName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} Copy (\\d+)$`));
-                 if (m) maxCopyIdx = Math.max(maxCopyIdx, parseInt(m[1]));
-                 else if (b.name === `${baseName} Copy`) maxCopyIdx = Math.max(maxCopyIdx, 1);
+                const m = b.name.match(new RegExp(`^${baseName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} Copy (\\d+)$`));
+                if (m) maxCopyIdx = Math.max(maxCopyIdx, parseInt(m[1]));
+                else if (b.name === `${baseName} Copy`) maxCopyIdx = Math.max(maxCopyIdx, 1);
             });
-            
+
             if (maxCopyIdx > 0) {
                 newBoard.name = `${baseName} Copy ${maxCopyIdx + 1}`;
             } else {
                 newBoard.name = `${baseName} Copy`;
             }
-            
+
             pushHistory();
             setBoards([...boards, newBoard]);
             setSelectedItemIds([newId.toString()]);
@@ -436,7 +447,7 @@ const InspectorPanel = () => {
                         <div style={{ backgroundColor: 'rgba(60, 150, 255, 0.15)' }}>Z<input type="number" step="0.125" value={fmt4(selectedBoard.size[2])} onChange={e => updateVector('size', 2, e.target.value)} /></div>
                     </div>
                     <div className="hint" style={{ marginTop: '6px', fontSize: '0.75rem' }}>
-                        {sorted.map((d, i) => `${dimLabels[i]}: ${d.val.toFixed(2)}" (${['X','Y','Z'][d.idx]})`).join(' · ')}
+                        {sorted.map((d, i) => `${dimLabels[i]}: ${d.val.toFixed(2)}" (${['X', 'Y', 'Z'][d.idx]})`).join(' · ')}
                     </div>
                 </div>
 
@@ -480,30 +491,24 @@ const InspectorPanel = () => {
                     </div>
                 </div>
 
-                {/* ── Shape Picker ── */}
+                    {/* ── Shape Picker ── */}
                 <div className="inspector-card">
                     <h4>Shape</h4>
                     <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '4px' }}>
-                        {['box', 'taper', 'cylinder', 'arc', 'cove', 'hole'].map(s => (
+                        {['box', 'taper', 'cylinder'].map(s => (
                             <button
                                 key={s}
                                 onClick={() => {
                                     pushHistory();
                                     let patch;
                                     if (s === 'box') {
-                                        patch = { shape: undefined, taper: undefined, cylinder: undefined, arc: undefined, cove: undefined, hole: undefined };
+                                        patch = { shape: undefined, taper: undefined, cylinder: undefined };
                                     } else if (s === 'taper') {
-                                        patch = { shape: 'taper', taper: { outerCorner: 'fl', angleZ: 2, angleX: 2 }, cylinder: undefined, arc: undefined, cove: undefined, hole: undefined };
+                                        patch = { shape: 'taper', taper: { outerCorner: 'fl', angleZ: 2, angleX: 2 }, cylinder: undefined };
                                     } else if (s === 'cylinder') {
                                         const r = Math.min(selectedBoard.size[0], selectedBoard.size[2]) / 2;
                                         const h = selectedBoard.size[1];
-                                        patch = { shape: 'cylinder', cylinder: { radius: r, axis: 'y' }, size: [r * 2, h, r * 2], taper: undefined, arc: undefined, cove: undefined, hole: undefined };
-                                    } else if (s === 'arc') {
-                                        patch = { shape: 'arc', arc: { startAngle: 0, endAngle: 90, innerRadius: 0, axis: 'y' }, taper: undefined, cylinder: undefined, cove: undefined, hole: undefined };
-                                    } else if (s === 'cove') {
-                                        patch = { shape: 'cove', cove: { edge: 'top', depth: 2, axis: 'z' }, taper: undefined, cylinder: undefined, arc: undefined, hole: undefined };
-                                    } else if (s === 'hole') {
-                                        patch = { shape: 'hole', hole: { radius: 2, offsetX: 0, offsetY: 0, axis: 'z' }, taper: undefined, cylinder: undefined, arc: undefined, cove: undefined };
+                                        patch = { shape: 'cylinder', cylinder: { radius: r, axis: 'y' }, size: [r * 2, h, r * 2], taper: undefined };
                                     }
                                     setBoards(prev => prev.map(bd =>
                                         bd.id === selectedBoard.id ? { ...bd, ...patch } : bd
@@ -528,7 +533,7 @@ const InspectorPanel = () => {
                                     transition: 'all 0.15s',
                                 }}
                             >
-                                {s === 'box' ? '■ Box' : s === 'taper' ? '◢ Taper' : s === 'cylinder' ? '○ Cylinder' : s === 'arc' ? '◠ Arc' : s === 'cove' ? '◡ Cove' : '◎ Hole'}
+                                {s === 'box' ? '■ Box' : s === 'taper' ? '◢ Taper' : '○ Cylinder'}
                             </button>
                         ))}
                     </div>
@@ -539,7 +544,7 @@ const InspectorPanel = () => {
                             selectedBoard.size[0], selectedBoard.size[1], selectedBoard.size[2], angleZ, angleX
                         );
                         const zFaceLabel = outerCorner.startsWith('f') ? 'Back (Z−) inner face °' : 'Front (Z+) inner face °';
-                        const xFaceLabel = outerCorner.endsWith('l')   ? 'Right (X+) inner face °' : 'Left (X−) inner face °';
+                        const xFaceLabel = outerCorner.endsWith('l') ? 'Right (X+) inner face °' : 'Left (X−) inner face °';
 
                         const setCorner = (corner) => {
                             pushHistory();
@@ -608,13 +613,13 @@ const InspectorPanel = () => {
                     {selectedBoard.shape === 'cylinder' && (() => {
                         const axis = selectedBoard.cylinder?.axis || 'y';
                         const axisIdx = axis === 'x' ? 0 : axis === 'z' ? 2 : 1;
-                        
+
                         const dim1 = selectedBoard.size[(axisIdx + 1) % 3];
                         const dim2 = selectedBoard.size[(axisIdx + 2) % 3];
-                        
+
                         const radius = selectedBoard.cylinder?.radius ?? Math.min(dim1, dim2) / 2;
                         const height = selectedBoard.size[axisIdx];
-                        
+
                         const setRadius = (val) => {
                             const r = Math.max(0.0625, parseFloat(val) || 0.0625);
                             pushHistory();
@@ -662,157 +667,234 @@ const InspectorPanel = () => {
                         );
                     })()}
 
-                    {/* ── Arc controls ── */}
-                    {selectedBoard.shape === 'arc' && (() => {
-                        const { startAngle = 0, endAngle = 90, innerRadius = 0, axis = 'y' } = selectedBoard.arc || {};
-                        const setArc = (patch) => {
-                            pushHistory();
-                            setBoards(prev => prev.map(bd =>
-                                bd.id === selectedBoard.id ? { ...bd, arc: { ...bd.arc, ...patch } } : bd
-                            ));
-                        };
-                        return (
-                            <div style={{ marginTop: '10px' }}>
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                                    <div>
-                                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Start Angle (°)</div>
-                                        <input
-                                            type="number" step="1" value={startAngle}
-                                            onChange={e => setArc({ startAngle: parseFloat(e.target.value) || 0 })}
-                                            style={{ width: '100%', padding: '5px 8px', background: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '6px', outline: 'none', fontSize: '0.9rem' }}
-                                        />
-                                    </div>
-                                    <div>
-                                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>End Angle (°)</div>
-                                        <input
-                                            type="number" step="1" value={endAngle}
-                                            onChange={e => setArc({ endAngle: parseFloat(e.target.value) || 0 })}
-                                            style={{ width: '100%', padding: '5px 8px', background: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '6px', outline: 'none', fontSize: '0.9rem' }}
-                                        />
-                                    </div>
-                                    <div>
-                                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Cutout to Leave (in)</div>
-                                        <input
-                                            type="number" min="0" step="0.25" value={parseFloat(innerRadius.toFixed(4))}
-                                            onChange={e => setArc({ innerRadius: Math.max(0, parseFloat(e.target.value) || 0) })}
-                                            style={{ width: '100%', padding: '5px 8px', background: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '6px', outline: 'none', fontSize: '0.9rem' }}
-                                        />
-                                    </div>
-                                    <div>
-                                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Extrude Axis</div>
-                                        <div style={{ display: 'flex', gap: '2px' }}>
-                                            {['x', 'y', 'z'].map(a => (
-                                                <button key={a} onClick={() => setArc({ axis: a })} style={{ flex: 1, padding: '5px', fontSize: '0.8rem', borderRadius: '4px', border: axis === a ? '1px solid rgba(188,138,95,0.8)' : '1px solid var(--border-color)', background: axis === a ? 'rgba(188,138,95,0.2)' : 'transparent', color: axis === a ? 'var(--accent-color)' : 'var(--text-muted)', cursor: 'pointer' }}>
-                                                    {a.toUpperCase()}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-                                </div>
-                                <p className="hint" style={{ marginTop: '6px' }}>Arc fits exactly inside the Bounding Box Size section above.</p>
-                            </div>
-                        );
-                    })()}
+                    {/* ── Operations Stack ── */}
+                    </div>
+                    <div className="inspector-card" style={{ marginTop: '14px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <h4 style={{ margin: 0 }}>Modifiers</h4>
+                        </div>
+                        {(() => {
+                            // Combine committed operations with pending new (not-yet-committed) ones
+                            const committedOps = selectedBoard.operations || [];
+                            const pendingIds = new Set(pendingNewOps.map(o => o.id));
+                            const allOps = [...committedOps, ...pendingNewOps];
+                            return allOps;
+                        })().map((op, idx) => {
+                            const isNew = pendingNewOps.some(p => p.id === op.id);
+                            // Merge staged edits over the real operation data for display
+                            const staged = stagedOps[op.id] || {};
+                            const displayOp = isNew ? { ...op, ...staged } : { ...op, ...staged };
+                            const hasPending = isNew || Object.keys(staged).length > 0;
 
-                    {/* ── Cove controls ── */}
-                    {selectedBoard.shape === 'cove' && (() => {
-                        const { edge = 'top', depth = 2, axis = 'y' } = selectedBoard.cove || {};
-                        const setCove = (patch) => {
-                            pushHistory();
-                            setBoards(prev => prev.map(bd =>
-                                bd.id === selectedBoard.id ? { ...bd, cove: { ...bd.cove, ...patch } } : bd
-                            ));
-                        };
-                        return (
-                            <div style={{ marginTop: '10px' }}>
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                                    <div>
-                                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Edge</div>
-                                        <select
-                                            value={edge}
-                                            onChange={e => setCove({ edge: e.target.value })}
-                                            style={{ width: '100%', padding: '5px 8px', background: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '6px', outline: 'none', fontSize: '0.9rem', cursor: 'pointer' }}
-                                        >
-                                            <option value="top">Top</option>
-                                            <option value="bottom">Bottom</option>
-                                            <option value="left">Left</option>
-                                            <option value="right">Right</option>
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Depth (in)</div>
-                                        <input
-                                            type="number" min="0" step="0.25" value={parseFloat(depth.toFixed(4))}
-                                            onChange={e => setCove({ depth: Math.max(0, parseFloat(e.target.value) || 0) })}
-                                            style={{ width: '100%', padding: '5px 8px', background: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '6px', outline: 'none', fontSize: '0.9rem' }}
-                                        />
-                                    </div>
-                                    <div style={{ gridColumn: '1 / -1' }}>
-                                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Axis</div>
-                                        <div style={{ display: 'flex', gap: '2px' }}>
-                                            {['x', 'y', 'z'].map(a => (
-                                                <button key={a} onClick={() => setCove({ axis: a })} style={{ flex: 1, padding: '5px', fontSize: '0.8rem', borderRadius: '4px', border: axis === a ? '1px solid rgba(188,138,95,0.8)' : '1px solid var(--border-color)', background: axis === a ? 'rgba(188,138,95,0.2)' : 'transparent', color: axis === a ? 'var(--accent-color)' : 'var(--text-muted)', cursor: 'pointer' }}>
-                                                    {a.toUpperCase()}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        );
-                    })()}
+                            // Stage changes locally instead of committing to store
+                            const upd = (patch) => {
+                                if (isNew) {
+                                    // For new ops, update the pending op directly
+                                    setPendingNewOps(prev => prev.map(p =>
+                                        p.id === op.id ? { ...p, ...patch } : p
+                                    ));
+                                }
+                                // Also track in stagedOps (for Apply All to pick up)
+                                setStagedOps(prev => ({
+                                    ...prev,
+                                    [op.id]: { ...(prev[op.id] || {}), ...patch }
+                                }));
+                            };
 
-                    {/* ── Hole controls ── */}
-                    {selectedBoard.shape === 'hole' && (() => {
-                        const { radius = 2, offsetX = 0, offsetY = 0, axis = 'y' } = selectedBoard.hole || {};
-                        const setHole = (patch) => {
-                            pushHistory();
-                            setBoards(prev => prev.map(bd =>
-                                bd.id === selectedBoard.id ? { ...bd, hole: { ...bd.hole, ...patch } } : bd
-                            ));
-                        };
-                        return (
-                            <div style={{ marginTop: '10px' }}>
-                                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '8px' }}>
-                                    <div style={{ gridColumn: '1 / -1' }}>
-                                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Hole Radius (in)</div>
-                                        <input
-                                            type="number" min="0.125" step="0.125" value={parseFloat(radius.toFixed(4))}
-                                            onChange={e => setHole({ radius: Math.max(0, parseFloat(e.target.value) || 0) })}
-                                            style={{ width: '100%', padding: '5px 8px', background: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '6px', outline: 'none', fontSize: '0.9rem' }}
-                                        />
-                                    </div>
-                                    <div>
-                                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Offset X (in)</div>
-                                        <input
-                                            type="number" step="0.25" value={parseFloat(offsetX.toFixed(4))}
-                                            onChange={e => setHole({ offsetX: parseFloat(e.target.value) || 0 })}
-                                            style={{ width: '100%', padding: '5px 8px', background: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '6px', outline: 'none', fontSize: '0.9rem' }}
-                                        />
-                                    </div>
-                                    <div>
-                                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Offset Y (in)</div>
-                                        <input
-                                            type="number" step="0.25" value={parseFloat(offsetY.toFixed(4))}
-                                            onChange={e => setHole({ offsetY: parseFloat(e.target.value) || 0 })}
-                                            style={{ width: '100%', padding: '5px 8px', background: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '6px', outline: 'none', fontSize: '0.9rem' }}
-                                        />
-                                    </div>
-                                    <div style={{ gridColumn: '1 / -1' }}>
-                                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Axis</div>
-                                        <div style={{ display: 'flex', gap: '2px' }}>
-                                            {['x', 'y', 'z'].map(a => (
-                                                <button key={a} onClick={() => setHole({ axis: a })} style={{ flex: 1, padding: '5px', fontSize: '0.8rem', borderRadius: '4px', border: axis === a ? '1px solid rgba(188,138,95,0.8)' : '1px solid var(--border-color)', background: axis === a ? 'rgba(188,138,95,0.2)' : 'transparent', color: axis === a ? 'var(--accent-color)' : 'var(--text-muted)', cursor: 'pointer' }}>
-                                                    {a.toUpperCase()}
-                                                </button>
-                                            ))}
+                            // Apply: commit this modifier to the store
+                            const applyStaged = () => {
+                                if (!hasPending) return;
+                                setComputingMessage('Performing 3D calculations… please wait.');
+                                // Defer the actual board update so the overlay paints first
+                                requestAnimationFrame(() => {
+                                    pushHistory();
+                                    if (isNew) {
+                                        const finalOp = { ...op, ...staged };
+                                        setBoards(prev => prev.map(b =>
+                                            b.id.toString() === selectedBoard.id.toString()
+                                                ? { ...b, operations: [...(b.operations || []), finalOp] }
+                                                : b
+                                        ));
+                                        setPendingNewOps(prev => prev.filter(p => p.id !== op.id));
+                                    } else {
+                                        setBoards(prev => prev.map(b =>
+                                            b.id.toString() === selectedBoard.id.toString()
+                                                ? { ...b, operations: (b.operations || []).map(o => o.id === op.id ? { ...o, ...staged } : o) }
+                                                : b
+                                        ));
+                                    }
+                                    setStagedOps(prev => {
+                                        const next = { ...prev };
+                                        delete next[op.id];
+                                        return next;
+                                    });
+                                    // Auto-dismiss after CSG debounce + compute time
+                                    setTimeout(() => setComputingMessage(null), 2000);
+                                });
+                            };
+
+                            const del = () => {
+                                if (isNew) {
+                                    // Just remove from pending — never hit the store
+                                    setPendingNewOps(prev => prev.filter(p => p.id !== op.id));
+                                } else {
+                                    removeOperation(selectedBoard.id, op.id);
+                                }
+                                setStagedOps(prev => {
+                                    const next = { ...prev };
+                                    delete next[op.id];
+                                    return next;
+                                });
+                            };
+
+                            return (
+                                <div key={op.id} style={{ marginTop: idx > 0 ? '8px' : '0', padding: '10px', background: hasPending ? 'rgba(188,138,95,0.06)' : 'rgba(255,255,255,0.03)', border: hasPending ? '1px solid rgba(188,138,95,0.4)' : '1px solid var(--border-color)', borderRadius: '6px', transition: 'border-color 0.2s, background 0.2s' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                                        <span style={{ fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--text-main)', textTransform: 'capitalize' }}>{displayOp.type} Modifier</span>
+                                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                            <button onClick={applyStaged} disabled={!hasPending} style={{ background: hasPending ? 'rgba(60,200,90,0.15)' : 'transparent', border: hasPending ? '1px solid rgba(60,200,90,0.5)' : '1px solid var(--border-color)', color: hasPending ? '#34c759' : 'var(--text-muted)', cursor: hasPending ? 'pointer' : 'default', fontSize: '0.72rem', fontWeight: 600, padding: '2px 10px', borderRadius: '4px', opacity: hasPending ? 1 : 0.4, transition: 'all 0.15s' }}>✓ Apply</button>
+                                            <button onClick={del} style={{ background: 'transparent', border: 'none', color: '#ff3b30', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600 }}>✕ Remove</button>
                                         </div>
                                     </div>
+
+                                    {op.type === 'arc' && (
+                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                                            <div>
+                                                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Start Angle (°)</div>
+                                                <input type="number" step="1" value={displayOp.startAngle} onChange={e => upd({ startAngle: parseFloat(e.target.value) || 0 })} style={{ width: '100%', padding: '5px 8px', background: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '6px', outline: 'none', fontSize: '0.9rem' }} />
+                                            </div>
+                                            <div>
+                                                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>End Angle (°)</div>
+                                                <input type="number" step="1" value={displayOp.endAngle} onChange={e => upd({ endAngle: parseFloat(e.target.value) || 0 })} style={{ width: '100%', padding: '5px 8px', background: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '6px', outline: 'none', fontSize: '0.9rem' }} />
+                                            </div>
+                                            <div>
+                                                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Cutout to Leave (in)</div>
+                                                <input type="number" min="0" step="0.25" value={parseFloat((displayOp.innerRadius ?? 0).toFixed(4))} onChange={e => upd({ innerRadius: Math.max(0, parseFloat(e.target.value) || 0) })} style={{ width: '100%', padding: '5px 8px', background: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '6px', outline: 'none', fontSize: '0.9rem' }} />
+                                            </div>
+                                            <div>
+                                                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Extrude Axis</div>
+                                                <div style={{ display: 'flex', gap: '2px' }}>
+                                                    {['x', 'y', 'z'].map(a => {
+                                                        const axisColor = { x: 'rgba(255, 60, 60', y: 'rgba(60, 200, 90', z: 'rgba(60, 150, 255' }[a];
+                                                        const isActive = displayOp.axis === a;
+                                                        return (
+                                                            <button key={a} onClick={() => upd({ axis: a })} style={{ flex: 1, padding: '5px', fontSize: '0.8rem', borderRadius: '4px', border: isActive ? `1px solid ${axisColor}, 0.8)` : '1px solid var(--border-color)', background: isActive ? `${axisColor}, 0.25)` : `${axisColor}, 0.07)`, color: isActive ? '#fff' : 'var(--text-muted)', cursor: 'pointer', fontWeight: isActive ? 700 : 400, transition: 'all 0.15s' }}>{a.toUpperCase()}</button>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {op.type === 'cove' && (
+                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                                            <div>
+                                                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Edge</div>
+                                                <select value={displayOp.edge} onChange={e => upd({ edge: e.target.value })} style={{ width: '100%', padding: '5px 8px', background: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '6px', outline: 'none', fontSize: '0.9rem', cursor: 'pointer' }}>
+                                                    <option value="top">Top</option><option value="bottom">Bottom</option><option value="left">Left</option><option value="right">Right</option>
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Depth (in)</div>
+                                                <input type="number" min="0" step="0.25" value={parseFloat((displayOp.depth ?? 0).toFixed(4))} onChange={e => upd({ depth: Math.max(0, parseFloat(e.target.value) || 0) })} style={{ width: '100%', padding: '5px 8px', background: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '6px', outline: 'none', fontSize: '0.9rem' }} />
+                                            </div>
+                                            <div style={{ gridColumn: '1 / -1' }}>
+                                                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Axis</div>
+                                                <div style={{ display: 'flex', gap: '2px' }}>
+                                                    {['x', 'y', 'z'].map(a => {
+                                                        const axisColor = { x: 'rgba(255, 60, 60', y: 'rgba(60, 200, 90', z: 'rgba(60, 150, 255' }[a];
+                                                        const isActive = displayOp.axis === a;
+                                                        return (
+                                                            <button key={a} onClick={() => upd({ axis: a })} style={{ flex: 1, padding: '5px', fontSize: '0.8rem', borderRadius: '4px', border: isActive ? `1px solid ${axisColor}, 0.8)` : '1px solid var(--border-color)', background: isActive ? `${axisColor}, 0.25)` : `${axisColor}, 0.07)`, color: isActive ? '#fff' : 'var(--text-muted)', cursor: 'pointer', fontWeight: isActive ? 700 : 400, transition: 'all 0.15s' }}>{a.toUpperCase()}</button>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {op.type === 'hole' && (
+                                        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '8px' }}>
+                                            <div style={{ gridColumn: '1 / -1' }}>
+                                                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Hole Radius (in)</div>
+                                                <input type="number" min="0.125" step="0.125" value={parseFloat((displayOp.radius ?? 0).toFixed(4))} onChange={e => upd({ radius: Math.max(0, parseFloat(e.target.value) || 0) })} style={{ width: '100%', padding: '5px 8px', background: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '6px', outline: 'none', fontSize: '0.9rem' }} />
+                                            </div>
+                                            <div>
+                                                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Offset X (in)</div>
+                                                <input type="number" step="0.25" value={parseFloat((displayOp.offsetX ?? 0).toFixed(4))} onChange={e => upd({ offsetX: parseFloat(e.target.value) || 0 })} style={{ width: '100%', padding: '5px 8px', background: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '6px', outline: 'none', fontSize: '0.9rem' }} />
+                                            </div>
+                                            <div>
+                                                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Offset Y (in)</div>
+                                                <input type="number" step="0.25" value={parseFloat((displayOp.offsetY ?? 0).toFixed(4))} onChange={e => upd({ offsetY: parseFloat(e.target.value) || 0 })} style={{ width: '100%', padding: '5px 8px', background: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '6px', outline: 'none', fontSize: '0.9rem' }} />
+                                            </div>
+                                            <div style={{ gridColumn: '1 / -1' }}>
+                                                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Axis</div>
+                                                <div style={{ display: 'flex', gap: '2px' }}>
+                                                    {['x', 'y', 'z'].map(a => {
+                                                        const axisColor = { x: 'rgba(255, 60, 60', y: 'rgba(60, 200, 90', z: 'rgba(60, 150, 255' }[a];
+                                                        const isActive = displayOp.axis === a;
+                                                        return (
+                                                            <button key={a} onClick={() => upd({ axis: a })} style={{ flex: 1, padding: '5px', fontSize: '0.8rem', borderRadius: '4px', border: isActive ? `1px solid ${axisColor}, 0.8)` : '1px solid var(--border-color)', background: isActive ? `${axisColor}, 0.25)` : `${axisColor}, 0.07)`, color: isActive ? '#fff' : 'var(--text-muted)', cursor: 'pointer', fontWeight: isActive ? 700 : 400, transition: 'all 0.15s' }}>{a.toUpperCase()}</button>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
-                            </div>
-                        );
-                    })()}
-                </div>
+                            );
+                        })}
+
+                        {(Object.keys(stagedOps).length > 0 || pendingNewOps.length > 0) && (
+                            <button
+                                onClick={() => {
+                                    setComputingMessage('Performing 3D calculations… please wait.');
+                                    requestAnimationFrame(() => {
+                                        pushHistory();
+                                        setBoards(prev => prev.map(b => {
+                                            if (b.id.toString() !== selectedBoard.id.toString()) return b;
+                                            let ops = (b.operations || []).map(o => {
+                                                const patch = stagedOps[o.id];
+                                                return patch ? { ...o, ...patch } : o;
+                                            });
+                                            for (const newOp of pendingNewOps) {
+                                                const patch = stagedOps[newOp.id] || {};
+                                                ops.push({ ...newOp, ...patch });
+                                            }
+                                            return { ...b, operations: ops };
+                                        }));
+                                        setStagedOps({});
+                                        setPendingNewOps([]);
+                                        setTimeout(() => setComputingMessage(null), 2000);
+                                    });
+                                }}
+                                style={{ width: '100%', marginTop: '10px', padding: '7px', background: 'rgba(60,200,90,0.12)', border: '1px solid rgba(60,200,90,0.5)', borderRadius: '6px', color: '#34c759', fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s' }}
+                                onMouseEnter={e => e.target.style.background = 'rgba(60,200,90,0.22)'}
+                                onMouseLeave={e => e.target.style.background = 'rgba(60,200,90,0.12)'}
+                            >✓ Apply All Modifiers</button>
+                        )}
+
+                        <div style={{ marginTop: '10px', display: 'flex', gap: '8px' }}>
+                            <button
+                                onClick={() => setPendingNewOps(prev => [...prev, { id: Date.now(), type: 'hole', radius: 1, offsetX: 0, offsetY: 0, axis: 'y' }])}
+                                style={{ flex: 1, padding: '6px', background: 'var(--bg-color)', border: '1px solid var(--border-color)', borderRadius: '4px', color: 'var(--text-main)', fontSize: '0.75rem', cursor: 'pointer', transition: 'all 0.1s' }}
+                                onMouseEnter={e => e.target.style.background = 'rgba(188,138,95,0.1)'}
+                                onMouseLeave={e => e.target.style.background = 'var(--bg-color)'}
+                            >◎ Hole</button>
+                            <button
+                                onClick={() => setPendingNewOps(prev => [...prev, { id: Date.now(), type: 'cove', edge: 'top', depth: 1, axis: 'y' }])}
+                                style={{ flex: 1, padding: '6px', background: 'var(--bg-color)', border: '1px solid var(--border-color)', borderRadius: '4px', color: 'var(--text-main)', fontSize: '0.75rem', cursor: 'pointer', transition: 'all 0.1s' }}
+                                onMouseEnter={e => e.target.style.background = 'rgba(188,138,95,0.1)'}
+                                onMouseLeave={e => e.target.style.background = 'var(--bg-color)'}
+                            >◡ Cove</button>
+                            <button
+                                onClick={() => setPendingNewOps(prev => [...prev, { id: Date.now(), type: 'arc', startAngle: 0, endAngle: 90, innerRadius: 0, axis: 'y' }])}
+                                style={{ flex: 1, padding: '6px', background: 'var(--bg-color)', border: '1px solid var(--border-color)', borderRadius: '4px', color: 'var(--text-main)', fontSize: '0.75rem', cursor: 'pointer', transition: 'all 0.1s' }}
+                                onMouseEnter={e => e.target.style.background = 'rgba(188,138,95,0.1)'}
+                                onMouseLeave={e => e.target.style.background = 'var(--bg-color)'}
+                            >◠ Arc</button>
+                        </div>
+                    </div>
                 {/* ── Material ── */}
                 {(() => {
                     const mat = normalizeMaterial(selectedBoard.material);
@@ -843,15 +925,15 @@ const InspectorPanel = () => {
                 {/* ── Joint ── */}
                 {(() => {
                     // ── Color theme per joint state ───────────────────────────
-                    const JOINT_SEQ  = ['Miter', 'Butt 1', 'Butt 2'];
+                    const JOINT_SEQ = ['Miter', 'Butt 1', 'Butt 2'];
                     const JOINT_DESC = {
-                        'Miter':  'Panels overlap — click to make this piece run full',
+                        'Miter': 'Panels overlap — click to make this piece run full',
                         'Butt 1': 'This piece runs full, neighbours trimmed — click to swap',
                         'Butt 2': 'This piece is trimmed, neighbours run full — click to restore',
                     };
-                    const JOINT_COLOR  = { 'Miter': 'rgba(150,95,188,0.18)',  'Butt 1': 'rgba(188,138,95,0.18)',  'Butt 2': 'rgba(95,150,188,0.18)' };
-                    const JOINT_BORDER = { 'Miter': 'rgba(150,95,188,0.7)',   'Butt 1': 'rgba(188,138,95,0.7)',   'Butt 2': 'rgba(95,150,188,0.7)'  };
-                    const JOINT_TEXT   = { 'Miter': '#9a60c0',                'Butt 1': '#bc8a5f',                'Butt 2': '#5fa0c0'               };
+                    const JOINT_COLOR = { 'Miter': 'rgba(150,95,188,0.18)', 'Butt 1': 'rgba(188,138,95,0.18)', 'Butt 2': 'rgba(95,150,188,0.18)' };
+                    const JOINT_BORDER = { 'Miter': 'rgba(150,95,188,0.7)', 'Butt 1': 'rgba(188,138,95,0.7)', 'Butt 2': 'rgba(95,150,188,0.7)' };
+                    const JOINT_TEXT = { 'Miter': '#9a60c0', 'Butt 1': '#bc8a5f', 'Butt 2': '#5fa0c0' };
 
                     // ── AABB helpers ──────────────────────────────────────────
                     const bbOf = (b) => [0, 1, 2].map(i => ({
@@ -892,12 +974,12 @@ const InspectorPanel = () => {
                                 if (bb[axisA].max > ba[axisA].min && bb[axisA].max <= ba[axisA].max + 0.01) {
                                     // Neighbour's max protrudes into A → trim its max to A's inner face
                                     const nMax = ba[axisA].min;
-                                    t.size[axisA]     = Math.max(0.1, nMax - bb[axisA].min);
+                                    t.size[axisA] = Math.max(0.1, nMax - bb[axisA].min);
                                     t.position[axisA] = (bb[axisA].min + nMax) / 2;
                                 } else {
                                     // Neighbour's min protrudes into A → trim its min to A's inner face
                                     const nMin = ba[axisA].max;
-                                    t.size[axisA]     = Math.max(0.1, bb[axisA].max - nMin);
+                                    t.size[axisA] = Math.max(0.1, bb[axisA].max - nMin);
                                     t.position[axisA] = (nMin + bb[axisA].max) / 2;
                                 }
                                 t.joint = 'Butt 1';
@@ -909,16 +991,16 @@ const InspectorPanel = () => {
                             // → Butt 2
                             // Step 1: restore neighbours — they were trimmed along axisA,
                             //   with their trimmed end touching A's inner face. Extend back.
-                            const ba   = bbOf(selectedBoard);
+                            const ba = bbOf(selectedBoard);
                             const thiccA = selectedBoard.size[axisA];
                             for (const nb of siblings) {
                                 const bb = bbOf(nb);
-                                const t  = { ...nb, size: [...nb.size], position: [...nb.position] };
+                                const t = { ...nb, size: [...nb.size], position: [...nb.position] };
                                 if (Math.abs(bb[axisA].max - ba[axisA].min) < 0.06) {
-                                    t.size[axisA]     += thiccA;
+                                    t.size[axisA] += thiccA;
                                     t.position[axisA] += thiccA / 2;
                                 } else if (Math.abs(bb[axisA].min - ba[axisA].max) < 0.06) {
-                                    t.size[axisA]     += thiccA;
+                                    t.size[axisA] += thiccA;
                                     t.position[axisA] -= thiccA / 2;
                                 } else { continue; }
                                 t.joint = 'Butt 2';
@@ -929,18 +1011,18 @@ const InspectorPanel = () => {
                             let ua = { ...selectedBoard, size: [...selectedBoard.size], position: [...selectedBoard.position] };
                             for (const nb of siblings) {
                                 const nbLatest = bds.find(b => b.id === nb.id) ?? nb;
-                                const axisB    = thinAxis(nbLatest);
-                                const baCur    = bbOf(ua);
-                                const bb       = bbOf(nbLatest);
+                                const axisB = thinAxis(nbLatest);
+                                const baCur = bbOf(ua);
+                                const bb = bbOf(nbLatest);
                                 if (baCur[axisB].max > bb[axisB].min + 0.01 && baCur[axisB].max <= bb[axisB].max + 0.01) {
                                     const nMax = bb[axisB].min;
                                     ua = { ...ua, size: [...ua.size], position: [...ua.position] };
-                                    ua.size[axisB]     = Math.max(0.1, nMax - baCur[axisB].min);
+                                    ua.size[axisB] = Math.max(0.1, nMax - baCur[axisB].min);
                                     ua.position[axisB] = (baCur[axisB].min + nMax) / 2;
                                 } else if (baCur[axisB].min < bb[axisB].max - 0.01 && baCur[axisB].min >= bb[axisB].min - 0.01) {
                                     const nMin = bb[axisB].max;
                                     ua = { ...ua, size: [...ua.size], position: [...ua.position] };
-                                    ua.size[axisB]     = Math.max(0.1, baCur[axisB].max - nMin);
+                                    ua.size[axisB] = Math.max(0.1, baCur[axisB].max - nMin);
                                     ua.position[axisB] = (nMin + baCur[axisB].max) / 2;
                                 }
                             }
@@ -952,17 +1034,17 @@ const InspectorPanel = () => {
                             //   neighbour's inner face along that neighbour's thin axis.
                             let ua = { ...selectedBoard, size: [...selectedBoard.size], position: [...selectedBoard.position] };
                             for (const nb of siblings) {
-                                const axisB  = thinAxis(nb);
+                                const axisB = thinAxis(nb);
                                 const thiccB = nb.size[axisB];
-                                const bb     = bbOf(nb);
-                                const baCur  = bbOf(ua);
+                                const bb = bbOf(nb);
+                                const baCur = bbOf(ua);
                                 if (Math.abs(baCur[axisB].max - bb[axisB].min) < 0.06) {
                                     ua = { ...ua, size: [...ua.size], position: [...ua.position] };
-                                    ua.size[axisB]     += thiccB;
+                                    ua.size[axisB] += thiccB;
                                     ua.position[axisB] += thiccB / 2;
                                 } else if (Math.abs(baCur[axisB].min - bb[axisB].max) < 0.06) {
                                     ua = { ...ua, size: [...ua.size], position: [...ua.position] };
-                                    ua.size[axisB]     += thiccB;
+                                    ua.size[axisB] += thiccB;
                                     ua.position[axisB] -= thiccB / 2;
                                 }
                             }
@@ -1008,7 +1090,7 @@ const InspectorPanel = () => {
                                 const partnerId = isA ? c.boardBId : c.boardAId;
                                 const partner = boards.find(b => b.id.toString() === partnerId);
                                 const partnerName = partner?.name ?? partnerId;
-                                const axisLabel = c.type === 'Flush' ? ` (${['X','Y','Z'][c.axis]} axis)` : '';
+                                const axisLabel = c.type === 'Flush' ? ` (${['X', 'Y', 'Z'][c.axis]} axis)` : '';
                                 return (
                                     <li key={cId} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(0,0,0,0.1)', padding: '6px 10px', borderRadius: '6px', marginBottom: '4px', fontSize: '0.85rem', color: 'var(--text-main)', border: '1px solid var(--border-color)', opacity: c.enabled === false ? 0.5 : 1 }}>
                                         <span><strong>{c.type}</strong>{axisLabel} ↔ {partnerName}</span>
