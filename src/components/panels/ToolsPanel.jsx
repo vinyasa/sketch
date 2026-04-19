@@ -503,7 +503,7 @@ const ToolsPanel = () => {
 
                             return (
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                                    {/* Read-only face info (auto-set, may change after rotation baking) */}
+                                    {/* Read-only face info (operations are in LOCAL board space) */}
                                     <div style={{ gridColumn: '1 / -1' }}>
                                         <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '2px' }}>Cut End</div>
                                         <div style={{

@@ -424,7 +424,7 @@ const _buildDadoTool = (size, op) => {
 //   angle     — degrees from square (always positive, 0–60°)
 //
 // The fence edge stays at the measured length; the opposite edge gets shorter.
-// Both face and fenceEdge are remapped during rotation baking, so the angle
+// Both face and fenceEdge are LOCAL to the board and never remapped.
 // never needs to change.
 const _buildMiterTool = (size, op) => {
   const face = op.face || 'x+';
@@ -631,9 +631,8 @@ const getSemanticFace = (e, b) => {
   if (hasBoxFaces && e.faceIndex !== undefined) {
     return ['x+', 'x-', 'y+', 'y-', 'z+', 'z-'][Math.floor(e.faceIndex / 2)];
   }
-  // For curved geometries (cylinder/disc), the mesh triangles don't map to the 6 bounding box faces.
-  // Instead, convert the click point to local space and see which AABB plane it's closest to.
-  // E.g. clicking the side of a cylinder at (R, 0, 0) will be closest to the x+ plane (x=R).
+  // For curved geometries (cylinder/disc), convert click to local space
+  // and find closest AABB plane.
   if (e.point && e.object) {
     const localPt = e.object.worldToLocal(e.point.clone());
     const hw = b.size[0] / 2;
@@ -660,11 +659,49 @@ const getSemanticFace = (e, b) => {
   return null;
 };
 
+// ── Convert a local face string to its world-facing direction ────────────
+// Used when storing constraint faces so the solver (which works in world
+// space) snaps on the correct axis.  For unoriented boards this is identity.
+const localFaceToWorld = (localFace, orientation) => {
+  if (!localFace) return localFace;
+  const [rx, ry, rz] = orientation || [0, 0, 0];
+  if (rx === 0 && ry === 0 && rz === 0) return localFace;
+
+  const axisIdx = localFace[0] === 'x' ? 0 : localFace[0] === 'y' ? 1 : 2;
+  const sign = localFace[1] === '+' ? 1 : -1;
+  const localN = [0, 0, 0];
+  localN[axisIdx] = sign;
+
+  // Three.js YXZ Euler order: a=cos(x),b=sin(x),c=cos(y),d=sin(y),e=cos(z),f=sin(z)
+  const a = Math.cos(rx), b = Math.sin(rx);
+  const c = Math.cos(ry), d = Math.sin(ry);
+  const e = Math.cos(rz), f = Math.sin(rz);
+  const ce = c*e, cf = c*f, de = d*e, df = d*f;
+  // Row-major rotation matrix (from Three.js makeRotationFromEuler YXZ)
+  const R = [
+    [ce+df*b,  de*b-cf,  a*d ],
+    [a*f,      a*e,     -b   ],
+    [cf*b-de,  df+ce*b,  a*c ],
+  ];
+  const worldN = [
+    R[0][0] * localN[0] + R[0][1] * localN[1] + R[0][2] * localN[2],
+    R[1][0] * localN[0] + R[1][1] * localN[1] + R[1][2] * localN[2],
+    R[2][0] * localN[0] + R[2][1] * localN[1] + R[2][2] * localN[2],
+  ];
+
+  let bestAxis = 0, bestAbs = 0;
+  for (let i = 0; i < 3; i++) {
+    const a2 = Math.abs(worldN[i]);
+    if (a2 > bestAbs) { bestAbs = a2; bestAxis = i; }
+  }
+  return ['x', 'y', 'z'][bestAxis] + (worldN[bestAxis] > 0 ? '+' : '-');
+};
+
 const BoardMesh = ({ b, selectedItemIds, toggleSelection, textures, showEdges, constraintTargetMode, hoveredFaceData, setHoveredFaceData, modifierActive }) => {
   if (b.visible === false) return null;
   const isSelected = selectedItemIds.includes(b.id.toString());
 
-  // Face labels are fixed in world space — no rotation means these are always correct
+  // Face labels are in LOCAL board space — orientation is handled by the mesh transform
   const faceLabels = {
     'x+': 'right', 'x-': 'left',
     'y+': 'top',   'y-': 'bottom',
@@ -675,12 +712,14 @@ const BoardMesh = ({ b, selectedItemIds, toggleSelection, textures, showEdges, c
     <mesh
       raycast={(modifierActive && constraintTargetMode?.active) ? () => null : undefined}
       position={b.position}
-      rotation={b.rotation || [0, 0, 0]}
+      rotation={b.orientation ? [...b.orientation, 'YXZ'] : [0, 0, 0, 'YXZ']}
       castShadow
       receiveShadow
       onClick={(e) => {
         e.stopPropagation(); // stop from bubbling to Canvas onPointerMissed only
-        const faceStr = getSemanticFace(e, b);
+        const localFace = getSemanticFace(e, b);
+        // Convert to world face for constraints — solver works in world space
+        const faceStr = localFaceToWorld(localFace, b.orientation);
         toggleSelection(b.id.toString(), e.shiftKey || e.ctrlKey || e.metaKey, faceStr);
       }}
       onPointerMove={(e) => {
@@ -751,7 +790,10 @@ const BoardMesh = ({ b, selectedItemIds, toggleSelection, textures, showEdges, c
         if (faceStr.startsWith('x')) planeH = b.size[1];
         if (faceStr.startsWith('z')) planeH = b.size[1];
 
-        const tooltipLabel = faceLabels[faceStr] || faceStr;
+        // Show the WORLD-facing direction on the tooltip so the user sees what
+        // the constraint solver will actually use for an oriented board.
+        const worldFace = localFaceToWorld(faceStr, b.orientation);
+        const tooltipLabel = faceLabels[worldFace] || worldFace;
 
         return (
           <group>

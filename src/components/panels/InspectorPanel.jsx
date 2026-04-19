@@ -40,7 +40,7 @@ const InspectorPanel = () => {
         setBoards, setGroups, setSelectedItemIds,
         pushHistory,
         dropBoardToFloor, dropGroupToFloor, dropSelectionToFloor,
-        updateRotation, resetRotation, applyRotation,
+        updateRotation, resetRotation,
         handleAssemblyDelete, handleComponentDelete, handleMultiDelete,
         removeConstraint, toggleConstraint,
         constraintTargetMode, setConstraintTargetMode,
@@ -467,34 +467,30 @@ const InspectorPanel = () => {
                     <button style={{ marginTop: '8px', width: '100%' }} className="primary-btn" onClick={dropBoardToFloor}>↓ Set on Floor</button>
                 </div>
                 <div className="inspector-section">
-                    <h4>Rotation (°)</h4>
+                    <h4>Orientation (°)</h4>
                     <div className="vec3-inputs">
-                        <div style={{ backgroundColor: 'rgba(255, 60, 60, 0.15)' }}>X<input type="number" step="1" value={parseFloat(((selectedBoard.rotation?.[0] ?? 0) * 180 / Math.PI).toFixed(2))} onChange={e => updateRotation(0, parseFloat(e.target.value) || 0)} /></div>
-                        <div style={{ backgroundColor: 'rgba(60, 200, 90, 0.15)' }}>Y<input type="number" step="1" value={parseFloat(((selectedBoard.rotation?.[1] ?? 0) * 180 / Math.PI).toFixed(2))} onChange={e => updateRotation(1, parseFloat(e.target.value) || 0)} /></div>
-                        <div style={{ backgroundColor: 'rgba(60, 150, 255, 0.15)' }}>Z<input type="number" step="1" value={parseFloat(((selectedBoard.rotation?.[2] ?? 0) * 180 / Math.PI).toFixed(2))} onChange={e => updateRotation(2, parseFloat(e.target.value) || 0)} /></div>
+                        <div style={{ backgroundColor: 'rgba(255, 60, 60, 0.15)' }}>X<input type="number" step="1" value={parseFloat(((selectedBoard.orientation?.[0] ?? 0) * 180 / Math.PI).toFixed(2))} onChange={e => updateRotation(0, parseFloat(e.target.value) || 0)} /></div>
+                        <div style={{ backgroundColor: 'rgba(60, 200, 90, 0.15)' }}>Y<input type="number" step="1" value={parseFloat(((selectedBoard.orientation?.[1] ?? 0) * 180 / Math.PI).toFixed(2))} onChange={e => updateRotation(1, parseFloat(e.target.value) || 0)} /></div>
+                        <div style={{ backgroundColor: 'rgba(60, 150, 255, 0.15)' }}>Z<input type="number" step="1" value={parseFloat(((selectedBoard.orientation?.[2] ?? 0) * 180 / Math.PI).toFixed(2))} onChange={e => updateRotation(2, parseFloat(e.target.value) || 0)} /></div>
                     </div>
                     <div style={{ display: 'flex', gap: '4px', marginTop: '6px', flexWrap: 'wrap' }}>
                         {[['Y 90°', 1, 90], ['Y -90°', 1, -90], ['Y 180°', 1, 180], ['X 90°', 0, 90]].map(([label, ax, deg]) => (
                             <button key={label} className="nav-btn"
                                 style={{ padding: '3px 7px', fontSize: '0.68rem', border: '1px solid var(--border-color)' }}
-                                onClick={() => updateRotation(ax, (selectedBoard.rotation?.[ax] ?? 0) * 180 / Math.PI + deg)}>
+                                onClick={() => updateRotation(ax, (selectedBoard.orientation?.[ax] ?? 0) * 180 / Math.PI + deg)}>
                                 +{label}
                             </button>
                         ))}
                         <div style={{ marginLeft: 'auto', display: 'flex', gap: '4px' }}>
                             <button className="nav-btn"
-                                title="Bake rotation — remaps size axes to match current orientation, then zeroes rotation"
-                                style={{ padding: '3px 7px', fontSize: '0.68rem', border: '1px solid var(--accent-color)', color: 'var(--accent-color)' }}
-                                onClick={applyRotation}>
-                                Apply
-                            </button>
-                            <button className="nav-btn"
+                                title="Reset orientation to 0° on all axes"
                                 style={{ padding: '3px 7px', fontSize: '0.68rem', border: '1px solid var(--border-color)' }}
                                 onClick={resetRotation}>
                                 Reset
                             </button>
                         </div>
                     </div>
+                    <p className="hint" style={{ marginTop: '6px' }}>Orientation is local — operations (miter, dado, etc.) stay on their original faces.</p>
                 </div>
 
                     {/* ── Shape Picker ── */}

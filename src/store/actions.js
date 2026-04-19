@@ -2,7 +2,7 @@ import { computeWorldAABB, collectChildBoards, calculateGroupAABB } from '../uti
 import { checkConstraintConflict, propagateMove, solveFlushSnap, faceToAxis } from '../utils/constraintSolver';
 import { calculateProceduralBoxWalls } from '../utils/procedural';
 import { persistLibrary, setupDiskBackup, importLibraryFromFile } from '../utils/libraryPersistence';
-import { normalizeTaper } from '../utils/geometryBuilders';
+// normalizeTaper import removed — no longer needed after applyRotation deletion
 
 export const createActions = (set, get) => ({
 
@@ -306,8 +306,14 @@ export const createActions = (set, get) => ({
             try {
                 const p = JSON.parse(s);
                 if (p.boards && p.groups) {
-                    // Migrate old boards that have constraints[] — strip them off
-                    setBoards(p.boards.map(b => { const { constraints: _, ...rest } = b; return rest; }));
+                    // Migrate old boards: strip legacy constraints[], rename rotation → orientation
+                    setBoards(p.boards.map(b => {
+                        const { constraints: _, rotation, ...rest } = b;
+                        return {
+                            ...rest,
+                            ...(rotation && !b.orientation ? { orientation: rotation } : {}),
+                        };
+                    }));
                     setGroups(p.groups);
                     setConstraints(p.constraints || {});
                     if (p.theme) setTheme(p.theme);
@@ -368,13 +374,15 @@ export const createActions = (set, get) => ({
                 if (p.boards && p.groups) {
                     // Sanitize boards: ensure required fields exist and strip legacy constraints
                     const sanitized = p.boards.map(b => {
-                        const { constraints: _, ...rest } = b;
+                        const { constraints: _, rotation, ...rest } = b;
                         return {
                             ...rest,
                             size: Array.isArray(b.size) && b.size.length === 3 ? b.size : [1, 1, 1],
                             position: Array.isArray(b.position) && b.position.length === 3 ? b.position : [0, 0.5, 0],
                             operations: Array.isArray(b.operations) ? b.operations : [],
                             shape: b.shape || 'box',
+                            // Migrate legacy rotation → orientation
+                            ...(rotation && !b.orientation ? { orientation: rotation } : {}),
                         };
                     });
                     setBoards(sanitized);
@@ -876,7 +884,9 @@ export const createActions = (set, get) => ({
         }
     },
 
-    // ─── Set absolute rotation on a board (degrees → radians) ────────────────
+    // ─── Set absolute orientation on a board (degrees → radians) ──────────────
+    // Orientation is LOCAL — operations stay in the board's own coordinate frame.
+    // No bake/remap step needed.  Rotation is permanent, not transient.
     updateRotation: (axis, degrees) => {
         const { selectedItemIds, pushHistory, boards, setBoards } = get();
         if (selectedItemIds.length === 0) return;
@@ -884,253 +894,31 @@ export const createActions = (set, get) => ({
         const radians = (degrees * Math.PI) / 180;
         setBoards(boards.map(b => {
             if (selectedItemIds.includes(b.id.toString())) {
-                const rot = [...(b.rotation || [0, 0, 0])];
-                rot[axis] = radians;
-                return { ...b, rotation: rot };
+                const ori = [...(b.orientation || [0, 0, 0])];
+                ori[axis] = radians;
+                return { ...b, orientation: ori };
             }
             return b;
         }));
     },
 
-    // ─── Reset rotation on selected boards to [0,0,0] ────────────────────────
+    // ─── Reset orientation on selected boards to [0,0,0] ─────────────────────
     resetRotation: () => {
         const { selectedItemIds, pushHistory, boards, setBoards } = get();
         if (selectedItemIds.length === 0) return;
         pushHistory();
         setBoards(boards.map(b =>
             selectedItemIds.includes(b.id.toString())
-                ? { ...b, rotation: [0, 0, 0] }
+                ? { ...b, orientation: [0, 0, 0] }
                 : b
         ));
     },
 
-    // ─── Bake rotation into size, reset rotation to [0,0,0] ────────────────────
-    // For each world axis, finds which local axis contributes the most after
-    // the rotation (i.e. which local axis has the largest absolute component
-    // in that world direction) and assigns that local extent to the world axis.
-    // This is exact for 90° multiples and reasonable for smaller angles.
-    // Three.js default Euler order = XYZ  =>  R = Rz × Ry × Rx
-    applyRotation: () => {
-        const { selectedItemIds, boards, constraints, pushHistory, setBoards, showToast } = get();
-        if (selectedItemIds.length === 0) return;
-
-        const hasFlush = Object.values(constraints || {}).some(c =>
-            c.type === 'Flush' && (
-                selectedItemIds.includes(c.boardAId) ||
-                selectedItemIds.includes(c.boardBId)
-            )
-        );
-
-        pushHistory();
-
-        setBoards(boards.map(b => {
-            if (!selectedItemIds.includes(b.id.toString())) return b;
-            const [rx, ry, rz] = b.rotation || [0, 0, 0];
-            if (rx === 0 && ry === 0 && rz === 0) return b;
-
-            // Snap each angle to nearest 90° to avoid floating-point noise
-            const snap = (r) => Math.round(r / (Math.PI / 2)) * (Math.PI / 2);
-            const srx = snap(rx), sry = snap(ry), srz = snap(rz);
-
-            // Use Math.round to collapse near-integer trig values to exact integers
-            const ri = (v) => Math.round(v);
-            const cx = ri(Math.cos(srx)), sx = ri(Math.sin(srx));
-            const cy = ri(Math.cos(sry)), sy = ri(Math.sin(sry));
-            const cz = ri(Math.cos(srz)), sz = ri(Math.sin(srz));
-
-            // Rotation matrix: R = Rz × Ry × Rx (Three.js XYZ euler order)
-            // R[worldRow][localCol] = how much local axis (col) projects onto world axis (row)
-            const R = [
-                // world X row
-                [cy * cz,                sx * sy * cz - cx * sz,  cx * sy * cz + sx * sz],
-                // world Y row
-                [cy * sz,                sx * sy * sz + cx * cz,  cx * sy * sz - sx * cz],
-                // world Z row
-                [-sy,                    sx * cy,                  cx * cy              ],
-            ];
-
-            const oldSize = [...b.size];
-            const newSize = [0, 0, 0];
-            
-            const mapLocalToWorld = []; // index `l` maps to -> { w, sign }
-            // For each world axis, find the local axis that most aligns with it
-            for (let w = 0; w < 3; w++) {
-                let bestL = 0, bestVal = 0, bestAbs = 0;
-                for (let l = 0; l < 3; l++) {
-                    const a = Math.abs(R[w][l]);
-                    if (a > bestAbs) { bestAbs = a; bestVal = R[w][l]; bestL = l; }
-                }
-                newSize[w] = oldSize[bestL];
-                mapLocalToWorld[bestL] = { w, sign: Math.sign(bestVal) };
-            }
-
-            const patch = { size: newSize, rotation: [0, 0, 0] };
-            
-            if (b.shape === 'cylinder') {
-                const oldAxisIdx = b.cylinder?.axis === 'x' ? 0 : b.cylinder?.axis === 'z' ? 2 : 1;
-                const newAxisIdx = mapLocalToWorld[oldAxisIdx]?.w ?? oldAxisIdx;
-                patch.cylinder = { ...b.cylinder, axis: ['x', 'y', 'z'][newAxisIdx] };
-            }
-            else if (b.shape === 'taper') {
-                // Remap 4 independent taper angles through the rotation.
-                // Each angle is associated to a face direction (±X, ±Z).
-                // We need to figure out where each old face direction ends up.
-                const old = normalizeTaper(b.taper);
-                // Map: old face direction → [local axis index, sign]
-                // Left  = X−  = axis 0, sign -1
-                // Right = X+  = axis 0, sign +1
-                // Front = Z+  = axis 2, sign +1
-                // Back  = Z−  = axis 2, sign -1
-                const faceDirs = [
-                    { key: 'angleLeft',  localAxis: 0, localSign: -1 },
-                    { key: 'angleRight', localAxis: 0, localSign:  1 },
-                    { key: 'angleFront', localAxis: 2, localSign:  1 },
-                    { key: 'angleBack',  localAxis: 2, localSign: -1 },
-                ];
-                const newTaper = { angleLeft: 0, angleRight: 0, angleFront: 0, angleBack: 0 };
-                for (const { key, localAxis, localSign } of faceDirs) {
-                    const m = mapLocalToWorld[localAxis];
-                    if (!m) continue;
-                    const worldAxis = m.w;
-                    const worldSign = localSign * m.sign;
-                    // Determine which new face this maps to
-                    if (worldAxis === 0 && worldSign < 0) newTaper.angleLeft = old[key];
-                    else if (worldAxis === 0 && worldSign > 0) newTaper.angleRight = old[key];
-                    else if (worldAxis === 2 && worldSign > 0) newTaper.angleFront = old[key];
-                    else if (worldAxis === 2 && worldSign < 0) newTaper.angleBack = old[key];
-                }
-                patch.taper = newTaper;
-            }
-
-            // ── Remap operations[] axis fields through the rotation transform ──
-            if (b.operations && b.operations.length > 0) {
-                const remapAxis = (oldAxis) => {
-                    const oldIdx = oldAxis === 'x' ? 0 : oldAxis === 'z' ? 2 : 1;
-                    const newIdx = mapLocalToWorld[oldIdx]?.w ?? oldIdx;
-                    return ['x', 'y', 'z'][newIdx];
-                };
-                const remapEdge = (edge, oldAxis) => {
-                    const oldAxisIdx = oldAxis === 'x' ? 0 : oldAxis === 'z' ? 2 : 1;
-                    const oldDimXIdx = oldAxisIdx === 1 ? 0 : oldAxisIdx === 0 ? 2 : 0;
-                    const oldDimYIdx = oldAxisIdx === 1 ? 2 : oldAxisIdx === 0 ? 1 : 1;
-                    const mX = mapLocalToWorld[oldDimXIdx];
-                    const mY = mapLocalToWorld[oldDimYIdx];
-                    const newAxisIdx = mapLocalToWorld[oldAxisIdx]?.w ?? oldAxisIdx;
-                    const newDimXIdx = newAxisIdx === 1 ? 0 : newAxisIdx === 0 ? 2 : 0;
-                    const newDimYIdx = newAxisIdx === 1 ? 2 : newAxisIdx === 0 ? 1 : 1;
-                    let oldVec = [0, 0];
-                    if (edge === 'right')  oldVec = [ 1,  0];
-                    else if (edge === 'left')   oldVec = [-1,  0];
-                    else if (edge === 'top')    oldVec = [ 0,  1];
-                    else if (edge === 'bottom') oldVec = [ 0, -1];
-                    const wv = [0, 0, 0];
-                    wv[mX.w] = oldVec[0] * mX.sign;
-                    wv[mY.w] = oldVec[1] * mY.sign;
-                    const nv = [wv[newDimXIdx], wv[newDimYIdx]];
-                    if (nv[0] > 0.5) return 'right';
-                    if (nv[0] < -0.5) return 'left';
-                    if (nv[1] > 0.5) return 'top';
-                    if (nv[1] < -0.5) return 'bottom';
-                    return edge;
-                };
-
-                patch.operations = b.operations.map(op => {
-                    const newOp = { ...op };
-                    if (op.type === 'hole') {
-                        const oldAxisIdx = op.axis === 'x' ? 0 : op.axis === 'z' ? 2 : 1;
-                        const oldDimXIdx = oldAxisIdx === 1 ? 0 : oldAxisIdx === 0 ? 2 : 0;
-                        const oldDimYIdx = oldAxisIdx === 1 ? 2 : oldAxisIdx === 0 ? 1 : 1;
-                        const mX = mapLocalToWorld[oldDimXIdx];
-                        const mY = mapLocalToWorld[oldDimYIdx];
-                        const newAxisIdx = mapLocalToWorld[oldAxisIdx]?.w ?? oldAxisIdx;
-                        const newDimXIdx = newAxisIdx === 1 ? 0 : newAxisIdx === 0 ? 2 : 0;
-                        const newDimYIdx = newAxisIdx === 1 ? 2 : newAxisIdx === 0 ? 1 : 1;
-                        const worldOffset = [0, 0, 0];
-                        worldOffset[mX.w] = op.offsetX * mX.sign;
-                        worldOffset[mY.w] = op.offsetY * mY.sign;
-                        newOp.axis = ['x', 'y', 'z'][newAxisIdx];
-                        newOp.offsetX = worldOffset[newDimXIdx];
-                        newOp.offsetY = worldOffset[newDimYIdx];
-                    } else if (op.type === 'cove') {
-                        newOp.edge = remapEdge(op.edge, op.axis);
-                        newOp.axis = remapAxis(op.axis);
-                    } else if (op.type === 'arc') {
-                        newOp.axis = remapAxis(op.axis);
-
-                        // Remap startAngle / endAngle so the arc faces the same
-                        // world direction after the rotation is baked to zero.
-                        //
-                        // Step 1 — convert angle θ to local 3D position using the
-                        //          arc's axis geometry convention:
-                        //   axis='y': local=(cosθ, 0,    −sinθ)  [XZ via rotateX(−π/2)]
-                        //   axis='x': local=(0,    sinθ, −cosθ)  [YZ via rotateY(+π/2)]
-                        //   axis='z': local=(cosθ, sinθ,  0)     [XY, no rotation]
-                        //
-                        // Step 2 — transform to world space through board rotation R.
-                        //
-                        // Step 3 — extract new angle from the world vector using the
-                        //          NEW axis convention (after remapAxis).
-                        //
-                        // Step 4 — if the rotation reversed orientation in the sweep
-                        //          plane the remapped delta wraps > 180°; swap
-                        //          start/end to keep the compact arc.
-
-                        const remapArcAngle = (deg) => {
-                            const r = deg * Math.PI / 180;
-                            const c = Math.cos(r), s = Math.sin(r);
-                            let lx = 0, ly = 0, lz = 0;
-                            if      (op.axis === 'y') { lx = c;  lz = -s; }
-                            else if (op.axis === 'x') { ly = s;  lz = -c; }
-                            else if (op.axis === 'z') { lx = c;  ly = s;  }
-                            const wx = R[0][0]*lx + R[0][1]*ly + R[0][2]*lz;
-                            const wy = R[1][0]*lx + R[1][1]*ly + R[1][2]*lz;
-                            const wz = R[2][0]*lx + R[2][1]*ly + R[2][2]*lz;
-                            const na = newOp.axis;
-                            if (na === 'y') return Math.round(Math.atan2(-wz,  wx) * 180 / Math.PI);
-                            if (na === 'x') return Math.round(Math.atan2( wy, -wz) * 180 / Math.PI);
-                            if (na === 'z') return Math.round(Math.atan2( wy,  wx) * 180 / Math.PI);
-                            return deg;
-                        };
-
-                        let S = remapArcAngle(op.startAngle ?? 0);
-                        let E = remapArcAngle(op.endAngle   ?? 90);
-
-                        // Orientation reversal check: if the mapped sweep wraps the
-                        // long way around (> 180°), swap S and E to restore the
-                        // compact arc.
-                        const normDelta = ((E - S) % 360 + 360) % 360;
-                        if (normDelta > 180) { const tmp = S; S = E; E = tmp; }
-
-                        newOp.startAngle = S;
-                        newOp.endAngle   = E;
-                    } else if (op.type === 'miter') {
-                        // Remap both face and fenceEdge through the rotation.
-                        // The angle stays unchanged — the geometry builder uses
-                        // the explicit fenceEdge to compute the correct pivot
-                        // and rotation direction for any face+fenceEdge combination.
-                        const remapSignedFace = (f) => {
-                            const axis = f[0] === 'x' ? 0 : f[0] === 'z' ? 2 : 1;
-                            const sign = f[1] === '+' ? 1 : -1;
-                            const m = mapLocalToWorld[axis];
-                            if (!m || m.w === 1) return f; // skip if maps to Y
-                            const newAxis = m.w;
-                            const newSign = sign * m.sign;
-                            return ['x', 'y', 'z'][newAxis] + (newSign > 0 ? '+' : '-');
-                        };
-                        newOp.face = remapSignedFace(op.face || 'x+');
-                        newOp.fenceEdge = remapSignedFace(op.fenceEdge || 'z-');
-                    }
-                    return newOp;
-                });
-            }
-
-            return { ...b, ...patch };
-        }));
-
-        if (hasFlush) {
-            showToast('⚠ Flush constraints on rotated boards may need to be re-set.');
-        }
-    },
+    // ─── applyRotation removed — local orientation model ──────────────────────
+    // Operations (miter, dado, hole, etc.) are defined in LOCAL board space.
+    // Rotating a board only changes its `orientation` Euler — no baking, no
+    // axis/face remapping.  The old applyRotation bake-rotation logic has been
+    // intentionally deleted as part of the local-orientation migration.
 
     // ─── Move all boards in a group by a delta ───────────────────────────────
     moveGroup: (groupId, axis, delta) => {
@@ -1603,14 +1391,14 @@ export const createActions = (set, get) => ({
                     pushHistory();
                     setBoards(boards.map(b => {
                         if (!targetIds.includes(b.id.toString())) return b;
-                        const rot = [...(b.rotation || [0, 0, 0])];
+                        const ori = [...(b.orientation || [0, 0, 0])];
                         // 'flip' sets absolute 180°; other commands are additive
                         if (/flip/.test(lower)) {
-                            rot[axis] = rot[axis] === 0 ? Math.PI : 0;
+                            ori[axis] = ori[axis] === 0 ? Math.PI : 0;
                         } else {
-                            rot[axis] = rot[axis] + radians;
+                            ori[axis] = ori[axis] + radians;
                         }
-                        return { ...b, rotation: rot };
+                        return { ...b, orientation: ori };
                     }));
                     const axisLabel = ['X (Red)', 'Y (Green)', 'Z (Blue)'][axis];
                     reply = `Rotated ${targetIds.length} board(s) ${/flip/.test(lower) ? '180° (flipped)' : `${degrees}°`} on ${axisLabel}.`;
@@ -1625,7 +1413,7 @@ export const createActions = (set, get) => ({
                 if (targetIds.length > 0) {
                     pushHistory();
                     setBoards(boards.map(b =>
-                        targetIds.includes(b.id.toString()) ? { ...b, rotation: [0, 0, 0] } : b
+                        targetIds.includes(b.id.toString()) ? { ...b, orientation: [0, 0, 0] } : b
                     ));
                     reply = `Rotation reset to 0° on ${targetIds.length} board(s).`;
                     updated = true;
@@ -1707,12 +1495,14 @@ export const createActions = (set, get) => ({
         if (!selectedBoard) return;
         pushHistory();
 
-        // Bottom of board = position.y - size.y/2. We want bottom at Y=0.
-        const newY = selectedBoard.size[1] / 2;
+        // Use orientation-aware AABB to find the true bottom Y
+        const aabb = computeWorldAABB([selectedBoard]);
+        const bottomY = aabb.minY;
+        const delta = -bottomY; // shift so bottom sits at Y=0
 
         setBoards(boards.map(b => {
             if (selectedItemIds.includes(b.id.toString())) {
-                return { ...b, position: [b.position[0], newY, b.position[2]] };
+                return { ...b, position: [b.position[0], b.position[1] + delta, b.position[2]] };
             }
             return b;
         }));
@@ -1724,15 +1514,12 @@ export const createActions = (set, get) => ({
         if (!selectedGroup) return;
         pushHistory();
 
-        // Find the lowest Y extent of all child boards
+        // Find the lowest Y extent of all child boards (orientation-aware)
         const childBoards = collectChildBoards(selectedGroup, boards, groups);
         if (childBoards.length === 0) return;
 
-        let lowestY = Infinity;
-        childBoards.forEach(b => {
-            const bottomY = b.position[1] - b.size[1] / 2;
-            if (bottomY < lowestY) lowestY = bottomY;
-        });
+        const aabb = computeWorldAABB(childBoards);
+        const lowestY = aabb.minY;
 
         if (lowestY === Infinity) return;
         // Shift all child boards so the lowest is sitting on Y=0
@@ -1766,12 +1553,9 @@ export const createActions = (set, get) => ({
         const selBoards = Array.from(boardSet);
         if (selBoards.length === 0) return;
 
-        // Find the lowest Y extent across all selected boards
-        let lowestY = Infinity;
-        selBoards.forEach(b => {
-            const bottomY = b.position[1] - b.size[1] / 2;
-            if (bottomY < lowestY) lowestY = bottomY;
-        });
+        // Find the lowest Y extent across all selected boards (orientation-aware)
+        const aabb = computeWorldAABB(selBoards);
+        const lowestY = aabb.minY;
         if (lowestY === Infinity) return;
 
         const delta = -lowestY; // shift so lowest point lands on Y=0

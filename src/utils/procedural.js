@@ -1,8 +1,8 @@
 /**
  * Procedural Box Generator — World-Space Only
  * 
- * All walls are axis-aligned with no rotation. Wall orientation is achieved
- * by setting the correct size dimensions rather than rotating.
+ * All walls are axis-aligned (orientation [0,0,0]). Wall facing direction is achieved
+ * by setting the correct size dimensions rather than using the orientation field.
  * 
  * Coordinate convention (Three.js native):
  *   X = left/right (Red)

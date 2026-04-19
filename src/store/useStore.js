@@ -17,13 +17,18 @@ const loadState = (key, def) => {
             if (p[key] !== undefined) {
                 // Sanitize boards on load to prevent silent crashes
                 if (key === 'boards' && Array.isArray(p[key])) {
-                    return p[key].map(b => ({
-                        ...b,
-                        size: Array.isArray(b.size) && b.size.length === 3 ? b.size : [1, 1, 1],
-                        position: Array.isArray(b.position) && b.position.length === 3 ? b.position : [0, 0.5, 0],
-                        operations: Array.isArray(b.operations) ? b.operations : [],
-                        shape: b.shape || 'box',
-                    }));
+                    return p[key].map(b => {
+                        // Migrate legacy `rotation` → `orientation`
+                        const { rotation, ...rest } = b;
+                        return {
+                            ...rest,
+                            size: Array.isArray(b.size) && b.size.length === 3 ? b.size : [1, 1, 1],
+                            position: Array.isArray(b.position) && b.position.length === 3 ? b.position : [0, 0.5, 0],
+                            operations: Array.isArray(b.operations) ? b.operations : [],
+                            shape: b.shape || 'box',
+                            ...(rotation && !b.orientation ? { orientation: rotation } : {}),
+                        };
+                    });
                 }
                 return p[key];
             }
@@ -194,9 +199,8 @@ const useStore = create((set, get) => ({
         } catch { /* non-fatal */ }
     },
 
-    // ── 2C: Core Data State ──────────────────────────────────────────────────
-    // Boards: No rotation field. All positions are world-space.
-    // Size: [x, y, z] where x=width(Red), y=height(Green/up), z=depth(Blue)
+    // Boards: orientation is local (Euler radians). Operations are in LOCAL board space.
+    // Size: [x, y, z] where x=length, y=height, z=depth — always LOCAL dimensions
     // Position: [x, y, z] = center of the board in world space
     // Note: boards no longer carry a constraints[] array — see root `constraints` map.
     boards: loadState('boards', [

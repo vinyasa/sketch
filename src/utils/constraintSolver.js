@@ -23,11 +23,11 @@ export const faceToAxis = (faceStr) => {
 };
 
 /**
- * Compute the true world-space AABB of a board, accounting for any rotation.
- * For unrotated boards this is just position ± size/2 per axis.
- * For rotated boards we transform all 8 corners and recompute the enclosing box.
+ * Compute the true world-space AABB of a board, accounting for its orientation.
+ * For unoriented boards this is just position ± size/2 per axis.
+ * For oriented boards we transform all 8 corners and recompute the enclosing box.
  *
- * @param {Object} board  — { position, size, rotation? }
+ * @param {Object} board  — { position, size, orientation? }
  * @returns {THREE.Box3}
  */
 export const getRotatedBoardAABB = (board) => {
@@ -40,14 +40,14 @@ export const getRotatedBoardAABB = (board) => {
         new Vector3( sx / 2,  sy / 2,  sz / 2)
     );
 
-    const [rx, ry, rz] = board.rotation || [0, 0, 0];
+    const [rx, ry, rz] = board.orientation || [0, 0, 0];
     if (rx === 0 && ry === 0 && rz === 0) {
         // Fast path — just translate
         box.translate(new Vector3(px, py, pz));
         return box;
     }
 
-    // Build rotation + translation matrix (Three.js XYZ Euler order)
+    // Build orientation + translation matrix (Three.js XYZ Euler order)
     const matrix = new Matrix4();
     matrix.makeRotationFromEuler(new Euler(rx, ry, rz, 'XYZ'));
     matrix.setPosition(px, py, pz);
@@ -59,7 +59,7 @@ export const getRotatedBoardAABB = (board) => {
 
 /**
  * World-space position of a face centre on a board.
- * For rotated boards the face position is the AABB extremal extent on that axis
+ * For oriented boards the face position is the AABB extremal extent on that axis
  * (the furthest point the board reaches in that direction), which is the
  * geometrically correct attachment point for Flush/Glue constraint lines.
  */
@@ -67,7 +67,7 @@ export const getFaceWorldPos = (board, faceStr) => {
     const axis = faceToAxis(faceStr);
     const sign = faceStr[1] === '+' ? 1 : -1;
 
-    const [rx, ry, rz] = board.rotation || [0, 0, 0];
+    const [rx, ry, rz] = board.orientation || [0, 0, 0];
     if (rx !== 0 || ry !== 0 || rz !== 0) {
         const aabb  = getRotatedBoardAABB(board);
         const extent = aabb.toArray(); // [minX,minY,minZ, maxX,maxY,maxZ]
@@ -273,7 +273,7 @@ export const solveFlushSnap = (boardA, faceA, boardB, faceB) => {
     const signB = faceB[1] === '+' ? 1 : -1;
 
     // ── Target plane: where boardB's faceB sits in world space ──────────────
-    const [rbx, rby, rbz] = boardB.rotation || [0, 0, 0];
+    const [rbx, rby, rbz] = boardB.orientation || [0, 0, 0];
     let targetPlane;
     if (rbx !== 0 || rby !== 0 || rbz !== 0) {
         const aabbB = getRotatedBoardAABB(boardB);
@@ -285,7 +285,7 @@ export const solveFlushSnap = (boardA, faceA, boardB, faceB) => {
     }
 
     // ── Half-extent of boardA's face from its centre ─────────────────────────
-    const [rax, ray, raz] = boardA.rotation || [0, 0, 0];
+    const [rax, ray, raz] = boardA.orientation || [0, 0, 0];
     let halfExtentA;
     if (rax !== 0 || ray !== 0 || raz !== 0) {
         const aabbA = getRotatedBoardAABB(boardA);
