@@ -1,142 +1,120 @@
 import * as THREE from 'three';
 
-// ── Corner helpers ──────────────────────────────────────────────────────────
-// Outer corner keys: 'fl' | 'fr' | 'bl' | 'br'
-// (f=front/Z+, b=back/Z-, l=left/X-, r=right/X+)
+// ── 4-Sided Independent Taper ───────────────────────────────────────────────
 //
-// angleZ = taper angle (°) for the Z-perpendicular inner face
-//   FL/FR outer → back  (Z-) face tilts inward
-//   BL/BR outer → front (Z+) face tilts inward
+// Each side of the taper has its own angle (degrees).  The TOP face (Y+) is
+// always the full-size rectangle at X × Z.  Each side tilts inward from top
+// to bottom independently.
 //
-// angleX = taper angle (°) for the X-perpendicular inner face
-//   FL/BL outer → right (X+) face tilts inward
-//   FR/BR outer → left  (X-) face tilts inward
+//   angleLeft   → left  face (X−) tilts inward at bottom
+//   angleRight  → right face (X+) tilts inward at bottom
+//   angleFront  → front face (Z+) tilts inward at bottom
+//   angleBack   → back  face (Z−) tilts inward at bottom
 //
-// Setting angleZ=0 or angleX=0 gives a single-face taper on the other axis.
+// Bottom dimensions:
+//   X' = X − h·tan(angleLeft) − h·tan(angleRight)
+//   Z' = Z − h·tan(angleFront) − h·tan(angleBack)
 
 /**
- * Normalise legacy { 'z-': a, 'x+': b } taper format to the corner model.
- * New format { outerCorner, angleZ, angleX } passes through unchanged.
+ * Normalise any taper format to the 4-angle model.
+ * New format { angleLeft, angleRight, angleFront, angleBack } passes through.
+ * Legacy format { outerCorner, angleZ, angleX } is mapped to 4-angle.
+ *
  * @param {object} taper
- * @returns {{ outerCorner: string, angleZ: number, angleX: number }}
+ * @returns {{ angleLeft: number, angleRight: number, angleFront: number, angleBack: number }}
  */
 export function normalizeTaper(taper = {}) {
-    if (taper.outerCorner) {
+    // ── New 4-angle format ────────────────────────────────────────────────
+    if ('angleLeft' in taper || 'angleRight' in taper ||
+        'angleFront' in taper || 'angleBack' in taper) {
         return {
-            outerCorner: taper.outerCorner ?? 'fl',
-            angleZ: taper.angleZ ?? 0,
-            angleX: taper.angleX ?? 0,
+            angleLeft:  taper.angleLeft  ?? 0,
+            angleRight: taper.angleRight ?? 0,
+            angleFront: taper.angleFront ?? 0,
+            angleBack:  taper.angleBack  ?? 0,
         };
     }
-    // Legacy: { 'z-': a, 'x+': b } implied outer corner = front-left
-    return {
-        outerCorner: 'fl',
-        angleZ: taper['z-'] ?? 0,
-        angleX: taper['x+'] ?? 0,
-    };
+
+    // ── Legacy outerCorner format ─────────────────────────────────────────
+    const az = taper.angleZ ?? taper['z-'] ?? 0;
+    const ax = taper.angleX ?? taper['x+'] ?? 0;
+    const corner = taper.outerCorner ?? 'fl';
+
+    switch (corner) {
+        case 'fl': return { angleLeft: 0,  angleRight: ax, angleFront: 0,  angleBack: az };
+        case 'fr': return { angleLeft: ax, angleRight: 0,  angleFront: 0,  angleBack: az };
+        case 'bl': return { angleLeft: 0,  angleRight: ax, angleFront: az, angleBack: 0  };
+        case 'br': return { angleLeft: ax, angleRight: 0,  angleFront: az, angleBack: 0  };
+        default:   return { angleLeft: 0,  angleRight: ax, angleFront: 0,  angleBack: az };
+    }
 }
 
 /**
  * Validate taper angles against actual board dimensions.
  * Returns the remaining (bottom) width and depth plus warning strings.
  *
- * @param {number} w   board size[0] (bounding box width)
- * @param {number} h   board size[1] (bounding box height)
- * @param {number} d   board size[2] (bounding box depth)
- * @param {number} az  Z-axis inner face taper angle in °
- * @param {number} ax  X-axis inner face taper angle in °
- * @returns {{ zBottom, xBottom, zWarn, xWarn }}
+ * @param {number} w   board size[0] (bounding box width, X)
+ * @param {number} h   board size[1] (bounding box height, Y)
+ * @param {number} d   board size[2] (bounding box depth, Z)
+ * @param {number} aL  left  angle (°)
+ * @param {number} aR  right angle (°)
+ * @param {number} aF  front angle (°)
+ * @param {number} aB  back  angle (°)
+ * @returns {{ xBottom: number, zBottom: number, xWarn: string|null, zWarn: string|null }}
  */
-export function taperValidation(w, h, d, az, ax) {
-    const tapZ = h * Math.tan((az * Math.PI) / 180);
-    const tapX = h * Math.tan((ax * Math.PI) / 180);
-    const zBottom = +(d - tapZ).toFixed(4);
-    const xBottom = +(w - tapX).toFixed(4);
+export function taperValidation(w, h, d, aL, aR, aF, aB) {
+    const tapL = h * Math.tan((aL * Math.PI) / 180);
+    const tapR = h * Math.tan((aR * Math.PI) / 180);
+    const tapF = h * Math.tan((aF * Math.PI) / 180);
+    const tapB = h * Math.tan((aB * Math.PI) / 180);
+    const xBottom = +(w - tapL - tapR).toFixed(4);
+    const zBottom = +(d - tapF - tapB).toFixed(4);
     return {
-        zBottom,
         xBottom,
-        zWarn: zBottom <= 0 ? `Z taper too steep — bottom depth would be ${zBottom}"` : null,
+        zBottom,
         xWarn: xBottom <= 0 ? `X taper too steep — bottom width would be ${xBottom}"` : null,
+        zWarn: zBottom <= 0 ? `Z taper too steep — bottom depth would be ${zBottom}"` : null,
     };
 }
 
 /**
- * Compute the four bottom corner positions for a given outer-corner configuration.
- * Returns named corners { BFL, BFR, BBL, BBR } in local board space
- * (board is centred at origin: X ±w/2, Y ±h/2, Z ±d/2).
+ * Build a tapered-box BufferGeometry from 4 independent side angles.
  *
- * @param {number} hw  half-width  (w/2)
- * @param {number} hh  half-height (h/2)
- * @param {number} hd  half-depth  (d/2)
- * @param {string} outerCorner  'fl' | 'fr' | 'bl' | 'br'
- * @param {number} tapZ  displacement magnitude along Z (h*tan(angleZ))
- * @param {number} tapX  displacement magnitude along X (h*tan(angleX))
- */
-function computeBottomCorners(hw, hh, hd, outerCorner, tapZ, tapX) {
-    switch (outerCorner) {
-        case 'fl': return {
-            BFL: [-hw,          -hh,  +hd         ],  // outer  — FIXED
-            BFR: [+hw - tapX,   -hh,  +hd         ],  // right walks left
-            BBL: [-hw,          -hh,  -hd + tapZ  ],  // back  walks forward
-            BBR: [+hw - tapX,   -hh,  -hd + tapZ  ],  // inner corner
-        };
-        case 'fr': return {
-            BFR: [+hw,          -hh,  +hd         ],  // outer  — FIXED
-            BFL: [-hw + tapX,   -hh,  +hd         ],  // left  walks right
-            BBR: [+hw,          -hh,  -hd + tapZ  ],  // back  walks forward
-            BBL: [-hw + tapX,   -hh,  -hd + tapZ  ],  // inner corner
-        };
-        case 'bl': return {
-            BBL: [-hw,          -hh,  -hd         ],  // outer  — FIXED
-            BBR: [+hw - tapX,   -hh,  -hd         ],  // right walks left
-            BFL: [-hw,          -hh,  +hd - tapZ  ],  // front walks back
-            BFR: [+hw - tapX,   -hh,  +hd - tapZ  ],  // inner corner
-        };
-        case 'br': return {
-            BBR: [+hw,          -hh,  -hd         ],  // outer  — FIXED
-            BBL: [-hw + tapX,   -hh,  -hd         ],  // left  walks right
-            BFR: [+hw,          -hh,  +hd - tapZ  ],  // front walks back
-            BFL: [-hw + tapX,   -hh,  +hd - tapZ  ],  // inner corner
-        };
-        default: return computeBottomCorners(hw, hh, hd, 'fl', tapZ, tapX);
-    }
-}
-
-/**
- * Build a tapered-box BufferGeometry from an outer-corner specification.
+ * The TOP face is always the full-size X × Z rectangle.
+ * Each side tilts inward from top to bottom at its own angle.
  *
- * The outer corner is the bottom corner that does NOT move — it sits on the
- * floor exactly where the apron / structural member meets it.  The two
- * adjacent bottom corners tilt inward by angleZ° (Z-perpendicular face) and
- * angleX° (X-perpendicular face).  Setting either angle to 0 gives a
- * single-face taper.
- *
- * The bounding box (w × h × d) is always intact — no corner exceeds it —
+ * The bounding box (w × h × d) remains intact — no corner exceeds it —
  * so all Flush/Glue constraints work unchanged on the AABB.
  *
- * Uses 24 vertices (4 per face) for sharp flat-shaded edges.
+ * Uses non-indexed geometry (24 vertices = 4 per face) for sharp flat-shaded edges.
  *
- * @param {number} w            Full width  (X) — bounding box
- * @param {number} h            Full height (Y) — bounding box
- * @param {number} d            Full depth  (Z) — bounding box
- * @param {string} outerCorner  'fl'|'fr'|'bl'|'br'  default 'fl'
- * @param {number} angleZDeg    Inner Z-face taper angle in °  (0 = straight)
- * @param {number} angleXDeg    Inner X-face taper angle in °  (0 = straight)
+ * @param {number} w   Full width  (X) — bounding box
+ * @param {number} h   Full height (Y) — bounding box
+ * @param {number} d   Full depth  (Z) — bounding box
+ * @param {number} aL  Left  angle (°)  default 0
+ * @param {number} aR  Right angle (°)  default 0
+ * @param {number} aF  Front angle (°)  default 0
+ * @param {number} aB  Back  angle (°)  default 0
  * @returns {THREE.BufferGeometry}
  */
-export function buildTaperGeometry(w, h, d, outerCorner = 'fl', angleZDeg = 0, angleXDeg = 0) {
-    const tapZ = h * Math.tan((angleZDeg * Math.PI) / 180);
-    const tapX = h * Math.tan((angleXDeg * Math.PI) / 180);
+export function buildTaperGeometry(w, h, d, aL = 0, aR = 0, aF = 0, aB = 0) {
+    const tapL = h * Math.tan((aL * Math.PI) / 180);
+    const tapR = h * Math.tan((aR * Math.PI) / 180);
+    const tapF = h * Math.tan((aF * Math.PI) / 180);
+    const tapB = h * Math.tan((aB * Math.PI) / 180);
     const hw = w / 2, hh = h / 2, hd = d / 2;
 
-    // Top corners — full-size rectangle, always the same regardless of outer corner
-    const TFL = [-hw,  +hh,  +hd];
-    const TFR = [+hw,  +hh,  +hd];
-    const TBL = [-hw,  +hh,  -hd];
-    const TBR = [+hw,  +hh,  -hd];
+    // Top corners — full-size rectangle, always the same
+    const TFL = [-hw,         +hh,  +hd        ];
+    const TFR = [+hw,         +hh,  +hd        ];
+    const TBL = [-hw,         +hh,  -hd        ];
+    const TBR = [+hw,         +hh,  -hd        ];
 
-    // Bottom corners — determined by outer corner config
-    const { BFL, BFR, BBL, BBR } = computeBottomCorners(hw, hh, hd, outerCorner, tapZ, tapX);
+    // Bottom corners — each side tapers independently
+    const BFL = [-hw + tapL,  -hh,  +hd - tapF ];
+    const BFR = [+hw - tapR,  -hh,  +hd - tapF ];
+    const BBL = [-hw + tapL,  -hh,  -hd + tapB ];
+    const BBR = [+hw - tapR,  -hh,  -hd + tapB ];
 
     // 6 faces × 4 vertices (wound CCW from outside) → 24 verts, 12 triangles
     // IMPORTANT: face order must match Three.js BoxGeometry so that

@@ -5,6 +5,26 @@ import { taperValidation, normalizeTaper } from '../../utils/geometryBuilders';
 
 import useStore from '../../store/useStore';
 
+// ── Build a compact summary string for each tool type ────────────────────────
+function getToolSummary(op) {
+    switch (op.type) {
+        case 'dado':
+            return `${op.face || 'top'} surface · along ${(op.direction || 'x').toUpperCase()}`;
+        case 'hole':
+            return `r=${(op.radius ?? 0).toFixed(2)}" · ${(op.axis || 'y').toUpperCase()} axis`;
+        case 'cove':
+            return `${op.edge || 'top'} edge · ${(op.axis || 'y').toUpperCase()} axis`;
+        case 'arc':
+            return `${op.startAngle ?? 0}°–${op.endAngle ?? 90}° · ${(op.axis || 'y').toUpperCase()} axis`;
+        case 'miter': {
+            const fl = { 'z+': 'Front', 'z-': 'Back', 'x+': 'Right', 'x-': 'Left' }[op.face] || op.face;
+            return `${fl} end · ${op.angle ?? 45}°`;
+        }
+        default:
+            return op.type;
+    }
+}
+
 // Round to ≤4 decimal places, stripping trailing zeros
 const fmt4 = (v) => parseFloat(v.toFixed(4));
 
@@ -13,11 +33,6 @@ const InspectorPanel = () => {
     const [bulkAngleZ, setBulkAngleZ] = useState(2);
     const [bulkAngleX, setBulkAngleX] = useState(2);
     const [bulkDelta, setBulkDelta] = useState(['0', '0', '0']);
-
-    // Staged modifier edits — changes are held locally until "Apply" is clicked
-    const [stagedOps, setStagedOps] = useState({});
-    // New modifiers that haven't been committed to the store yet
-    const [pendingNewOps, setPendingNewOps] = useState([]);
 
     const {
         boards, groups, selectedItemIds, constraints,
@@ -30,13 +45,13 @@ const InspectorPanel = () => {
         removeConstraint, toggleConstraint,
         constraintTargetMode, setConstraintTargetMode,
         updateProceduralBox,
-        addOperation, updateOperation, removeOperation,
+        removeOperation,
         setComputingMessage,
+        showToolsPanel, setShowToolsPanel, setEditingToolOpId,
+        toggleRabbetJoint, removeRabbetJoint,
     } = useStore();
 
-    // Clear staged modifier edits when the selected board changes
     const selectedBoardId = selectedItemIds?.[0];
-    useEffect(() => { setStagedOps({}); setPendingNewOps([]); }, [selectedBoardId]);
 
     // Cancel constraint mode if selection no longer includes the source board
     useEffect(() => {
@@ -304,18 +319,20 @@ const InspectorPanel = () => {
                     const cx = selBoards.reduce((s, b) => s + b.position[0], 0) / selBoards.length;
                     const cz = selBoards.reduce((s, b) => s + b.position[2], 0) / selBoards.length;
 
-                    const getOuterCorner = (b) => {
-                        const xSide = b.position[0] < cx ? 'l' : 'r';
-                        const zSide = b.position[2] < cz ? 'b' : 'f';
-                        return zSide + xSide; // 'fl' | 'fr' | 'bl' | 'br'
-                    };
-
-                    const applyTaper = (angleZ, angleX) => {
+                    // Determine which sides face inward toward the centroid
+                    const applyTaper = (angle) => {
                         pushHistory();
                         const selIds = new Set(selBoards.map(b => b.id));
                         setBoards(prev => prev.map(b => {
                             if (!selIds.has(b.id)) return b;
-                            return { ...b, shape: 'taper', taper: { outerCorner: getOuterCorner(b), angleZ, angleX } };
+                            // Each leg gets inward-facing sides tapered
+                            const taper = {
+                                angleLeft:  b.position[0] > cx ? angle : 0,
+                                angleRight: b.position[0] < cx ? angle : 0,
+                                angleFront: b.position[2] < cz ? angle : 0,
+                                angleBack:  b.position[2] > cz ? angle : 0,
+                            };
+                            return { ...b, shape: 'taper', taper };
                         }));
                     };
 
@@ -333,31 +350,20 @@ const InspectorPanel = () => {
                         <div className="inspector-section" style={{ borderTop: '1px solid var(--border-color)', paddingTop: '10px' }}>
                             <h4>Bulk Shape</h4>
                             <p className="hint" style={{ marginTop: '2px', marginBottom: '8px' }}>
-                                Outer corner is auto-detected from each board's position relative to the group centroid.
+                                Inward-facing sides are auto-detected from each board's position relative to the group centroid.
                             </p>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '4px' }}>
-                                    <div>
-                                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Z inner face (°)</div>
-                                        <input
-                                            type="number" min="0" max="89" step="0.5"
-                                            value={bulkAngleZ}
-                                            onChange={e => setBulkAngleZ(Math.max(0, Math.min(89, parseFloat(e.target.value) || 0)))}
-                                            style={{ width: '100%', padding: '5px 8px', background: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '6px', outline: 'none', fontSize: '0.9rem' }}
-                                        />
-                                    </div>
-                                    <div>
-                                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>X inner face (°)</div>
-                                        <input
-                                            type="number" min="0" max="89" step="0.5"
-                                            value={bulkAngleX}
-                                            onChange={e => setBulkAngleX(Math.max(0, Math.min(89, parseFloat(e.target.value) || 0)))}
-                                            style={{ width: '100%', padding: '5px 8px', background: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '6px', outline: 'none', fontSize: '0.9rem' }}
-                                        />
-                                    </div>
+                                <div>
+                                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Taper angle (°)</div>
+                                    <input
+                                        type="number" min="0" max="89" step="0.5"
+                                        value={bulkAngleZ}
+                                        onChange={e => setBulkAngleZ(Math.max(0, Math.min(89, parseFloat(e.target.value) || 0)))}
+                                        style={{ width: '100%', padding: '5px 8px', background: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '6px', outline: 'none', fontSize: '0.9rem' }}
+                                    />
                                 </div>
-                                <button className="primary-btn" onClick={() => applyTaper(bulkAngleZ, bulkAngleX)}>
-                                    ◢ Taper as Legs ({bulkAngleZ}° × {bulkAngleX}°)
+                                <button className="primary-btn" onClick={() => applyTaper(bulkAngleZ)}>
+                                    ◢ Taper as Legs ({bulkAngleZ}°)
                                 </button>
                                 {allTapered && (
                                     <button className="nav-btn" style={{ border: '1px solid var(--border-color)', marginTop: '2px' }} onClick={removeTaper}>
@@ -504,7 +510,7 @@ const InspectorPanel = () => {
                                     if (s === 'box') {
                                         patch = { shape: undefined, taper: undefined, cylinder: undefined };
                                     } else if (s === 'taper') {
-                                        patch = { shape: 'taper', taper: { outerCorner: 'fl', angleZ: 2, angleX: 2 }, cylinder: undefined };
+                                        patch = { shape: 'taper', taper: { angleLeft: 2, angleRight: 2, angleFront: 2, angleBack: 2 }, cylinder: undefined };
                                     } else if (s === 'cylinder') {
                                         const r = Math.min(selectedBoard.size[0], selectedBoard.size[2]) / 2;
                                         const h = selectedBoard.size[1];
@@ -539,73 +545,55 @@ const InspectorPanel = () => {
                     </div>
 
                     {selectedBoard.shape === 'taper' && (() => {
-                        const { outerCorner, angleZ, angleX } = normalizeTaper(selectedBoard.taper);
-                        const { zBottom, xBottom, zWarn, xWarn } = taperValidation(
-                            selectedBoard.size[0], selectedBoard.size[1], selectedBoard.size[2], angleZ, angleX
+                        const { angleLeft: aL, angleRight: aR, angleFront: aF, angleBack: aB } = normalizeTaper(selectedBoard.taper);
+                        const { xBottom, zBottom, xWarn, zWarn } = taperValidation(
+                            selectedBoard.size[0], selectedBoard.size[1], selectedBoard.size[2], aL, aR, aF, aB
                         );
-                        const zFaceLabel = outerCorner.startsWith('f') ? 'Back (Z−) inner face °' : 'Front (Z+) inner face °';
-                        const xFaceLabel = outerCorner.endsWith('l') ? 'Right (X+) inner face °' : 'Left (X−) inner face °';
-
-                        const setCorner = (corner) => {
-                            pushHistory();
-                            setBoards(prev => prev.map(bd =>
-                                bd.id === selectedBoard.id
-                                    ? { ...bd, taper: { outerCorner: corner, angleZ, angleX } } : bd
-                            ));
-                        };
-                        const setAngle = (field, val) => {
+                        const setAngle = (key, val) => {
                             const v = Math.max(0, Math.min(89, parseFloat(val) || 0));
                             pushHistory();
                             setBoards(prev => prev.map(bd =>
                                 bd.id === selectedBoard.id
-                                    ? { ...bd, taper: { outerCorner, angleZ, angleX, [field]: v } } : bd
+                                    ? { ...bd, taper: { ...normalizeTaper(bd.taper), [key]: v } } : bd
                             ));
                         };
-
-                        const cBtnStyle = (key) => ({
-                            width: '52px', height: '44px', fontSize: '0.68rem', fontWeight: 700,
-                            borderRadius: '6px', cursor: 'pointer', lineHeight: 1.25, whiteSpace: 'pre',
-                            border: outerCorner === key ? '2px solid rgba(188,138,95,0.9)' : '1px solid var(--border-color)',
-                            background: outerCorner === key ? 'rgba(188,138,95,0.25)' : 'rgba(0,0,0,0.2)',
-                            color: outerCorner === key ? 'var(--accent-color)' : 'var(--text-muted)',
-                            transition: 'all 0.12s',
+                        const inputStyle = (warn) => ({
+                            width: '100%', padding: '5px 8px', background: 'var(--bg-color)', color: 'var(--text-main)',
+                            border: `1px solid ${warn ? '#ff3b30' : 'var(--border-color)'}`, borderRadius: '6px', outline: 'none', fontSize: '0.9rem',
                         });
 
                         return (
                             <div style={{ marginTop: '10px' }}>
-                                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '5px' }}>Outer corner (stays fixed — does not taper):</div>
-                                <div style={{ display: 'grid', gridTemplateColumns: '52px 1fr 52px', gap: '4px', alignItems: 'center', marginBottom: '10px' }}>
-                                    <button style={cBtnStyle('fl')} onClick={() => setCorner('fl')}>{'FL\nFront\nLeft'}</button>
-                                    <div style={{ textAlign: 'center', fontSize: '0.65rem', color: 'var(--text-muted)', lineHeight: 1.8 }}>
-                                        <div>Z+ Front</div>
-                                        <div style={{ border: '1px dashed var(--border-color)', borderLeft: 'none', borderRight: 'none', padding: '2px 0', margin: '1px 0' }}>X− ↔ X+</div>
-                                        <div>Z− Back</div>
-                                    </div>
-                                    <button style={cBtnStyle('fr')} onClick={() => setCorner('fr')}>{'FR\nFront\nRight'}</button>
-                                    <button style={cBtnStyle('bl')} onClick={() => setCorner('bl')}>{'BL\nBack\nLeft'}</button>
-                                    <div />
-                                    <button style={cBtnStyle('br')} onClick={() => setCorner('br')}>{'BR\nBack\nRight'}</button>
-                                </div>
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
                                     <div>
-                                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>{zFaceLabel}</div>
-                                        <input type="number" min="0" max="89" step="0.5" value={angleZ}
-                                            onChange={e => setAngle('angleZ', e.target.value)}
-                                            style={{ width: '100%', padding: '5px 8px', background: 'var(--bg-color)', color: 'var(--text-main)', border: `1px solid ${zWarn ? '#ff3b30' : 'var(--border-color)'}`, borderRadius: '6px', outline: 'none', fontSize: '0.9rem' }} />
-                                        {zWarn && <div style={{ fontSize: '0.68rem', color: '#ff3b30', marginTop: '2px' }}>{zWarn}</div>}
+                                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Left (X−) °</div>
+                                        <input type="number" min="0" max="89" step="0.5" value={aL}
+                                            onChange={e => setAngle('angleLeft', e.target.value)}
+                                            style={inputStyle(xWarn)} />
                                     </div>
                                     <div>
-                                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>{xFaceLabel}</div>
-                                        <input type="number" min="0" max="89" step="0.5" value={angleX}
-                                            onChange={e => setAngle('angleX', e.target.value)}
-                                            style={{ width: '100%', padding: '5px 8px', background: 'var(--bg-color)', color: 'var(--text-main)', border: `1px solid ${xWarn ? '#ff3b30' : 'var(--border-color)'}`, borderRadius: '6px', outline: 'none', fontSize: '0.9rem' }} />
-                                        {xWarn && <div style={{ fontSize: '0.68rem', color: '#ff3b30', marginTop: '2px' }}>{xWarn}</div>}
+                                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Right (X+) °</div>
+                                        <input type="number" min="0" max="89" step="0.5" value={aR}
+                                            onChange={e => setAngle('angleRight', e.target.value)}
+                                            style={inputStyle(xWarn)} />
+                                    </div>
+                                    <div>
+                                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Front (Z+) °</div>
+                                        <input type="number" min="0" max="89" step="0.5" value={aF}
+                                            onChange={e => setAngle('angleFront', e.target.value)}
+                                            style={inputStyle(zWarn)} />
+                                    </div>
+                                    <div>
+                                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Back (Z−) °</div>
+                                        <input type="number" min="0" max="89" step="0.5" value={aB}
+                                            onChange={e => setAngle('angleBack', e.target.value)}
+                                            style={inputStyle(zWarn)} />
                                     </div>
                                 </div>
-                                <div style={{ padding: '7px 10px', borderRadius: '6px', fontSize: '0.75rem', background: (zWarn || xWarn) ? 'rgba(255,59,48,0.08)' : 'rgba(60,200,90,0.08)', border: `1px solid ${(zWarn || xWarn) ? 'rgba(255,59,48,0.3)' : 'rgba(60,200,90,0.25)'}`, color: 'var(--text-muted)' }}>
-                                    Bottom cross-section: <span style={{ color: xWarn ? '#ff3b30' : 'var(--text-main)', fontWeight: 600 }}>{Math.max(0, xBottom).toFixed(3)}"</span> × <span style={{ color: zWarn ? '#ff3b30' : 'var(--text-main)', fontWeight: 600 }}>{Math.max(0, zBottom).toFixed(3)}"</span> (W × D)
+                                <div style={{ padding: '7px 10px', borderRadius: '6px', fontSize: '0.75rem', background: (xWarn || zWarn) ? 'rgba(255,59,48,0.08)' : 'rgba(60,200,90,0.08)', border: `1px solid ${(xWarn || zWarn) ? 'rgba(255,59,48,0.3)' : 'rgba(60,200,90,0.25)'}`, color: 'var(--text-muted)' }}>
+                                    Bottom: <span style={{ color: xWarn ? '#ff3b30' : 'var(--text-main)', fontWeight: 600 }}>X' = {Math.max(0, xBottom).toFixed(3)}"</span> × <span style={{ color: zWarn ? '#ff3b30' : 'var(--text-main)', fontWeight: 600 }}>Z' = {Math.max(0, zBottom).toFixed(3)}"</span>
                                 </div>
-                                <p className="hint" style={{ marginTop: '6px' }}>The outer corner is fixed. Both inner faces slant toward it. Bounding box and constraints use full size unchanged.</p>
+                                <p className="hint" style={{ marginTop: '6px' }}>Top face is full size. Each side tapers inward independently. Bounding box and constraints use full size.</p>
                             </div>
                         );
                     })()}
@@ -671,229 +659,45 @@ const InspectorPanel = () => {
                     </div>
                     <div className="inspector-card" style={{ marginTop: '14px' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <h4 style={{ margin: 0 }}>Modifiers</h4>
+                            <h4 style={{ margin: 0 }}>Tools</h4>
+                            <button
+                                onClick={() => setShowToolsPanel(true)}
+                                style={{ background: 'none', border: 'none', color: 'var(--accent-color)', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600 }}
+                            >+ Add</button>
                         </div>
-                        {(() => {
-                            // Combine committed operations with pending new (not-yet-committed) ones
-                            const committedOps = selectedBoard.operations || [];
-                            const pendingIds = new Set(pendingNewOps.map(o => o.id));
-                            const allOps = [...committedOps, ...pendingNewOps];
-                            return allOps;
-                        })().map((op, idx) => {
-                            const isNew = pendingNewOps.some(p => p.id === op.id);
-                            // Merge staged edits over the real operation data for display
-                            const staged = stagedOps[op.id] || {};
-                            const displayOp = isNew ? { ...op, ...staged } : { ...op, ...staged };
-                            const hasPending = isNew || Object.keys(staged).length > 0;
-
-                            // Stage changes locally instead of committing to store
-                            const upd = (patch) => {
-                                if (isNew) {
-                                    // For new ops, update the pending op directly
-                                    setPendingNewOps(prev => prev.map(p =>
-                                        p.id === op.id ? { ...p, ...patch } : p
-                                    ));
-                                }
-                                // Also track in stagedOps (for Apply All to pick up)
-                                setStagedOps(prev => ({
-                                    ...prev,
-                                    [op.id]: { ...(prev[op.id] || {}), ...patch }
-                                }));
-                            };
-
-                            // Apply: commit this modifier to the store
-                            const applyStaged = () => {
-                                if (!hasPending) return;
-                                setComputingMessage('Performing 3D calculations… please wait.');
-                                // Defer the actual board update so the overlay paints first
-                                requestAnimationFrame(() => {
-                                    pushHistory();
-                                    if (isNew) {
-                                        const finalOp = { ...op, ...staged };
-                                        setBoards(prev => prev.map(b =>
-                                            b.id.toString() === selectedBoard.id.toString()
-                                                ? { ...b, operations: [...(b.operations || []), finalOp] }
-                                                : b
-                                        ));
-                                        setPendingNewOps(prev => prev.filter(p => p.id !== op.id));
-                                    } else {
-                                        setBoards(prev => prev.map(b =>
-                                            b.id.toString() === selectedBoard.id.toString()
-                                                ? { ...b, operations: (b.operations || []).map(o => o.id === op.id ? { ...o, ...staged } : o) }
-                                                : b
-                                        ));
-                                    }
-                                    setStagedOps(prev => {
-                                        const next = { ...prev };
-                                        delete next[op.id];
-                                        return next;
-                                    });
-                                    // Auto-dismiss after CSG debounce + compute time
-                                    setTimeout(() => setComputingMessage(null), 2000);
-                                });
-                            };
-
-                            const del = () => {
-                                if (isNew) {
-                                    // Just remove from pending — never hit the store
-                                    setPendingNewOps(prev => prev.filter(p => p.id !== op.id));
-                                } else {
-                                    removeOperation(selectedBoard.id, op.id);
-                                }
-                                setStagedOps(prev => {
-                                    const next = { ...prev };
-                                    delete next[op.id];
-                                    return next;
-                                });
-                            };
-
-                            return (
-                                <div key={op.id} style={{ marginTop: idx > 0 ? '8px' : '0', padding: '10px', background: hasPending ? 'rgba(188,138,95,0.06)' : 'rgba(255,255,255,0.03)', border: hasPending ? '1px solid rgba(188,138,95,0.4)' : '1px solid var(--border-color)', borderRadius: '6px', transition: 'border-color 0.2s, background 0.2s' }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                                        <span style={{ fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--text-main)', textTransform: 'capitalize' }}>{displayOp.type} Modifier</span>
-                                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                                            <button onClick={applyStaged} disabled={!hasPending} style={{ background: hasPending ? 'rgba(60,200,90,0.15)' : 'transparent', border: hasPending ? '1px solid rgba(60,200,90,0.5)' : '1px solid var(--border-color)', color: hasPending ? '#34c759' : 'var(--text-muted)', cursor: hasPending ? 'pointer' : 'default', fontSize: '0.72rem', fontWeight: 600, padding: '2px 10px', borderRadius: '4px', opacity: hasPending ? 1 : 0.4, transition: 'all 0.15s' }}>✓ Apply</button>
-                                            <button onClick={del} style={{ background: 'transparent', border: 'none', color: '#ff3b30', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600 }}>✕ Remove</button>
+                        {(selectedBoard.operations || []).length === 0 ? (
+                            <div className="hint" style={{ marginTop: '6px' }}>No tools applied.</div>
+                        ) : (
+                            (selectedBoard.operations || []).map(op => {
+                                const icon = { hole: '◎', cove: '◡', arc: '◠', dado: '✂', miter: '⊿' }[op.type] || '●';
+                                const summary = getToolSummary(op);
+                                return (
+                                    <div key={op.id} style={{
+                                        padding: '6px 8px', marginTop: '6px',
+                                        background: 'rgba(255,255,255,0.03)',
+                                        border: '1px solid var(--border-color)',
+                                        borderRadius: '6px',
+                                    }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                            <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-main)', textTransform: 'capitalize' }}>
+                                                {icon} {op.type}
+                                            </span>
+                                            <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                                                <button
+                                                    onClick={() => { setEditingToolOpId(op.id); setShowToolsPanel(true); }}
+                                                    style={{ background: 'none', border: 'none', color: 'var(--accent-color)', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600, padding: '1px 5px' }}
+                                                >✎ Edit</button>
+                                                <button
+                                                    onClick={() => removeOperation(selectedBoard.id, op.id)}
+                                                    style={{ background: 'none', border: 'none', color: '#ff3b30', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600, padding: '1px 5px' }}
+                                                >✕</button>
+                                            </div>
                                         </div>
+                                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '2px' }}>{summary}</div>
                                     </div>
-
-                                    {op.type === 'arc' && (
-                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                                            <div>
-                                                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Start Angle (°)</div>
-                                                <input type="number" step="1" value={displayOp.startAngle} onChange={e => upd({ startAngle: parseFloat(e.target.value) || 0 })} style={{ width: '100%', padding: '5px 8px', background: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '6px', outline: 'none', fontSize: '0.9rem' }} />
-                                            </div>
-                                            <div>
-                                                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>End Angle (°)</div>
-                                                <input type="number" step="1" value={displayOp.endAngle} onChange={e => upd({ endAngle: parseFloat(e.target.value) || 0 })} style={{ width: '100%', padding: '5px 8px', background: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '6px', outline: 'none', fontSize: '0.9rem' }} />
-                                            </div>
-                                            <div>
-                                                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Cutout to Leave (in)</div>
-                                                <input type="number" min="0" step="0.25" value={parseFloat((displayOp.innerRadius ?? 0).toFixed(4))} onChange={e => upd({ innerRadius: Math.max(0, parseFloat(e.target.value) || 0) })} style={{ width: '100%', padding: '5px 8px', background: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '6px', outline: 'none', fontSize: '0.9rem' }} />
-                                            </div>
-                                            <div>
-                                                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Extrude Axis</div>
-                                                <div style={{ display: 'flex', gap: '2px' }}>
-                                                    {['x', 'y', 'z'].map(a => {
-                                                        const axisColor = { x: 'rgba(255, 60, 60', y: 'rgba(60, 200, 90', z: 'rgba(60, 150, 255' }[a];
-                                                        const isActive = displayOp.axis === a;
-                                                        return (
-                                                            <button key={a} onClick={() => upd({ axis: a })} style={{ flex: 1, padding: '5px', fontSize: '0.8rem', borderRadius: '4px', border: isActive ? `1px solid ${axisColor}, 0.8)` : '1px solid var(--border-color)', background: isActive ? `${axisColor}, 0.25)` : `${axisColor}, 0.07)`, color: isActive ? '#fff' : 'var(--text-muted)', cursor: 'pointer', fontWeight: isActive ? 700 : 400, transition: 'all 0.15s' }}>{a.toUpperCase()}</button>
-                                                        );
-                                                    })}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {op.type === 'cove' && (
-                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                                            <div>
-                                                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Edge</div>
-                                                <select value={displayOp.edge} onChange={e => upd({ edge: e.target.value })} style={{ width: '100%', padding: '5px 8px', background: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '6px', outline: 'none', fontSize: '0.9rem', cursor: 'pointer' }}>
-                                                    <option value="top">Top</option><option value="bottom">Bottom</option><option value="left">Left</option><option value="right">Right</option>
-                                                </select>
-                                            </div>
-                                            <div>
-                                                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Depth (in)</div>
-                                                <input type="number" min="0" step="0.25" value={parseFloat((displayOp.depth ?? 0).toFixed(4))} onChange={e => upd({ depth: Math.max(0, parseFloat(e.target.value) || 0) })} style={{ width: '100%', padding: '5px 8px', background: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '6px', outline: 'none', fontSize: '0.9rem' }} />
-                                            </div>
-                                            <div style={{ gridColumn: '1 / -1' }}>
-                                                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Axis</div>
-                                                <div style={{ display: 'flex', gap: '2px' }}>
-                                                    {['x', 'y', 'z'].map(a => {
-                                                        const axisColor = { x: 'rgba(255, 60, 60', y: 'rgba(60, 200, 90', z: 'rgba(60, 150, 255' }[a];
-                                                        const isActive = displayOp.axis === a;
-                                                        return (
-                                                            <button key={a} onClick={() => upd({ axis: a })} style={{ flex: 1, padding: '5px', fontSize: '0.8rem', borderRadius: '4px', border: isActive ? `1px solid ${axisColor}, 0.8)` : '1px solid var(--border-color)', background: isActive ? `${axisColor}, 0.25)` : `${axisColor}, 0.07)`, color: isActive ? '#fff' : 'var(--text-muted)', cursor: 'pointer', fontWeight: isActive ? 700 : 400, transition: 'all 0.15s' }}>{a.toUpperCase()}</button>
-                                                        );
-                                                    })}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {op.type === 'hole' && (
-                                        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '8px' }}>
-                                            <div style={{ gridColumn: '1 / -1' }}>
-                                                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Hole Radius (in)</div>
-                                                <input type="number" min="0.125" step="0.125" value={parseFloat((displayOp.radius ?? 0).toFixed(4))} onChange={e => upd({ radius: Math.max(0, parseFloat(e.target.value) || 0) })} style={{ width: '100%', padding: '5px 8px', background: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '6px', outline: 'none', fontSize: '0.9rem' }} />
-                                            </div>
-                                            <div>
-                                                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Offset X (in)</div>
-                                                <input type="number" step="0.25" value={parseFloat((displayOp.offsetX ?? 0).toFixed(4))} onChange={e => upd({ offsetX: parseFloat(e.target.value) || 0 })} style={{ width: '100%', padding: '5px 8px', background: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '6px', outline: 'none', fontSize: '0.9rem' }} />
-                                            </div>
-                                            <div>
-                                                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Offset Y (in)</div>
-                                                <input type="number" step="0.25" value={parseFloat((displayOp.offsetY ?? 0).toFixed(4))} onChange={e => upd({ offsetY: parseFloat(e.target.value) || 0 })} style={{ width: '100%', padding: '5px 8px', background: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '6px', outline: 'none', fontSize: '0.9rem' }} />
-                                            </div>
-                                            <div style={{ gridColumn: '1 / -1' }}>
-                                                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Axis</div>
-                                                <div style={{ display: 'flex', gap: '2px' }}>
-                                                    {['x', 'y', 'z'].map(a => {
-                                                        const axisColor = { x: 'rgba(255, 60, 60', y: 'rgba(60, 200, 90', z: 'rgba(60, 150, 255' }[a];
-                                                        const isActive = displayOp.axis === a;
-                                                        return (
-                                                            <button key={a} onClick={() => upd({ axis: a })} style={{ flex: 1, padding: '5px', fontSize: '0.8rem', borderRadius: '4px', border: isActive ? `1px solid ${axisColor}, 0.8)` : '1px solid var(--border-color)', background: isActive ? `${axisColor}, 0.25)` : `${axisColor}, 0.07)`, color: isActive ? '#fff' : 'var(--text-muted)', cursor: 'pointer', fontWeight: isActive ? 700 : 400, transition: 'all 0.15s' }}>{a.toUpperCase()}</button>
-                                                        );
-                                                    })}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                            );
-                        })}
-
-                        {(Object.keys(stagedOps).length > 0 || pendingNewOps.length > 0) && (
-                            <button
-                                onClick={() => {
-                                    setComputingMessage('Performing 3D calculations… please wait.');
-                                    requestAnimationFrame(() => {
-                                        pushHistory();
-                                        setBoards(prev => prev.map(b => {
-                                            if (b.id.toString() !== selectedBoard.id.toString()) return b;
-                                            let ops = (b.operations || []).map(o => {
-                                                const patch = stagedOps[o.id];
-                                                return patch ? { ...o, ...patch } : o;
-                                            });
-                                            for (const newOp of pendingNewOps) {
-                                                const patch = stagedOps[newOp.id] || {};
-                                                ops.push({ ...newOp, ...patch });
-                                            }
-                                            return { ...b, operations: ops };
-                                        }));
-                                        setStagedOps({});
-                                        setPendingNewOps([]);
-                                        setTimeout(() => setComputingMessage(null), 2000);
-                                    });
-                                }}
-                                style={{ width: '100%', marginTop: '10px', padding: '7px', background: 'rgba(60,200,90,0.12)', border: '1px solid rgba(60,200,90,0.5)', borderRadius: '6px', color: '#34c759', fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s' }}
-                                onMouseEnter={e => e.target.style.background = 'rgba(60,200,90,0.22)'}
-                                onMouseLeave={e => e.target.style.background = 'rgba(60,200,90,0.12)'}
-                            >✓ Apply All Modifiers</button>
+                                );
+                            })
                         )}
-
-                        <div style={{ marginTop: '10px', display: 'flex', gap: '8px' }}>
-                            <button
-                                onClick={() => setPendingNewOps(prev => [...prev, { id: Date.now(), type: 'hole', radius: 1, offsetX: 0, offsetY: 0, axis: 'y' }])}
-                                style={{ flex: 1, padding: '6px', background: 'var(--bg-color)', border: '1px solid var(--border-color)', borderRadius: '4px', color: 'var(--text-main)', fontSize: '0.75rem', cursor: 'pointer', transition: 'all 0.1s' }}
-                                onMouseEnter={e => e.target.style.background = 'rgba(188,138,95,0.1)'}
-                                onMouseLeave={e => e.target.style.background = 'var(--bg-color)'}
-                            >◎ Hole</button>
-                            <button
-                                onClick={() => setPendingNewOps(prev => [...prev, { id: Date.now(), type: 'cove', edge: 'top', depth: 1, axis: 'y' }])}
-                                style={{ flex: 1, padding: '6px', background: 'var(--bg-color)', border: '1px solid var(--border-color)', borderRadius: '4px', color: 'var(--text-main)', fontSize: '0.75rem', cursor: 'pointer', transition: 'all 0.1s' }}
-                                onMouseEnter={e => e.target.style.background = 'rgba(188,138,95,0.1)'}
-                                onMouseLeave={e => e.target.style.background = 'var(--bg-color)'}
-                            >◡ Cove</button>
-                            <button
-                                onClick={() => setPendingNewOps(prev => [...prev, { id: Date.now(), type: 'arc', startAngle: 0, endAngle: 90, innerRadius: 0, axis: 'y' }])}
-                                style={{ flex: 1, padding: '6px', background: 'var(--bg-color)', border: '1px solid var(--border-color)', borderRadius: '4px', color: 'var(--text-main)', fontSize: '0.75rem', cursor: 'pointer', transition: 'all 0.1s' }}
-                                onMouseEnter={e => e.target.style.background = 'rgba(188,138,95,0.1)'}
-                                onMouseLeave={e => e.target.style.background = 'var(--bg-color)'}
-                            >◠ Arc</button>
-                        </div>
                     </div>
                 {/* ── Material ── */}
                 {(() => {
@@ -1075,6 +879,46 @@ const InspectorPanel = () => {
                                 <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', lineHeight: 1.3 }}>
                                     {JOINT_DESC[cur]}
                                 </span>
+                            </div>
+                        </div>
+                    );
+                })()}
+                {/* ── Dual Rabbet Joint Card ── */}
+                {selectedBoard.rabbetJoint && (() => {
+                    const rj = selectedBoard.rabbetJoint;
+                    const partner = boards.find(b => b.id.toString() === rj.partnerId);
+                    const partnerName = partner?.name ?? rj.partnerId;
+                    const overBoard = boards.find(b => b.id.toString() === rj.overBoardId);
+                    const isOver = overBoard?.id === selectedBoard.id;
+
+                    return (
+                        <div className="inspector-card">
+                            <h4>🔗 Dual Rabbet Joint</h4>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
+                                <span style={{ fontSize: '0.75rem', color: 'var(--text-main)', flex: 1 }}>
+                                    {isOver ? (
+                                        <><strong>{selectedBoard.name}</strong> over <strong>{partnerName}</strong></>
+                                    ) : (
+                                        <><strong>{partnerName}</strong> over <strong>{selectedBoard.name}</strong></>
+                                    )}
+                                </span>
+                                <button
+                                    onClick={() => toggleRabbetJoint(selectedBoard.id)}
+                                    title="Flip dual rabbet joint"
+                                    style={{
+                                        padding: '3px 10px', fontSize: '0.72rem', fontWeight: 600,
+                                        background: 'rgba(100,180,255,0.12)', border: '1px solid rgba(100,180,255,0.4)',
+                                        borderRadius: '5px', color: '#64b4ff', cursor: 'pointer',
+                                    }}
+                                >⇄</button>
+                                <button
+                                    onClick={() => removeRabbetJoint(selectedBoard.id)}
+                                    title="Remove dual rabbet joint"
+                                    style={{
+                                        padding: '3px 8px', fontSize: '0.72rem', fontWeight: 600,
+                                        background: 'none', border: 'none', color: '#ff3b30', cursor: 'pointer',
+                                    }}
+                                >✕</button>
                             </div>
                         </div>
                     );

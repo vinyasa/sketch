@@ -373,6 +373,97 @@ const _buildCoveTool = (size, op) => {
   return g;
 };
 
+// ── Dado / Groove / Rabbet tool builder ──────────────────────────────────────
+const _FACE_MAP = {
+  top:    { depthAxis: 1, sign: +1, faceAxes: [0, 2] },
+  bottom: { depthAxis: 1, sign: -1, faceAxes: [0, 2] },
+  front:  { depthAxis: 2, sign: +1, faceAxes: [0, 1] },
+  back:   { depthAxis: 2, sign: -1, faceAxes: [0, 1] },
+  right:  { depthAxis: 0, sign: +1, faceAxes: [1, 2] },
+  left:   { depthAxis: 0, sign: -1, faceAxes: [1, 2] },
+};
+const _AXIS_LABELS = ['x', 'y', 'z'];
+
+const _buildDadoTool = (size, op) => {
+  const face = _FACE_MAP[op.face || 'top'];
+  const { depthAxis, sign, faceAxes } = face;
+
+  const depth = Math.max(0.01, op.depth ?? 0.375);
+  const width = Math.max(0.01, op.width ?? 0.75);
+  const offset = op.offset ?? 0;
+  const lengthOffset = op.lengthOffset ?? 0;
+
+  // Direction: which face-plane axis the channel runs along
+  const dirAxis = op.direction === _AXIS_LABELS[faceAxes[1]] ? faceAxes[1] : faceAxes[0];
+  const widthAxis = dirAxis === faceAxes[0] ? faceAxes[1] : faceAxes[0];
+
+  // Channel length: 0 or missing = full through-cut
+  const channelLength = (op.length ?? 0) <= 0 ? size[dirAxis] + 2 : op.length;
+
+  // Build box dimensions
+  const boxSize = [0, 0, 0];
+  boxSize[dirAxis] = channelLength;
+  boxSize[widthAxis] = width;
+  boxSize[depthAxis] = depth;
+
+  // Position: flush against the chosen face
+  const pos = [0, 0, 0];
+  pos[depthAxis] = sign * (size[depthAxis] / 2 - depth / 2);
+  pos[widthAxis] = offset;
+  pos[dirAxis] = lengthOffset;
+
+  const geo = new THREE.BoxGeometry(boxSize[0], boxSize[1], boxSize[2]);
+  geo.translate(pos[0], pos[1], pos[2]);
+  return geo;
+};
+
+// ── Miter Saw Cut tool builder ───────────────────────────────────────────────
+// The miter operation stores:
+//   face      — which end to cut ('x+', 'x-', 'z+', 'z-')
+//   fenceEdge — which edge of that end face the saw pivots from ('z-', 'z+', 'x-', 'x+')
+//   angle     — degrees from square (always positive, 0–60°)
+//
+// The fence edge stays at the measured length; the opposite edge gets shorter.
+// Both face and fenceEdge are remapped during rotation baking, so the angle
+// never needs to change.
+const _buildMiterTool = (size, op) => {
+  const face = op.face || 'x+';
+  const fence = op.fenceEdge || 'z-';
+  const angleDeg = Math.max(0, op.angle ?? 45);
+  const angleRad = (angleDeg * Math.PI) / 180;
+
+  const faceAxis = face[0] === 'x' ? 0 : 2;
+  const faceSign = face[1] === '+' ? 1 : -1;
+  const fenceAxis = fence[0] === 'x' ? 0 : 2;
+  const fenceSign = fence[1] === '+' ? 1 : -1;
+
+  const cutterSize = Math.max(size[0], size[1], size[2]) * 4;
+  const geo = new THREE.BoxGeometry(cutterSize, cutterSize, cutterSize);
+
+  // 1. Position cutter so its cutting face is at the origin,
+  //    body extending away from the board along the face axis
+  const shift = [0, 0, 0];
+  shift[faceAxis] = faceSign * cutterSize / 2;
+  const shiftToOrigin = new THREE.Matrix4().makeTranslation(shift[0], 0, shift[2]);
+
+  // 2. Rotate around Y — general formula derived from which edge the cut
+  //    must swing INTO the board at (the non-fence edge):
+  //    rotAngle = (faceAxis===0 ? 1 : -1) * faceSign * fenceSign * θ
+  const rotAngle = (faceAxis === 0 ? 1 : -1) * faceSign * fenceSign * angleRad;
+  const rotation = new THREE.Matrix4().makeRotationY(rotAngle);
+
+  // 3. Translate to pivot = intersection of end face and fence edge
+  const pivot = [0, 0, 0];
+  pivot[faceAxis] = faceSign * size[faceAxis] / 2;
+  pivot[fenceAxis] = fenceSign * size[fenceAxis] / 2;
+  const shiftToPivot = new THREE.Matrix4().makeTranslation(pivot[0], 0, pivot[2]);
+
+  const m = new THREE.Matrix4();
+  m.multiply(shiftToPivot).multiply(rotation).multiply(shiftToOrigin);
+  geo.applyMatrix4(m);
+  return geo;
+};
+
 const CSGGeometry = ({ b }) => {
   // Serialize only the fields that actually affect geometry.
   const targetKey = JSON.stringify({
@@ -388,8 +479,8 @@ const CSGGeometry = ({ b }) => {
     let baseGeo;
     try {
       if (b.shape === 'taper') {
-        const { outerCorner, angleZ, angleX } = normalizeTaper(b.taper);
-        baseGeo = buildTaperGeometry(b.size[0], b.size[1], b.size[2], outerCorner, angleZ, angleX);
+        const { angleLeft, angleRight, angleFront, angleBack } = normalizeTaper(b.taper);
+        baseGeo = buildTaperGeometry(b.size[0], b.size[1], b.size[2], angleLeft, angleRight, angleFront, angleBack);
       } else if (b.shape === 'cylinder') {
         const axis = b.cylinder?.axis || 'y';
         const axisIdx = axis === 'x' ? 0 : axis === 'z' ? 2 : 1;
@@ -415,7 +506,7 @@ const CSGGeometry = ({ b }) => {
       };
 
       // ── CSG strategy ────────────────────────────────────────────────────────
-      const subOps    = b.operations.filter(op => op.type === 'hole');
+      const subOps    = b.operations.filter(op => op.type === 'hole' || op.type === 'dado' || op.type === 'miter');
       const intersOps = b.operations.filter(op => op.type === 'arc' || op.type === 'cove');
 
       let resultBrush = new Brush(baseGeo);
@@ -424,19 +515,29 @@ const CSGGeometry = ({ b }) => {
       // ── 1. Subtractions (holes) ────────────────────────────────────────────
       for (const op of subOps) {
         try {
-          const axis = op.axis || 'y';
-          const r = Math.max(0.01, op.radius || 1);
-          const hLength = Math.max(...b.size) + 10;
-          const cyl = new THREE.CylinderGeometry(r, r, hLength, 32);
-          const opBrush = new Brush(cyl);
-          if (axis === 'x') opBrush.rotation.z = Math.PI / 2;
-          else if (axis === 'z') opBrush.rotation.x = Math.PI / 2;
-          const ox = op.offsetX || 0;
-          const oy = op.offsetY || 0;
-          if (axis === 'z') opBrush.position.set(ox, oy, 0);
-          else if (axis === 'x') opBrush.position.set(0, oy, ox);
-          else opBrush.position.set(ox, 0, oy);
-          opBrush.updateMatrixWorld();
+          let opBrush;
+          if (op.type === 'miter') {
+            opBrush = new Brush(_buildMiterTool(b.size, op));
+            opBrush.updateMatrixWorld();
+          } else if (op.type === 'dado') {
+            opBrush = new Brush(_buildDadoTool(b.size, op));
+            opBrush.updateMatrixWorld();
+          } else {
+            // Hole
+            const axis = op.axis || 'y';
+            const r = Math.max(0.01, op.radius || 1);
+            const hLength = Math.max(...b.size) + 10;
+            const cyl = new THREE.CylinderGeometry(r, r, hLength, 32);
+            opBrush = new Brush(cyl);
+            if (axis === 'x') opBrush.rotation.z = Math.PI / 2;
+            else if (axis === 'z') opBrush.rotation.x = Math.PI / 2;
+            const ox = op.offsetX || 0;
+            const oy = op.offsetY || 0;
+            if (axis === 'z') opBrush.position.set(ox, oy, 0);
+            else if (axis === 'x') opBrush.position.set(0, oy, ox);
+            else opBrush.position.set(ox, 0, oy);
+            opBrush.updateMatrixWorld();
+          }
 
           const prevGeometry = resultBrush.geometry;
           resultBrush = csgEvaluator.evaluate(resultBrush, opBrush, SUBTRACTION);

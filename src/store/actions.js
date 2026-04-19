@@ -2,6 +2,7 @@ import { computeWorldAABB, collectChildBoards, calculateGroupAABB } from '../uti
 import { checkConstraintConflict, propagateMove, solveFlushSnap, faceToAxis } from '../utils/constraintSolver';
 import { calculateProceduralBoxWalls } from '../utils/procedural';
 import { persistLibrary, setupDiskBackup, importLibraryFromFile } from '../utils/libraryPersistence';
+import { normalizeTaper } from '../utils/geometryBuilders';
 
 export const createActions = (set, get) => ({
 
@@ -273,7 +274,7 @@ export const createActions = (set, get) => ({
 
 
     saveWorkspace: (isNamedSave = false) => {
-        const { boards, groups, constraints, theme, units, gridSnap, defaultMaterial, showEdges, showDimensions, showBoundingBox, globalBounds, lighting, recentColors, autosaveInterval, recentFiles, setRecentFiles, showToast } = get();
+        const { boards, groups, constraints, theme, units, gridSnap, defaultMaterial, showEdges, showDimensions, showBoundingBox, globalBounds, lighting, recentColors, autosaveInterval, recentFiles, setRecentFiles, setCurrentFileName, showToast } = get();
         let name = "My Design";
         if (recentFiles.length > 0) name = recentFiles[0].name;
 
@@ -293,11 +294,12 @@ export const createActions = (set, get) => ({
         localStorage.setItem('lucey_recent_files', JSON.stringify(newRecents));
 
         localStorage.setItem('lucey_save', JSON.stringify(payload));
+        setCurrentFileName(name);
         showToast(`Saved layout to local storage`);
     },
 
     loadWorkspace: (name) => {
-        const { setBoards, setGroups, setConstraints, setTheme, setUnits, setGridSnap, setDefaultMaterial, setShowEdges, setShowDimensions, setLighting, setRecentColors, setAutosaveInterval } = get();
+        const { setBoards, setGroups, setConstraints, setTheme, setUnits, setGridSnap, setDefaultMaterial, setShowEdges, setShowDimensions, setLighting, setRecentColors, setAutosaveInterval, setCurrentFileName } = get();
         const key = name ? 'lucey_save_' + name : 'lucey_save';
         const s = localStorage.getItem(key);
         if (s) {
@@ -317,6 +319,7 @@ export const createActions = (set, get) => ({
                     if (p.lighting) setLighting(p.lighting);
                     if (p.recentColors) setRecentColors(p.recentColors);
                     if (p.autosaveInterval) setAutosaveInterval(p.autosaveInterval);
+                    if (name) setCurrentFileName(name);
                 }
             } catch (e) { }
         } else if (name) {
@@ -339,6 +342,7 @@ export const createActions = (set, get) => ({
                 const writable = await handle.createWritable();
                 await writable.write(payload);
                 await writable.close();
+                set({ currentFileName: handle.name.replace(/\.json$/i, '') });
                 showToast("Successfully saved to disk");
             } else {
                 const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(payload);
@@ -354,7 +358,7 @@ export const createActions = (set, get) => ({
     },
 
     importWorkspace: (e) => {
-        const { setBoards, setGroups, setConstraints, resetHistory } = get();
+        const { setBoards, setGroups, setConstraints, resetHistory, setCurrentFileName } = get();
         const file = e.target.files[0];
         if (!file) return;
         const reader = new FileReader();
@@ -376,6 +380,7 @@ export const createActions = (set, get) => ({
                     setBoards(sanitized);
                     setGroups(p.groups);
                     if (p.constraints) setConstraints(p.constraints);
+                    setCurrentFileName(file.name.replace(/\.json$/i, ''));
                     resetHistory();
                 }
             } catch (e) { alert("Failed to parse project file."); }
@@ -515,6 +520,306 @@ export const createActions = (set, get) => ({
                 ? { ...b, operations: (b.operations || []).filter(o => o.id !== opId) }
                 : b
         ));
+    },
+
+    // ─── Automated Rabbet Joint ──────────────────────────────────────────────
+
+    /**
+     * Apply a rabbet joint between two overlapping perpendicular boards.
+     * Config "A-over-B": boardA stays full size, boardB shrinks.
+     *
+     * Geometry rules (derived for any orientation):
+     *   thinA = A's thickness axis,  thicknessA = A.size[thinA]
+     *   thinB = B's thickness axis,  thicknessB = B.size[thinB]
+     *   sharedAxis = the remaining axis (neither thinA nor thinB)
+     *
+     *   A (over) gets a dado on the face of its thin axis that faces toward B:
+     *     width  = thicknessB / 2      (half of B's thickness)
+     *     depth  = thicknessA / 2      (half of A's own thickness)
+     *     offset = -[ A.size[thinB]/2 - thicknessB/2 ]
+     *
+     *   B (under) shrinks by thicknessA/2 along thinA, shifts toward A by thicknessA/4.
+     *   B gets a dado on the face of its thin axis that faces toward A:
+     *     width  = thicknessA / 2      (half of A's thickness)
+     *     depth  = thicknessB / 2      (half of B's own thickness)
+     *     offset = -[ B.size[thinA]/2 - thicknessA/2 ]   (using B's NEW shrunken size along thinA)
+     */
+    applyRabbetJoint: (boardAId, boardBId) => {
+        const { boards, pushHistory, setBoards, showToast } = get();
+        const boardA = boards.find(b => b.id.toString() === boardAId.toString());
+        const boardB = boards.find(b => b.id.toString() === boardBId.toString());
+        if (!boardA || !boardB) return;
+
+        // ── Helpers ───────────────────────────────────────────────────────
+        const bbOf = (b) => [0, 1, 2].map(i => ({
+            min: b.position[i] - b.size[i] / 2,
+            max: b.position[i] + b.size[i] / 2,
+        }));
+        const thinAxisOf = (b) => b.size.indexOf(Math.min(...b.size));
+        const FACE_LABELS = {
+            'x+': 'right', 'x-': 'left',
+            'y+': 'top',   'y-': 'bottom',
+            'z+': 'front', 'z-': 'back',
+        };
+        const AXIS_NAMES = ['x', 'y', 'z'];
+
+        // ── Validate overlap (miter) ──────────────────────────────────────
+        const ba = bbOf(boardA), bb = bbOf(boardB);
+        const overlapping = [0, 1, 2].every(i =>
+            Math.min(ba[i].max, bb[i].max) - Math.max(ba[i].min, bb[i].min) > 0.01
+        );
+        if (!overlapping) {
+            showToast('⚠ Boards must be in miter (overlapping) position first');
+            return;
+        }
+
+        // ── Validate perpendicular ────────────────────────────────────────
+        const thinA = thinAxisOf(boardA);
+        const thinB = thinAxisOf(boardB);
+        if (thinA === thinB) {
+            showToast('⚠ Boards must be perpendicular (different thin axes)');
+            return;
+        }
+
+        const thicknessA = boardA.size[thinA];
+        const thicknessB = boardB.size[thinB];
+
+        // ── Check for existing rabbet between these two boards ────────────
+        const hasExisting = (b, pid) =>
+            (b.operations || []).some(op => op.source === 'rabbet-joint' && op.partnerId === pid.toString());
+        if (hasExisting(boardA, boardB.id) || hasExisting(boardB, boardA.id)) {
+            showToast('⚠ A rabbet joint already exists between these boards. Remove it first.');
+            return;
+        }
+
+        // ── Geometry computation ──────────────────────────────────────────
+        const sharedAxis = [0, 1, 2].find(i => i !== thinA && i !== thinB);
+        const sharedAxisLabel = AXIS_NAMES[sharedAxis];
+
+        // signA: direction from A toward B along A's thin axis
+        const signA = boardB.position[thinA] > boardA.position[thinA] ? 1 : -1;
+        // signB: direction from B toward A along B's thin axis
+        const signB = boardA.position[thinB] > boardB.position[thinB] ? 1 : -1;
+
+        // A's dado face: on A's thin axis, facing toward B
+        const faceA = FACE_LABELS[AXIS_NAMES[thinA] + (signA > 0 ? '+' : '-')];
+        // B's dado face: on B's thin axis, facing toward A
+        const faceB = FACE_LABELS[AXIS_NAMES[thinB] + (signB > 0 ? '+' : '-')];
+
+        // ── Config "A over B": A keeps full size, B shrinks ───────────────
+        // Shrink B along A's thin axis by thicknessA/2
+        const shrinkAmount = thicknessA / 2;
+        const newBSize = [...boardB.size];
+        const newBPos = [...boardB.position];
+        newBSize[thinA] -= shrinkAmount;
+        // Shift B toward A by thicknessA/4
+        newBPos[thinA] = boardB.position[thinA] + signA * (shrinkAmount / 2);
+
+        // ── Correct existing rabbet-joint dados on B ──────────────────────
+        // The center shift displaces existing dado offsets whose widthAxis == thinA.
+        // Compute widthAxis from a dado's face + direction, then compensate.
+        const FACE_INFO = {
+            top:    { faceAxes: [0, 2] }, bottom: { faceAxes: [0, 2] },
+            front:  { faceAxes: [0, 1] }, back:   { faceAxes: [0, 1] },
+            right:  { faceAxes: [1, 2] }, left:   { faceAxes: [1, 2] },
+        };
+        const AXIS_IDX = { x: 0, y: 1, z: 2 };
+        const centerShift = signA * (shrinkAmount / 2);
+
+        const correctedBOps = (boardB.operations || []).map(op => {
+            if (op.source !== 'rabbet-joint') return op;
+            const fi = FACE_INFO[op.face];
+            if (!fi) return op;
+            const dirIdx = AXIS_IDX[op.direction];
+            const widthAxis = fi.faceAxes[0] === dirIdx ? fi.faceAxes[1] : fi.faceAxes[0];
+            if (widthAxis !== thinA) return op;
+            return { ...op, offset: op.offset - centerShift };
+        });
+
+        // ── A's dado (over board) ─────────────────────────────────────────
+        // Face: faceA (on A's thin-axis face toward B)
+        // Width:  thicknessB / 2
+        // Depth:  thicknessA / 2
+        // Offset: -[ A.size[thinB]/2 - thicknessB/4 ]
+        const dadoAWidth = thicknessB / 2;
+        const dadoADepth = thicknessA / 2;
+        const offsetA = -signB * (boardA.size[thinB] / 2 - thicknessB / 4);
+
+        const dadoA = {
+            id: Date.now(),
+            type: 'dado',
+            face: faceA,
+            direction: sharedAxisLabel,
+            width: dadoAWidth,
+            depth: dadoADepth,
+            offset: offsetA,
+            length: 0,
+            lengthOffset: 0,
+            source: 'rabbet-joint',
+            partnerId: boardB.id.toString(),
+        };
+
+        // ── B's dado (under board, after shrink) ──────────────────────────
+        // Face: faceB (on B's thin-axis face toward A)
+        // Width:  thicknessA / 2
+        // Depth:  thicknessB / 2
+        // Offset: newBSize[thinA]/2 - thicknessA/4
+        const dadoBWidth = thicknessA / 2;
+        const dadoBDepth = thicknessB / 2;
+        const offsetB = -signA * (newBSize[thinA] / 2 - thicknessA / 4);
+
+        const dadoB = {
+            id: Date.now() + 1,
+            type: 'dado',
+            face: faceB,
+            direction: sharedAxisLabel,
+            width: dadoBWidth,
+            depth: dadoBDepth,
+            offset: offsetB,
+            length: 0,
+            lengthOffset: 0,
+            source: 'rabbet-joint',
+            partnerId: boardA.id.toString(),
+        };
+
+        // Joint metadata stored on both boards for toggle/remove support
+        const meta = {
+            partnerId: null, // set per-board below
+            overBoardId: boardA.id.toString(),
+            shrinkAxis: thinA,
+            shrinkAmount,
+            thicknessA,
+            thicknessB,
+            signA,
+            signB,
+        };
+
+        pushHistory();
+        setBoards(prev => prev.map(b => {
+            if (b.id.toString() === boardA.id.toString()) {
+                return {
+                    ...b,
+                    operations: [...(b.operations || []), dadoA],
+                    rabbetJoint: { ...meta, partnerId: boardB.id.toString() },
+                };
+            }
+            if (b.id.toString() === boardB.id.toString()) {
+                return {
+                    ...b,
+                    size: newBSize,
+                    position: newBPos,
+                    operations: [...correctedBOps, dadoB],
+                    rabbetJoint: { ...meta, partnerId: boardA.id.toString() },
+                };
+            }
+            return b;
+        }));
+        showToast(`🔗 Rabbet joint applied: "${boardA.name}" over "${boardB.name}"`);
+    },
+
+    /**
+     * Toggle (flip) an existing rabbet joint.
+     * The previously "over" board becomes "under" (shrinks) and vice versa.
+     * Strategy: remove the current joint, then re-apply with swapped roles.
+     */
+    toggleRabbetJoint: (boardId) => {
+        const { boards, pushHistory, setBoards, showToast } = get();
+        const board = boards.find(b => b.id.toString() === boardId.toString());
+        if (!board?.rabbetJoint) return;
+
+        const partner = boards.find(b => b.id.toString() === board.rabbetJoint.partnerId);
+        if (!partner?.rabbetJoint) return;
+
+        const { overBoardId, shrinkAxis, shrinkAmount, signA } = board.rabbetJoint;
+        const currentOver = boards.find(b => b.id.toString() === overBoardId);
+        const currentUnder = currentOver.id === board.id ? partner : board;
+        if (!currentOver || !currentUnder) return;
+
+        // ── 1. Restore the under board to its original size ───────────────
+        const restoredUnderSize = [...currentUnder.size];
+        const restoredUnderPos = [...currentUnder.position];
+        restoredUnderSize[shrinkAxis] += shrinkAmount;
+        const underSignA = currentUnder.rabbetJoint.signA;
+        restoredUnderPos[shrinkAxis] -= underSignA * (shrinkAmount / 2);
+
+        // ── 2. Remove old rabbet dados from both ──────────────────────────
+        const stripRabbetDados = (ops, pid) =>
+            (ops || []).filter(op => !(op.source === 'rabbet-joint' && op.partnerId === pid));
+
+        // ── 3. Apply restored state (strip dados, restore sizes) ──────────
+        pushHistory();
+        setBoards(prev => prev.map(b => {
+            if (b.id.toString() === currentUnder.id.toString()) {
+                const cleaned = {
+                    ...b,
+                    size: restoredUnderSize,
+                    position: restoredUnderPos,
+                    operations: stripRabbetDados(b.operations, currentOver.id.toString()),
+                };
+                delete cleaned.rabbetJoint;
+                return cleaned;
+            }
+            if (b.id.toString() === currentOver.id.toString()) {
+                const cleaned = {
+                    ...b,
+                    operations: stripRabbetDados(b.operations, currentUnder.id.toString()),
+                };
+                delete cleaned.rabbetJoint;
+                return cleaned;
+            }
+            return b;
+        }));
+
+        // ── 4. Re-apply with swapped roles (former under is now over) ─────
+        // Use setTimeout to let state update, then call applyRabbetJoint
+        setTimeout(() => {
+            get().applyRabbetJoint(currentUnder.id, currentOver.id);
+        }, 0);
+    },
+
+    /**
+     * Remove a rabbet joint — restore the under board's size and remove
+     * rabbet-tagged dados from both boards.
+     */
+    removeRabbetJoint: (boardId) => {
+        const { boards, pushHistory, setBoards, showToast } = get();
+        const board = boards.find(b => b.id.toString() === boardId.toString());
+        if (!board?.rabbetJoint) return;
+
+        const partner = boards.find(b => b.id.toString() === board.rabbetJoint.partnerId);
+        if (!partner) return;
+
+        const { overBoardId, shrinkAxis, shrinkAmount, signA } = board.rabbetJoint;
+        const underBoard = boards.find(b => b.id.toString() !== overBoardId &&
+            (b.id.toString() === board.id.toString() || b.id.toString() === partner.id.toString()));
+
+        const stripRabbetDados = (ops, pid) =>
+            (ops || []).filter(op => !(op.source === 'rabbet-joint' && op.partnerId === pid));
+
+        pushHistory();
+        setBoards(prev => prev.map(b => {
+            const isBoard = b.id.toString() === board.id.toString();
+            const isPartner = b.id.toString() === partner.id.toString();
+            if (!isBoard && !isPartner) return b;
+
+            const partnerId = isBoard ? partner.id.toString() : board.id.toString();
+            const cleaned = {
+                ...b,
+                operations: stripRabbetDados(b.operations, partnerId),
+            };
+            delete cleaned.rabbetJoint;
+
+            // Restore under board's size
+            if (underBoard && b.id.toString() === underBoard.id.toString()) {
+                cleaned.size = [...b.size];
+                cleaned.position = [...b.position];
+                cleaned.size[shrinkAxis] += shrinkAmount;
+                cleaned.position[shrinkAxis] -= signA * (shrinkAmount / 2);
+            }
+
+            return cleaned;
+        }));
+        showToast(`🔗 Rabbet joint removed between "${board.name}" and "${partner.name}"`);
     },
 
     toggleBoardVisibility: (id) => {
@@ -667,17 +972,34 @@ export const createActions = (set, get) => ({
                 patch.cylinder = { ...b.cylinder, axis: ['x', 'y', 'z'][newAxisIdx] };
             }
             else if (b.shape === 'taper') {
-                const taper = b.taper || { outerCorner: 'fl', angleZ: 2, angleX: 2 };
-                const xSign = taper.outerCorner.endsWith('l') ? -1 : 1;
-                const zSign = taper.outerCorner.startsWith('f') ? 1 : -1;
-                const worldX = R[0][0]*xSign + R[0][2]*zSign;
-                const worldZ = R[2][0]*xSign + R[2][2]*zSign;
-                const newCorner = (worldZ > 0 ? 'f' : 'b') + (worldX > 0 ? 'r' : 'l');
-                const mappedToX = [0,1,2].find(l => mapLocalToWorld[l]?.w === 0);
-                const mappedToZ = [0,1,2].find(l => mapLocalToWorld[l]?.w === 2);
-                const newAngleX = mappedToX === 0 ? taper.angleX : mappedToX === 2 ? taper.angleZ : taper.angleX;
-                const newAngleZ = mappedToZ === 2 ? taper.angleZ : mappedToZ === 0 ? taper.angleX : taper.angleZ;
-                patch.taper = { ...taper, outerCorner: newCorner, angleX: newAngleX, angleZ: newAngleZ };
+                // Remap 4 independent taper angles through the rotation.
+                // Each angle is associated to a face direction (±X, ±Z).
+                // We need to figure out where each old face direction ends up.
+                const old = normalizeTaper(b.taper);
+                // Map: old face direction → [local axis index, sign]
+                // Left  = X−  = axis 0, sign -1
+                // Right = X+  = axis 0, sign +1
+                // Front = Z+  = axis 2, sign +1
+                // Back  = Z−  = axis 2, sign -1
+                const faceDirs = [
+                    { key: 'angleLeft',  localAxis: 0, localSign: -1 },
+                    { key: 'angleRight', localAxis: 0, localSign:  1 },
+                    { key: 'angleFront', localAxis: 2, localSign:  1 },
+                    { key: 'angleBack',  localAxis: 2, localSign: -1 },
+                ];
+                const newTaper = { angleLeft: 0, angleRight: 0, angleFront: 0, angleBack: 0 };
+                for (const { key, localAxis, localSign } of faceDirs) {
+                    const m = mapLocalToWorld[localAxis];
+                    if (!m) continue;
+                    const worldAxis = m.w;
+                    const worldSign = localSign * m.sign;
+                    // Determine which new face this maps to
+                    if (worldAxis === 0 && worldSign < 0) newTaper.angleLeft = old[key];
+                    else if (worldAxis === 0 && worldSign > 0) newTaper.angleRight = old[key];
+                    else if (worldAxis === 2 && worldSign > 0) newTaper.angleFront = old[key];
+                    else if (worldAxis === 2 && worldSign < 0) newTaper.angleBack = old[key];
+                }
+                patch.taper = newTaper;
             }
 
             // ── Remap operations[] axis fields through the rotation transform ──
@@ -781,6 +1103,22 @@ export const createActions = (set, get) => ({
 
                         newOp.startAngle = S;
                         newOp.endAngle   = E;
+                    } else if (op.type === 'miter') {
+                        // Remap both face and fenceEdge through the rotation.
+                        // The angle stays unchanged — the geometry builder uses
+                        // the explicit fenceEdge to compute the correct pivot
+                        // and rotation direction for any face+fenceEdge combination.
+                        const remapSignedFace = (f) => {
+                            const axis = f[0] === 'x' ? 0 : f[0] === 'z' ? 2 : 1;
+                            const sign = f[1] === '+' ? 1 : -1;
+                            const m = mapLocalToWorld[axis];
+                            if (!m || m.w === 1) return f; // skip if maps to Y
+                            const newAxis = m.w;
+                            const newSign = sign * m.sign;
+                            return ['x', 'y', 'z'][newAxis] + (newSign > 0 ? '+' : '-');
+                        };
+                        newOp.face = remapSignedFace(op.face || 'x+');
+                        newOp.fenceEdge = remapSignedFace(op.fenceEdge || 'z-');
                     }
                     return newOp;
                 });
@@ -941,7 +1279,7 @@ export const createActions = (set, get) => ({
                 const upperBoard = { id: upperId, name: 'Leg Upper', parentId: newGroupId, size: [t, halfH, t], position: [0, halfH + halfH / 2, 0], material: defaultMaterial, joint: 'None', operations: [] };
                 const lowerBoard = {
                     id: lowerId, name: 'Leg Lower', parentId: newGroupId,
-                    shape: 'taper', taper: { outerCorner: 'fl', angleZ: az, angleX: ax },
+                    shape: 'taper', taper: { angleLeft: ax, angleRight: ax, angleFront: az, angleBack: az },
                     size: [t, halfH, t], position: [0, halfH / 2, 0],
                     material: defaultMaterial, joint: 'None', operations: [],
                     note: 'One piece; taper lower ' + halfH + '" only.'
@@ -956,7 +1294,7 @@ export const createActions = (set, get) => ({
             } else if (/make|convert|change/.test(lower) && selectedItemIds.length > 0) {
                 setBoards(prev => prev.map(b =>
                     selectedItemIds.includes(b.id.toString())
-                        ? { ...b, shape: 'taper', taper: { outerCorner: 'fl', angleZ: az, angleX: ax } } : b
+                        ? { ...b, shape: 'taper', taper: { angleLeft: ax, angleRight: ax, angleFront: az, angleBack: az } } : b
                 ));
                 reply = 'Converted to tapered — back ' + az + '°' + (ax > 0 ? ', side ' + ax + '°' : '') + '.';
                 updated = true;
@@ -965,7 +1303,7 @@ export const createActions = (set, get) => ({
                 const newId = Date.now();
                 setBoards(prev => [...prev, {
                     id: newId, name: 'Tapered Leg', parentId: 'Workspace',
-                    shape: 'taper', taper: { outerCorner: 'fl', angleZ: az, angleX: ax },
+                    shape: 'taper', taper: { angleLeft: ax, angleRight: ax, angleFront: az, angleBack: az },
                     size: [1.5, 30, 1.5], position: [0, 15, 0],
                     material: defaultMaterial, joint: 'None', operations: []
                 }]);
@@ -1482,6 +1820,25 @@ export const createActions = (set, get) => ({
             sizeY: height,
             sizeZ: diameter,
             position: [0, height / 2, 0],
+        });
+    },
+
+    manualAddTaper: () => {
+        const { selectedItemIds, boards, groups, setNewBoardDialog } = get();
+        const selectedBoard = selectedItemIds.length === 1 && boards.find(b => b.id.toString() === selectedItemIds[0]);
+        const selectedGroup = selectedItemIds.length === 1 && Object.keys(groups).find(k => k === selectedItemIds[0]);
+        const targetParent = selectedGroup || (selectedBoard ? selectedBoard.parentId : 'Workspace');
+
+        const w = 1.75, h = 12, d = 1.75;
+        setNewBoardDialog({
+            name: 'Tapered Leg',
+            parentId: targetParent,
+            shape: 'taper',
+            taper: { angleLeft: 2, angleRight: 2, angleFront: 2, angleBack: 2 },
+            sizeX: w,
+            sizeY: h,
+            sizeZ: d,
+            position: [0, h / 2, 0],
         });
     },
 

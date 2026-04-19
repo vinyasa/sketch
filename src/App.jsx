@@ -13,6 +13,7 @@ import AssemblyLibraryPanel from './components/panels/AssemblyLibraryPanel';
 import LightingPanel from './components/panels/LightingPanel';
 import MaterialsPanel from './components/panels/MaterialsPanel';
 import AddComponentPanel from './components/panels/AddComponentPanel';
+import ToolsPanel from './components/panels/ToolsPanel';
 import NewBoardDialog from './components/dialogs/NewBoardDialog';
 import ErrorBoundary from './components/layout/ErrorBoundary';
 import useStore from './store/useStore';
@@ -20,14 +21,15 @@ import useStore from './store/useStore';
 export default function App() {
     const {
         // UI toggles
-        showCutlistPanel,
-        showSettingsPanel,
-        showAssemblyLibrary,
-        showLightingPanel,
-        showMaterialsPanel,
-        showAddComponentPanel,
-        showOutlinerPanel,
-        isRightPanelOpen,
+        showCutlistPanel, setShowCutlistPanel,
+        showSettingsPanel, setShowSettingsPanel,
+        showAssemblyLibrary, setShowAssemblyLibrary,
+        showLightingPanel, setShowLightingPanel,
+        showMaterialsPanel, setShowMaterialsPanel,
+        showAddComponentPanel, setShowAddComponentPanel,
+        showToolsPanel, setShowToolsPanel,
+        showOutlinerPanel, setShowOutlinerPanel,
+        isRightPanelOpen, setIsRightPanelOpen,
         selectedItemIds,
         toast,
         computingMessage,
@@ -76,60 +78,62 @@ export default function App() {
 
                 <main className="main-workspace">
                     {isRightPanelOpen && (
-                        <DraggablePanel title="AI Assistant" defaultPosition={{ x: 20, y: window.innerHeight * 0.45 }}>
+                        <DraggablePanel title="AI Assistant" defaultPosition={{ x: 20, y: 90 }} onClose={() => setIsRightPanelOpen(false)}>
                             <AIChatPanel />
                         </DraggablePanel>
                     )}
 
-                    <aside className={`sidebar right-sidebar ${!isRightPanelOpen ? 'collapsed' : ''}`} style={{ background: 'transparent' }}>
-                        <div className="flex-1 inspector-panel" style={{ overflowY: 'hidden', height: '100%', display: 'flex', flexDirection: 'column' }} onFocusCapture={(e) => { if (e.target.tagName === 'INPUT') pushHistory(); }}>
-                            {showSettingsPanel && (
-                                <DraggablePanel title="Settings" defaultPosition={{ x: window.innerWidth / 2 - 250, y: 100 }} defaultSize={{ width: 500 }}>
-                                    <SettingsPanel />
-                                </DraggablePanel>
-                            )}
+                    {showSettingsPanel && (
+                        <DraggablePanel title="Settings" defaultPosition={{ x: window.innerWidth / 2 - 250, y: 100 }} defaultSize={{ width: 500 }} onClose={() => setShowSettingsPanel(false)}>
+                            <SettingsPanel />
+                        </DraggablePanel>
+                    )}
 
-                            {showOutlinerPanel && (
-                                <DraggablePanel title="Outliner" defaultPosition={{ x: window.innerWidth - 270, y: 80 }}>
-                                    <OutlinerPanel />
-                                </DraggablePanel>
-                            )}
+                    {showOutlinerPanel && (
+                        <DraggablePanel title="Outliner" defaultPosition={{ x: window.innerWidth - 270, y: 80 }} onClose={() => setShowOutlinerPanel(false)}>
+                            <OutlinerPanel />
+                        </DraggablePanel>
+                    )}
 
-                            {selectedItemIds.length > 0 && (
-                                <DraggablePanel title="Inspector" defaultPosition={{ x: window.innerWidth - 540, y: 80 }} defaultSize={{ width: 375 }} onFocusCapture={(e) => { if (e.target.tagName === 'INPUT') pushHistory(); }}>
-                                    <InspectorPanel />
-                                </DraggablePanel>
-                            )}
-                        </div>
-                    </aside>
+                    {selectedItemIds.length > 0 && (
+                        <DraggablePanel title="Inspector" defaultPosition={{ x: window.innerWidth - 540, y: 80 }} defaultSize={{ width: 375 }} onFocusCapture={(e) => { if (e.target.tagName === 'INPUT') pushHistory(); }}>
+                            <InspectorPanel />
+                        </DraggablePanel>
+                    )}
 
                     {showCutlistPanel && (
-                        <DraggablePanel title="Project Cut List" defaultPosition={{ x: 100, y: 100 }} defaultSize={{ width: 600 }}>
+                        <DraggablePanel title="Project Cut List" defaultPosition={{ x: 100, y: 100 }} defaultSize={{ width: 600 }} onClose={() => setShowCutlistPanel(false)}>
                             <CutListPanel />
                         </DraggablePanel>
                     )}
 
                     {showAssemblyLibrary && (
-                        <DraggablePanel title="📦 Assembly Library" defaultPosition={{ x: 20, y: 100 }} defaultSize={{ width: 330 }}>
+                        <DraggablePanel title="📦 Assembly Library" defaultPosition={{ x: 20, y: 100 }} defaultSize={{ width: 330 }} onClose={() => setShowAssemblyLibrary(false)}>
                             <AssemblyLibraryPanel />
                         </DraggablePanel>
                     )}
 
                     {showLightingPanel && (
-                        <DraggablePanel title="💡 Lighting" defaultPosition={{ x: 370, y: 100 }} defaultSize={{ width: 310 }}>
+                        <DraggablePanel title="💡 Lighting" defaultPosition={{ x: 370, y: 100 }} defaultSize={{ width: 310 }} onClose={() => setShowLightingPanel(false)}>
                             <LightingPanel />
                         </DraggablePanel>
                     )}
 
                     {showMaterialsPanel && (
-                        <DraggablePanel title="🎨 Materials" defaultPosition={{ x: 700, y: 100 }} defaultSize={{ width: 290 }}>
+                        <DraggablePanel title="🎨 Materials" defaultPosition={{ x: 700, y: 100 }} defaultSize={{ width: 290 }} onClose={() => setShowMaterialsPanel(false)}>
                             <MaterialsPanel />
                         </DraggablePanel>
                     )}
 
                     {showAddComponentPanel && (
-                        <DraggablePanel title="＋ Add Component" defaultPosition={{ x: window.innerWidth / 2 - 130, y: 100 }} defaultSize={{ width: 260 }}>
+                        <DraggablePanel title="＋ Add Component" defaultPosition={{ x: window.innerWidth / 2 - 130, y: 100 }} defaultSize={{ width: 260 }} onClose={() => setShowAddComponentPanel(false)}>
                             <AddComponentPanel />
+                        </DraggablePanel>
+                    )}
+
+                    {showToolsPanel && (
+                        <DraggablePanel title="🛠 Tools" defaultPosition={{ x: window.innerWidth / 2 - 170, y: 120 }} defaultSize={{ width: 340 }} onClose={() => setShowToolsPanel(false)} onFocusCapture={(e) => { if (e.target.tagName === 'INPUT') pushHistory(); }}>
+                            <ToolsPanel />
                         </DraggablePanel>
                     )}
                 </main>

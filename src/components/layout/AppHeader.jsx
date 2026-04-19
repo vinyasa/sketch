@@ -14,16 +14,21 @@ const AppHeader = () => {
         showLightingPanel, setShowLightingPanel,
         showMaterialsPanel, setShowMaterialsPanel,
         showAddComponentPanel, setShowAddComponentPanel,
+        showToolsPanel, setShowToolsPanel,
         showOutlinerPanel, setShowOutlinerPanel,
         isOrtho, setIsOrtho,
         showGrid, setShowGrid,
         showDimensions, setShowDimensions,
-        isRightPanelOpen, setIsRightPanelOpen
+        isRightPanelOpen, setIsRightPanelOpen,
+        currentFileName,
     } = useStore();
     return (
         <header className="app-header glass-panel">
             <div style={{ display: 'flex', alignItems: 'center', gap: '32px' }}>
-                <div className="logo">Little Lucey <span>Woodcraft</span></div>
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                    <div className="logo">Little Lucey <span>Woodcraft</span></div>
+                    <div style={{ fontSize: '0.65rem', color: 'var(--accent-color)', marginTop: '12px', paddingLeft: '2px', opacity: 0.7 }}>{currentFileName || 'Untitled'}</div>
+                </div>
                 <div className="toolbar-menus">
                     <div style={{ position: 'relative', display: 'inline-block' }}>
                         <span onClick={() => setFileMenuOpen(!fileMenuOpen)} style={{ cursor: 'pointer', padding: '4px 8px', borderRadius: '4px', background: fileMenuOpen ? 'var(--bg-color)' : 'transparent' }}>
@@ -74,34 +79,46 @@ const AppHeader = () => {
                 {/* ── Cols 2–5 row 1: Library │ Materials │ Grid ☑ │ (empty) ── */}
                 <button className={`nav-btn ${showAssemblyLibrary ? 'active' : ''}`} onClick={() => setShowAssemblyLibrary(!showAssemblyLibrary)}>📦 Library</button>
                 <button className={`nav-btn ${showMaterialsPanel ? 'active' : ''}`} onClick={() => setShowMaterialsPanel(!showMaterialsPanel)}>🎨 Materials</button>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', fontSize: '0.71rem', color: 'var(--text-muted)', padding: '3px 8px', userSelect: 'none' }}>
+                {/* ── Col 4 row 1: Outliner ── */}
+                <button className={`nav-btn ${showOutlinerPanel ? 'active' : ''}`} onClick={() => setShowOutlinerPanel(!showOutlinerPanel)} title="Toggle Outliner">🗂️ Outliner</button>
+
+                {/* ── Col 5 row 1: AI Assistant ── */}
+                <button className={`nav-btn ${isRightPanelOpen ? 'active' : ''}`} onClick={() => setIsRightPanelOpen(!isRightPanelOpen)}>
+                    🤖 AI Assistant
+                </button>
+
+                {/* ── Col 6 row 1: Grid ☑ ── */}
+                <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', fontSize: '0.71rem', color: 'var(--text-muted)', padding: '3px 8px', userSelect: 'none', marginLeft: '20px' }}>
                     <input type="checkbox" checked={showGrid} onChange={e => setShowGrid(e.target.checked)} style={{ accentColor: 'var(--accent-color)', width: '12px', height: '12px', cursor: 'pointer' }} />
                     Grid
                 </label>
-                {/* ── Col 5 row 1: Outliner ── */}
-                <button className={`nav-btn ${showOutlinerPanel ? 'active' : ''}`} onClick={() => setShowOutlinerPanel(!showOutlinerPanel)} title="Toggle Outliner">🗂️ Outliner</button>
 
-                {/* ── Col 6 row 1: Hide/Show ── */}
-                <button className="nav-btn accent-fill" style={{ padding: '3px 10px', marginLeft: '20px' }} onClick={() => setIsRightPanelOpen(!isRightPanelOpen)}>
-                    {isRightPanelOpen ? 'Hide ⏵' : '⏴ Show'}
+                {/* ── Col 1 row 2: Tools (below Components) ── */}
+                <button
+                    className={`nav-btn ${showToolsPanel ? 'active' : ''}`}
+                    onClick={() => setShowToolsPanel(!showToolsPanel)}
+                    title="CSG modifiers: Hole, Cove, Arc, Dado"
+                >
+                    🛠 Tools
                 </button>
 
-                {/* ── Col 1 row 2: empty placeholder ── */}
-                <div />
-
-                {/* ── Cols 2–5 row 2: Settings │ Lighting │ Dims ☑ │ Perspective ── */}
+                {/* ── Col 2–3 row 2: Settings │ Lighting ── */}
                 <button className={`nav-btn ${showSettingsPanel ? 'active' : ''}`} onClick={() => setShowSettingsPanel(!showSettingsPanel)}>⚙️ Settings</button>
                 <button className={`nav-btn ${showLightingPanel ? 'active' : ''}`} onClick={() => setShowLightingPanel(!showLightingPanel)}>💡 Lighting</button>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', fontSize: '0.71rem', color: 'var(--text-muted)', padding: '3px 8px', userSelect: 'none' }}>
-                    <input type="checkbox" checked={showDimensions} onChange={e => setShowDimensions(e.target.checked)} style={{ accentColor: 'var(--accent-color)', width: '12px', height: '12px', cursor: 'pointer' }} />
-                    Dims
-                </label>
+
+                {/* ── Col 4 row 2: Perspective ── */}
                 <button className={`nav-btn ${isOrtho ? 'active' : ''}`} onClick={() => setIsOrtho(!isOrtho)} title={isOrtho ? 'Switch to Perspective' : 'Switch to Parallel'}>
                     {isOrtho ? '📐 Parallel' : '📷 Perspective'}
                 </button>
 
-                {/* ── Col 6 row 2: Cut List ── */}
-                <button className={`nav-btn ${showCutlistPanel ? 'active' : ''}`} style={{ marginLeft: '20px' }} onClick={() => setShowCutlistPanel(!showCutlistPanel)}>📋 Cut List</button>
+                {/* ── Col 5 row 2: Cut List ── */}
+                <button className={`nav-btn ${showCutlistPanel ? 'active' : ''}`} onClick={() => setShowCutlistPanel(!showCutlistPanel)}>📋 Cut List</button>
+
+                {/* ── Col 6 row 2: Dims ☑ ── */}
+                <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', fontSize: '0.71rem', color: 'var(--text-muted)', padding: '3px 8px', userSelect: 'none', marginLeft: '20px' }}>
+                    <input type="checkbox" checked={showDimensions} onChange={e => setShowDimensions(e.target.checked)} style={{ accentColor: 'var(--accent-color)', width: '12px', height: '12px', cursor: 'pointer' }} />
+                    Dims
+                </label>
             </nav>
         </header>
     );

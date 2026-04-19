@@ -79,13 +79,13 @@ const ShapeCard = ({ shape, onAdd }) => {
 
 // ─── Panel ────────────────────────────────────────────────────────────────────
 const AddComponentPanel = () => {
-    const { manualAddBoard, manualAddCylinder, processAiCommand } = useStore();
+    const { manualAddBoard, manualAddCylinder, manualAddTaper } = useStore();
 
     const handleAdd = (shape) => {
         if (shape.id === 'box') {
             manualAddBoard();
         } else if (shape.id === 'taper') {
-            processAiCommand('add a tapered leg 2 degrees');
+            manualAddTaper();
         } else if (shape.id === 'cylinder') {
             manualAddCylinder();
         }

@@ -74,6 +74,13 @@ const useStore = create((set, get) => ({
     showAddComponentPanel: false,
     setShowAddComponentPanel: (v) => set({ showAddComponentPanel: typeof v === 'function' ? v(get().showAddComponentPanel) : v }),
 
+    showToolsPanel: false,
+    setShowToolsPanel: (v) => set({ showToolsPanel: typeof v === 'function' ? v(get().showToolsPanel) : v }),
+
+    // Which operation ID the Tools panel should focus on for editing (null = none)
+    editingToolOpId: null,
+    setEditingToolOpId: (v) => set({ editingToolOpId: typeof v === 'function' ? v(get().editingToolOpId) : v }),
+
     showOutlinerPanel: true,
     setShowOutlinerPanel: (v) => set({ showOutlinerPanel: typeof v === 'function' ? v(get().showOutlinerPanel) : v }),
 
@@ -98,6 +105,9 @@ const useStore = create((set, get) => ({
 
     recentFiles: loadRecentFiles(),
     setRecentFiles: (v) => set({ recentFiles: typeof v === 'function' ? v(get().recentFiles) : v }),
+
+    currentFileName: (() => { const rf = loadRecentFiles(); return rf.length > 0 ? rf[0].name : 'Untitled'; })(),
+    setCurrentFileName: (v) => set({ currentFileName: v }),
 
     // ── 2A-lib: Assembly Library State ──────────────────────────────────────
     // Each entry: { id, name, category, tags[], thumbnail, boards[], groups{}, constraints{} }

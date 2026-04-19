@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 
-const DraggablePanel = ({ title, defaultPosition, onFocusCapture, children, defaultSize = { width: 250 } }) => {
+const DraggablePanel = ({ title, defaultPosition, onFocusCapture, onClose, children, defaultSize = { width: 250 } }) => {
     const [pos, setPos] = useState(defaultPosition);
     const [isDragging, setIsDragging] = useState(false);
     const dragRef = useRef(null);
@@ -70,8 +70,9 @@ const DraggablePanel = ({ title, defaultPosition, onFocusCapture, children, defa
     };
 
     const onPointerUp = (e) => {
+        if (!isDragging) return;
         setIsDragging(false);
-        e.target.releasePointerCapture(e.pointerId);
+        try { e.target.releasePointerCapture(e.pointerId); } catch (_) {}
     };
 
     return (
@@ -84,13 +85,24 @@ const DraggablePanel = ({ title, defaultPosition, onFocusCapture, children, defa
             <div
                 className="draggable-handle"
                 style={{
-                    fontWeight: 600, fontSize: '0.85rem', marginBottom: '10px', cursor: isDragging ? 'grabbing' : 'grab',
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    fontWeight: 600, fontSize: '0.85rem', cursor: isDragging ? 'grabbing' : 'grab',
                     margin: '-10px -10px 10px -10px', padding: '8px 10px', backgroundColor: 'var(--title-bg)', color: 'var(--accent-color)',
                     borderRadius: '8px 8px 0 0', borderBottom: '1px solid var(--border-color)', userSelect: 'none'
                 }}
                 onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}
             >
-                {title}
+                <span>{title}</span>
+                {onClose && (
+                    <button
+                        onClick={(e) => { e.stopPropagation(); onClose(); }}
+                        onPointerDown={(e) => e.stopPropagation()}
+                        style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '1rem', lineHeight: 1, padding: '0 2px', transition: 'color 0.15s' }}
+                        onMouseEnter={e => e.target.style.color = '#ff3b30'}
+                        onMouseLeave={e => e.target.style.color = 'var(--text-muted)'}
+                        title="Close panel"
+                    >✕</button>
+                )}
             </div>
             <div style={{ flex: 1, overflowY: 'auto' }}>
                 {children}
