@@ -39,7 +39,7 @@ const AppHeader = () => {
                                 position: 'absolute', top: '100%', left: 0, marginTop: '8px',
                                 display: 'flex', flexDirection: 'column', padding: '8px', minWidth: '160px',
                                 zIndex: 1000, boxShadow: '0 4px 12px rgba(0,0,0,0.2)', border: '1px solid var(--border-color)',
-                                borderRadius: '8px', background: 'var(--panel-bg)'
+                                borderRadius: '8px', background: 'var(--menu-bg)'
                             }}>
                                 <button className="nav-btn" style={{ textAlign: 'left', border: 'none', padding: '6px 12px', fontSize: '0.85rem' }} onClick={() => { saveWorkspace(); setFileMenuOpen(false); }}>💾 Save</button>
                                 <button className="nav-btn" style={{ textAlign: 'left', border: 'none', padding: '6px 12px', fontSize: '0.85rem' }} onClick={() => { exportWorkspace(); setFileMenuOpen(false); }}>💾 Save As...</button>

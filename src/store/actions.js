@@ -1,9 +1,9 @@
+import * as THREE from 'three';
 import { computeWorldAABB, collectChildBoards, calculateGroupAABB } from '../utils/sceneGraph';
 import { checkConstraintConflict, propagateMove, solveFlushSnap, faceToAxis } from '../utils/constraintSolver';
 import { calculateProceduralBoxWalls } from '../utils/procedural';
 import { persistLibrary, setupDiskBackup, importLibraryFromFile } from '../utils/libraryPersistence';
 // normalizeTaper import removed — no longer needed after applyRotation deletion
-
 export const createActions = (set, get) => ({
 
     // ─── Assembly Library Actions ────────────────────────────────────────────
@@ -884,19 +884,37 @@ export const createActions = (set, get) => ({
         }
     },
 
-    // ─── Set absolute orientation on a board (degrees → radians) ──────────────
-    // Orientation is LOCAL — operations stay in the board's own coordinate frame.
-    // No bake/remap step needed.  Rotation is permanent, not transient.
-    updateRotation: (axis, degrees) => {
+    // ─── Apply incremental rotation to a board (quaternion math) ──────────────
+    // Applies rotation exactly along the board's LOCAL axis, avoiding gimbal lock.
+    incrementRotation: (axis, degrees) => {
         const { selectedItemIds, pushHistory, boards, setBoards } = get();
         if (selectedItemIds.length === 0) return;
         pushHistory();
         const radians = (degrees * Math.PI) / 180;
+        
+        const axisVec = new THREE.Vector3();
+        if (axis === 0) axisVec.set(1, 0, 0);
+        if (axis === 1) axisVec.set(0, 1, 0);
+        if (axis === 2) axisVec.set(0, 0, 1);
+        
+        const qInc = new THREE.Quaternion().setFromAxisAngle(axisVec, radians);
+
         setBoards(boards.map(b => {
             if (selectedItemIds.includes(b.id.toString())) {
-                const ori = [...(b.orientation || [0, 0, 0])];
-                ori[axis] = radians;
-                return { ...b, orientation: ori };
+                const currentEuler = new THREE.Euler(...(b.orientation || [0, 0, 0]), 'YXZ');
+                const qCurrent = new THREE.Quaternion().setFromEuler(currentEuler);
+                
+                // Multiply applies the rotation LOCALLY
+                qCurrent.multiply(qInc);
+                
+                const newEuler = new THREE.Euler().setFromQuaternion(qCurrent, 'YXZ');
+                
+                // Keep values wrapped inside reasonable bounds slightly (to avoid drifting)
+                let x = newEuler.x;
+                let y = newEuler.y;
+                let z = newEuler.z;
+                
+                return { ...b, orientation: [x, y, z] };
             }
             return b;
         }));
@@ -1776,6 +1794,74 @@ export const createActions = (set, get) => ({
                 setConfirmDialog(null);
             }
         });
+    },
+
+    // ─── Cabinet Builder ──────────────────────────────────────────────────────
+    // Creates a 6-panel cabinet assembly with:
+    //   • Top / Bottom: full width, overlap sides (for dado joints)
+    //   • Left / Right: full height, sit inside the top/bottom width
+    //   • Front / Back: full width × height, flush-attached (no overlap), add to total depth
+    //   • Back-bottom-left corner at world origin (0,0,0)
+    buildCabinet: (cfg) => {
+        const { pushHistory, setBoards, setGroups, setSelectedItemIds, defaultMaterial } = get();
+        pushHistory();
+
+        const W      = cfg.width ?? 24;
+        const H      = cfg.height ?? 30;
+        const D      = cfg.depth ?? 14;
+        const tTB    = cfg.thicknessTB ?? 0.5;
+        const tSide  = cfg.thicknessSide ?? 0.5;
+        const tFront = cfg.thicknessFront ?? 0.5;
+        const tBack  = cfg.thicknessBack ?? 0.25;
+
+        // Core depth = depth between front and back panels
+        const coreD = D - tFront - tBack;
+
+        // Create assembly group
+        const groupId = 'Cabinet ' + Math.floor(Math.random() * 1000);
+        setGroups(prev => ({
+            ...prev,
+            [groupId]: { parentId: 'Workspace', isExpanded: true, visible: true }
+        }));
+
+        // Panel definitions — position is CENTER of each board
+        // Coordinate system: X = left/right, Y = up/down, Z = front/back
+        // Origin at back-bottom-left → cabinet extends (+X, +Y, +Z)
+        //   Back face at Z = 0..tBack
+        //   Core from Z = tBack..tBack+coreD
+        //   Front face at Z = tBack+coreD..D
+        const coreMidZ = tBack + coreD / 2;
+
+        const panelDefs = [
+            // Bottom: full width, sits at bottom of core
+            { name: 'Bottom',     size: [W, tTB, coreD],      position: [W / 2, tTB / 2, coreMidZ] },
+            // Top: full width, sits at top of core
+            { name: 'Top',        size: [W, tTB, coreD],      position: [W / 2, H - tTB / 2, coreMidZ] },
+            // Left side: full height, inset between top/bottom width (overlap at corners for dado)
+            { name: 'Left Side',  size: [tSide, H, coreD],    position: [tSide / 2, H / 2, coreMidZ] },
+            // Right side: full height, inset (same overlap logic)
+            { name: 'Right Side', size: [tSide, H, coreD],    position: [W - tSide / 2, H / 2, coreMidZ] },
+            // Back: full width × height, flush at Z = 0
+            { name: 'Back',       size: [W, H, tBack],        position: [W / 2, H / 2, tBack / 2] },
+            // Front: full width × height, flush at Z = D
+            { name: 'Front',      size: [W, H, tFront],       position: [W / 2, H / 2, D - tFront / 2] },
+        ];
+
+        const baseId = Date.now();
+        const newBoards = panelDefs.map((pd, i) => ({
+            id: baseId + i,
+            name: pd.name,
+            parentId: groupId,
+            size: pd.size,
+            position: pd.position,
+            material: defaultMaterial,
+            joint: 'None',
+            shape: 'box',
+            operations: [],
+        }));
+
+        setBoards(prev => [...prev, ...newBoards]);
+        setSelectedItemIds([groupId]);
     },
 
     manualAddAssembly: () => {

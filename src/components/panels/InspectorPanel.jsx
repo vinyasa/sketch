@@ -18,7 +18,8 @@ function getToolSummary(op) {
             return `${op.startAngle ?? 0}°–${op.endAngle ?? 90}° · ${(op.axis || 'y').toUpperCase()} axis`;
         case 'miter': {
             const fl = { 'z+': 'Front', 'z-': 'Back', 'x+': 'Right', 'x-': 'Left' }[op.face] || op.face;
-            return `${fl} end · ${op.angle ?? 45}°`;
+            const bv = op.bevel ?? 0;
+            return `${fl} end · ${op.angle ?? 45}°${bv > 0 ? ` · Bevel ${bv}°` : ''}`;
         }
         default:
             return op.type;
@@ -33,6 +34,7 @@ const InspectorPanel = () => {
     const [bulkAngleZ, setBulkAngleZ] = useState(2);
     const [bulkAngleX, setBulkAngleX] = useState(2);
     const [bulkDelta, setBulkDelta] = useState(['0', '0', '0']);
+    const [rotationStep, setRotationStep] = useState(5);
 
     const {
         boards, groups, selectedItemIds, constraints,
@@ -40,7 +42,7 @@ const InspectorPanel = () => {
         setBoards, setGroups, setSelectedItemIds,
         pushHistory,
         dropBoardToFloor, dropGroupToFloor, dropSelectionToFloor,
-        updateRotation, resetRotation,
+        incrementRotation, resetRotation,
         handleAssemblyDelete, handleComponentDelete, handleMultiDelete,
         removeConstraint, toggleConstraint,
         constraintTargetMode, setConstraintTargetMode,
@@ -467,28 +469,49 @@ const InspectorPanel = () => {
                     <button style={{ marginTop: '8px', width: '100%' }} className="primary-btn" onClick={dropBoardToFloor}>↓ Set on Floor</button>
                 </div>
                 <div className="inspector-section">
-                    <h4>Orientation (°)</h4>
-                    <div className="vec3-inputs">
-                        <div style={{ backgroundColor: 'rgba(255, 60, 60, 0.15)' }}>X<input type="number" step="1" value={parseFloat(((selectedBoard.orientation?.[0] ?? 0) * 180 / Math.PI).toFixed(2))} onChange={e => updateRotation(0, parseFloat(e.target.value) || 0)} /></div>
-                        <div style={{ backgroundColor: 'rgba(60, 200, 90, 0.15)' }}>Y<input type="number" step="1" value={parseFloat(((selectedBoard.orientation?.[1] ?? 0) * 180 / Math.PI).toFixed(2))} onChange={e => updateRotation(1, parseFloat(e.target.value) || 0)} /></div>
-                        <div style={{ backgroundColor: 'rgba(60, 150, 255, 0.15)' }}>Z<input type="number" step="1" value={parseFloat(((selectedBoard.orientation?.[2] ?? 0) * 180 / Math.PI).toFixed(2))} onChange={e => updateRotation(2, parseFloat(e.target.value) || 0)} /></div>
-                    </div>
-                    <div style={{ display: 'flex', gap: '4px', marginTop: '6px', flexWrap: 'wrap' }}>
-                        {[['Y 90°', 1, 90], ['Y -90°', 1, -90], ['Y 180°', 1, 180], ['X 90°', 0, 90]].map(([label, ax, deg]) => (
-                            <button key={label} className="nav-btn"
-                                style={{ padding: '3px 7px', fontSize: '0.68rem', border: '1px solid var(--border-color)' }}
-                                onClick={() => updateRotation(ax, (selectedBoard.orientation?.[ax] ?? 0) * 180 / Math.PI + deg)}>
-                                +{label}
-                            </button>
-                        ))}
-                        <div style={{ marginLeft: 'auto', display: 'flex', gap: '4px' }}>
-                            <button className="nav-btn"
-                                title="Reset orientation to 0° on all axes"
-                                style={{ padding: '3px 7px', fontSize: '0.68rem', border: '1px solid var(--border-color)' }}
-                                onClick={resetRotation}>
-                                Reset
-                            </button>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <h4>Local Orientation</h4>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <span style={{ fontSize: '0.65rem', color: 'var(--text-color)', opacity: 0.8 }}>Step:</span>
+                            <input type="number" step="1" value={rotationStep} onChange={e => setRotationStep(parseFloat(e.target.value) || 0)} style={{ width: '40px', padding: '2px', fontSize: '0.7rem' }} />
+                            <span style={{ fontSize: '0.65rem', color: 'var(--text-color)', opacity: 0.8 }}>°</span>
                         </div>
+                    </div>
+                    
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '4px', marginTop: '6px' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                            <div style={{ fontSize: '0.65rem', textAlign: 'center', color: '#ff3b30', fontWeight: 'bold' }}>Pitch (X)</div>
+                            <div style={{ display: 'flex', gap: '2px' }}>
+                                <button className="nav-btn" style={{ flex: 1, padding: '4px 0' }} onClick={() => incrementRotation(0, -rotationStep)}>-</button>
+                                <button className="nav-btn" style={{ flex: 1, padding: '4px 0' }} onClick={() => incrementRotation(0, rotationStep)}>+</button>
+                            </div>
+                            <button className="nav-btn" style={{ padding: '2px 0', fontSize: '0.6rem' }} onClick={() => incrementRotation(0, 180)}>Flip 180</button>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                            <div style={{ fontSize: '0.65rem', textAlign: 'center', color: '#3cc85a', fontWeight: 'bold' }}>Yaw (Y)</div>
+                            <div style={{ display: 'flex', gap: '2px' }}>
+                                <button className="nav-btn" style={{ flex: 1, padding: '4px 0' }} onClick={() => incrementRotation(1, -rotationStep)}>-</button>
+                                <button className="nav-btn" style={{ flex: 1, padding: '4px 0' }} onClick={() => incrementRotation(1, rotationStep)}>+</button>
+                            </div>
+                            <button className="nav-btn" style={{ padding: '2px 0', fontSize: '0.6rem' }} onClick={() => incrementRotation(1, 180)}>Spin 180</button>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                            <div style={{ fontSize: '0.65rem', textAlign: 'center', color: '#3c96ff', fontWeight: 'bold' }}>Roll (Z)</div>
+                            <div style={{ display: 'flex', gap: '2px' }}>
+                                <button className="nav-btn" style={{ flex: 1, padding: '4px 0' }} onClick={() => incrementRotation(2, -rotationStep)}>-</button>
+                                <button className="nav-btn" style={{ flex: 1, padding: '4px 0' }} onClick={() => incrementRotation(2, rotationStep)}>+</button>
+                            </div>
+                            <button className="nav-btn" style={{ padding: '2px 0', fontSize: '0.6rem' }} onClick={() => incrementRotation(2, 180)}>Flip 180</button>
+                        </div>
+                    </div>
+                    
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '6px' }}>
+                        <button className="nav-btn"
+                            title="Reset orientation to 0° on all axes"
+                            style={{ padding: '3px 7px', fontSize: '0.68rem', border: '1px solid var(--border-color)' }}
+                            onClick={resetRotation}>
+                            Reset Orientation
+                        </button>
                     </div>
                     <p className="hint" style={{ marginTop: '6px' }}>Orientation is local — operations (miter, dado, etc.) stay on their original faces.</p>
                 </div>

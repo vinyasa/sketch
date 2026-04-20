@@ -15,6 +15,7 @@ import MaterialsPanel from './components/panels/MaterialsPanel';
 import AddComponentPanel from './components/panels/AddComponentPanel';
 import ToolsPanel from './components/panels/ToolsPanel';
 import NewBoardDialog from './components/dialogs/NewBoardDialog';
+import CabinetBuilderDialog from './components/dialogs/CabinetBuilderDialog';
 import ErrorBoundary from './components/layout/ErrorBoundary';
 import useStore from './store/useStore';
 
@@ -161,6 +162,7 @@ export default function App() {
                 )}
 
                 <NewBoardDialog />
+                <CabinetBuilderDialog />
             </div>
         </div>
         </ErrorBoundary>

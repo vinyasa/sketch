@@ -108,6 +108,9 @@ const useStore = create((set, get) => ({
     confirmDialog: null,
     setConfirmDialog: (v) => set({ confirmDialog: typeof v === 'function' ? v(get().confirmDialog) : v }),
 
+    cabinetDialog: null,
+    setCabinetDialog: (v) => set({ cabinetDialog: typeof v === 'function' ? v(get().cabinetDialog) : v }),
+
     recentFiles: loadRecentFiles(),
     setRecentFiles: (v) => set({ recentFiles: typeof v === 'function' ? v(get().recentFiles) : v }),
 

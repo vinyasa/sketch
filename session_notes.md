@@ -103,3 +103,63 @@ The AI parser (`processAiCommand`) understands:
 - Joint geometry works for symmetric box/cube — may need testing on asymmetric assemblies
 - Save → Load cycle should be tested end-to-end now that save bug is fixed
 - Consider: joint type per-edge rather than per-panel (complex; deferred)
+
+---
+---
+
+# Session Notes — April 19, 2026
+
+## Summary
+Two features shipped: compound miter cuts and the cabinet builder. Also confirmed the rotation analysis cleanup (Phase 4) was fully completed in a prior session.
+
+---
+
+## Features Shipped
+
+### Compound Miter Cuts (Bevel)
+- **Files:** `Viewport3D.jsx`, `ToolsPanel.jsx`, `InspectorPanel.jsx`
+- `_buildMiterTool` now supports a `bevel` parameter in addition to the existing miter `angle`
+- **Miter** = turntable swing (rotation around Y), 0–60°
+- **Bevel** = blade tilt from vertical (rotation around Z for X-face cuts, X for Z-face cuts), -60° to +60°
+- **Surface pivot:** positive bevel pivots from board bottom, negative from top — the cut starts flush at the contact surface, not the center
+- Transform chain: `shiftToPivot × miterRotY × bevelRot × shiftToOrigin`
+- Bevel rotation uses compound matrix: `T(+pivot) × R × T(-pivot)` where pivotY = bottom or top face
+- UI: separate sliders for Miter (0–60°) and Bevel (-60 to +60°) with descriptive labels
+- Summary strings in both ToolsPanel and InspectorPanel show bevel when > 0
+
+### Cabinet Builder
+- **New file:** `src/components/dialogs/CabinetBuilderDialog.jsx`
+- **Modified:** `actions.js`, `useStore.js`, `AddComponentPanel.jsx`, `App.jsx`
+- Dialog with inputs for overall Width/Height/Depth + separate thickness controls for top/bottom, sides, front, back
+- **Defaults:** top/bottom = 0.5", sides = 0.5", front = 0.5", back = 0.25"
+- **Panel layout:**
+  - Top/Bottom: full cabinet width, overlap sides at corners (for dado joints)
+  - Left/Right: full cabinet height, core depth only
+  - Front/Back: full width × full height, flush-attached (no overlap), add to total depth
+- Back-bottom-left corner at world origin (0,0,0)
+- Live panel summary with computed sizes and validation (core depth > 0, etc.)
+- Accessible from "Add Component" panel as a new "Cabinet" card
+
+---
+
+## Confirmed: Rotation Analysis Complete
+All 4 phases from the rotation analysis (conversation `8f001e86`) were verified as done:
+- Phase 1: `rotation` → `orientation` rename, Apply button removed ✅
+- Phase 1.5: YXZ Euler + quaternion incremental rotation ✅
+- Phase 2: Flush constraints on oriented boards (`localFaceToWorld`) ✅
+- Phase 2.5: Incremental orientation UI (Pitch/Yaw/Roll + axis helper) ✅
+- Phase 3: Dimension overlays stick to rotated boards ✅
+- Phase 4: `applyRotation`, `remapSignedFace`, taper remapping all deleted ✅
+
+---
+
+## Testing Needed (Tomorrow)
+- **Compound miter:** Test bevel on all 4 faces (x+, x-, z+, z-) and verify geometry correctness
+- **Compound miter:** Test negative bevel values — confirm cut starts from top surface
+- **Compound miter:** Test combined miter + bevel (e.g., 45° miter + 30° bevel for picture frame compound cuts)
+- **Cabinet builder:** Build a cabinet, then apply dual dado joints on the overlapping top/bottom + side corners
+- **Cabinet builder:** Verify overall dimensions match inputs (back-bottom-left at origin)
+- **Cabinet builder:** Test with extreme thickness values (e.g., 1" panels on a small cabinet)
+- **Save/Load:** Ensure compound miter `bevel` property persists through save → load cycle
+- **Save/Load:** Ensure cabinet assemblies persist correctly
+

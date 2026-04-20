@@ -210,37 +210,36 @@ const DimensioningOverlay = ({ boards, selectedItemIds, showDimensions, units, t
         const b = boards.find(x => x.id.toString() === id);
         if (!b) return null;
         
-        const px = b.position[0], py = b.position[1], pz = b.position[2];
         const hx = b.size[0] / 2, hy = b.size[1] / 2, hz = b.size[2] / 2;
         
         const color = isDark ? '#888888' : '#666666';
         const oY = 1.5;
         const oX = 1.5;
 
-        // X dimension line (Red) — across the top front
-        const xD = [[px - hx, py + hy + oY, pz], [px + hx, py + hy + oY, pz]];
-        const xT1 = [[px - hx, py + hy + oY - 0.25, pz], [px - hx, py + hy + oY + 0.25, pz]];
-        const xT2 = [[px + hx, py + hy + oY - 0.25, pz], [px + hx, py + hy + oY + 0.25, pz]];
+        // X dimension line (Red) — across the top front (Local space)
+        const xD = [[-hx, hy + oY, 0], [hx, hy + oY, 0]];
+        const xT1 = [[-hx, hy + oY - 0.25, 0], [-hx, hy + oY + 0.25, 0]];
+        const xT2 = [[hx, hy + oY - 0.25, 0], [hx, hy + oY + 0.25, 0]];
 
-        // Y dimension line (Green/Up) — along the right side
-        const yD = [[px + hx + oX, py - hy, pz], [px + hx + oX, py + hy, pz]];
-        const yT1 = [[px + hx + oX - 0.25, py - hy, pz], [px + hx + oX + 0.25, py - hy, pz]];
-        const yT2 = [[px + hx + oX - 0.25, py + hy, pz], [px + hx + oX + 0.25, py + hy, pz]];
+        // Y dimension line (Green/Up) — along the right side (Local space)
+        const yD = [[hx + oX, -hy, 0], [hx + oX, hy, 0]];
+        const yT1 = [[hx + oX - 0.25, -hy, 0], [hx + oX + 0.25, -hy, 0]];
+        const yT2 = [[hx + oX - 0.25, hy, 0], [hx + oX + 0.25, hy, 0]];
 
-        // Z dimension line (Blue/Depth) — along the bottom
-        const zD = [[px, py - hy - oY, pz - hz], [px, py - hy - oY, pz + hz]];
-        const zT1 = [[px, py - hy - oY - 0.25, pz - hz], [px, py - hy - oY + 0.25, pz - hz]];
-        const zT2 = [[px, py - hy - oY - 0.25, pz + hz], [px, py - hy - oY + 0.25, pz + hz]];
+        // Z dimension line (Blue/Depth) — along the bottom (Local space)
+        const zD = [[0, -hy - oY, -hz], [0, -hy - oY, hz]];
+        const zT1 = [[0, -hy - oY - 0.25, -hz], [0, -hy - oY + 0.25, -hz]];
+        const zT2 = [[0, -hy - oY - 0.25, hz], [0, -hy - oY + 0.25, hz]];
 
-        const ptX = [px, py + hy + oY + 0.2, pz];
-        const ptY = [px + hx + oX + 0.4, py, pz];
-        const ptZ = [px, py - hy - oY - 0.2, pz];
+        const ptX = [0, hy + oY + 0.2, 0];
+        const ptY = [hx + oX + 0.4, 0, 0];
+        const ptZ = [0, -hy - oY - 0.2, 0];
 
         // Dimension labels: sort to show Length/Width/Thickness
         const sorted = [...b.size].sort((a, c) => c - a);
 
         return (
-          <group key={`dim_${id}`}>
+          <group key={`dim_${id}`} position={b.position} rotation={b.orientation ? [...b.orientation, 'YXZ'] : [0, 0, 0, 'YXZ']}>
              <Line points={xD} color={color} lineWidth={1.5} />
              <Line points={xT1} color={color} lineWidth={1.5} />
              <Line points={xT2} color={color} lineWidth={1.5} />
@@ -421,16 +420,21 @@ const _buildDadoTool = (size, op) => {
 // The miter operation stores:
 //   face      — which end to cut ('x+', 'x-', 'z+', 'z-')
 //   fenceEdge — which edge of that end face the saw pivots from ('z-', 'z+', 'x-', 'x+')
-//   angle     — degrees from square (always positive, 0–60°)
+//   angle     — miter degrees from square (always positive, 0–60°)
+//   bevel     — bevel degrees (blade tilt from vertical, 0–45°)
 //
 // The fence edge stays at the measured length; the opposite edge gets shorter.
 // Both face and fenceEdge are LOCAL to the board and never remapped.
-// never needs to change.
+//
+// Compound miter: miter swings the blade around Y (turntable),
+// bevel tilts the blade from vertical (motor head tilt).
 const _buildMiterTool = (size, op) => {
   const face = op.face || 'x+';
   const fence = op.fenceEdge || 'z-';
   const angleDeg = Math.max(0, op.angle ?? 45);
   const angleRad = (angleDeg * Math.PI) / 180;
+  const bevelDeg = op.bevel ?? 0;
+  const bevelRad = (bevelDeg * Math.PI) / 180;
 
   const faceAxis = face[0] === 'x' ? 0 : 2;
   const faceSign = face[1] === '+' ? 1 : -1;
@@ -446,20 +450,41 @@ const _buildMiterTool = (size, op) => {
   shift[faceAxis] = faceSign * cutterSize / 2;
   const shiftToOrigin = new THREE.Matrix4().makeTranslation(shift[0], 0, shift[2]);
 
-  // 2. Rotate around Y — general formula derived from which edge the cut
+  // 2. Bevel rotation — tilts the blade from vertical.
+  //    For X-face cuts the tilt axis is Z; for Z-face cuts it's X.
+  //    Positive bevel: blade enters from the bottom face (pivot at y = -h/2).
+  //    Negative bevel: blade enters from the top face  (pivot at y = +h/2).
+  let bevelMatrix = new THREE.Matrix4();
+  if (Math.abs(bevelRad) > 0.001) {
+    const bevelSign = faceSign;
+    // Pivot at the board surface the blade enters from
+    const pivotY = bevelDeg > 0 ? -size[1] / 2 : size[1] / 2;
+    const toOrigin   = new THREE.Matrix4().makeTranslation(0, -pivotY, 0);
+    const fromOrigin = new THREE.Matrix4().makeTranslation(0,  pivotY, 0);
+    let rot = new THREE.Matrix4();
+    if (faceAxis === 0) {
+      rot.makeRotationZ(bevelSign * bevelRad);
+    } else {
+      rot.makeRotationX(-bevelSign * bevelRad);
+    }
+    bevelMatrix.multiply(fromOrigin).multiply(rot).multiply(toOrigin);
+  }
+
+  // 3. Miter rotation around Y — general formula derived from which edge the cut
   //    must swing INTO the board at (the non-fence edge):
   //    rotAngle = (faceAxis===0 ? 1 : -1) * faceSign * fenceSign * θ
   const rotAngle = (faceAxis === 0 ? 1 : -1) * faceSign * fenceSign * angleRad;
-  const rotation = new THREE.Matrix4().makeRotationY(rotAngle);
+  const miterMatrix = new THREE.Matrix4().makeRotationY(rotAngle);
 
-  // 3. Translate to pivot = intersection of end face and fence edge
+  // 4. Translate to pivot = intersection of end face and fence edge
   const pivot = [0, 0, 0];
   pivot[faceAxis] = faceSign * size[faceAxis] / 2;
   pivot[fenceAxis] = fenceSign * size[fenceAxis] / 2;
   const shiftToPivot = new THREE.Matrix4().makeTranslation(pivot[0], 0, pivot[2]);
 
+  // Transform chain (right-to-left): place cutter → tilt (bevel) → swing (miter) → move to pivot
   const m = new THREE.Matrix4();
-  m.multiply(shiftToPivot).multiply(rotation).multiply(shiftToOrigin);
+  m.multiply(shiftToPivot).multiply(miterMatrix).multiply(bevelMatrix).multiply(shiftToOrigin);
   geo.applyMatrix4(m);
   return geo;
 };
@@ -770,6 +795,7 @@ const BoardMesh = ({ b, selectedItemIds, toggleSelection, textures, showEdges, c
         );
       })()}
       {showEdges && <Edges scale={1} threshold={15} color={isSelected ? '#ffffff' : '#222222'} />}
+      {isSelected && <axesHelper args={[Math.max(...b.size) / 2 + 1.5]} />}
       {((isSelected || (constraintTargetMode && constraintTargetMode.active)) && hoveredFaceData && hoveredFaceData.id === b.id.toString()) && (() => {
         const faceStr = hoveredFaceData.faceStr;
         // Guard: faceStr may be undefined for curved shapes — bail out cleanly
@@ -790,10 +816,10 @@ const BoardMesh = ({ b, selectedItemIds, toggleSelection, textures, showEdges, c
         if (faceStr.startsWith('x')) planeH = b.size[1];
         if (faceStr.startsWith('z')) planeH = b.size[1];
 
-        // Show the WORLD-facing direction on the tooltip so the user sees what
-        // the constraint solver will actually use for an oriented board.
-        const worldFace = localFaceToWorld(faceStr, b.orientation);
-        const tooltipLabel = faceLabels[worldFace] || worldFace;
+        // The tooltip always displays the board's LOCAL face to maintain consistency 
+        // with the shape's inherent dimensions and tool modifiers (e.g. "Right", "Top").
+        // (Note: The onClick handler still maps this to world space for the constraint solver)
+        const tooltipLabel = faceLabels[faceStr] || faceStr;
 
         return (
           <group>

@@ -167,7 +167,7 @@ const ToolsPanel = () => {
                         onMouseLeave={e => e.target.style.background = 'var(--bg-color)'}
                     >✂ Dado</button>
                     <button
-                        onClick={() => handleAddTool({ id: Date.now() + 4, type: 'miter', face: 'x+', fenceEdge: 'z-', angle: 45 })}
+                        onClick={() => handleAddTool({ id: Date.now() + 4, type: 'miter', face: 'x+', fenceEdge: 'z-', angle: 45, bevel: 0 })}
                         style={addToolBtnStyle}
                         onMouseEnter={e => e.target.style.background = 'rgba(188,138,95,0.12)'}
                         onMouseLeave={e => e.target.style.background = 'var(--bg-color)'}
@@ -503,20 +503,31 @@ const ToolsPanel = () => {
 
                             return (
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                                    {/* Read-only face info (operations are in LOCAL board space) */}
+                                    {/* Cut End Toggle */}
                                     <div style={{ gridColumn: '1 / -1' }}>
                                         <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '2px' }}>Cut End</div>
-                                        <div style={{
-                                            padding: '6px 10px', borderRadius: '4px',
-                                            background: 'rgba(255,255,255,0.04)',
-                                            border: '1px solid var(--border-color)',
-                                            fontSize: '0.8rem', color: 'var(--text-main)', fontWeight: 600,
-                                        }}>{faceLabels[curFace] || curFace}</div>
+                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px' }}>
+                                            {['x+', 'x-', 'z-', 'z+'].map(f => {
+                                                const active = curFace === f;
+                                                // Default fence selection to maintain standard behavior
+                                                const defaultFence = f.startsWith('x') ? 'z-' : 'x-';
+                                                
+                                                return (
+                                                    <button key={f} onClick={() => upd({ face: f, fenceEdge: defaultFence })} style={{
+                                                        padding: '6px', fontSize: '0.75rem', borderRadius: '4px',
+                                                        border: active ? '1px solid rgba(188,138,95,0.8)' : '1px solid var(--border-color)',
+                                                        background: active ? 'rgba(188,138,95,0.25)' : 'rgba(255,255,255,0.04)',
+                                                        color: active ? '#fff' : 'var(--text-muted)', cursor: 'pointer',
+                                                        fontWeight: active ? 700 : 400, transition: 'all 0.15s',
+                                                    }}>{faceLabels[f]}</button>
+                                                );
+                                            })}
+                                        </div>
                                     </div>
 
-                                    {/* Angle input */}
+                                    {/* Miter Angle input */}
                                     <div style={{ gridColumn: '1 / -1' }}>
-                                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Angle (°) — 0 = square, 45 = standard miter</div>
+                                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Miter (°) — turntable swing, 0 = square</div>
                                         <input type="number" min="0" max="60" step="1" value={currentAngle}
                                             onChange={e => upd({ angle: Math.max(0, Math.min(60, parseFloat(e.target.value) || 0)) })}
                                             style={inputStyle} />
@@ -525,8 +536,19 @@ const ToolsPanel = () => {
                                             style={{ width: '100%', marginTop: '4px', accentColor: 'var(--accent-color)' }} />
                                     </div>
 
+                                    {/* Bevel Angle input */}
+                                    <div style={{ gridColumn: '1 / -1' }}>
+                                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Bevel (°) — blade tilt, + from bottom, − from top</div>
+                                        <input type="number" min="-60" max="60" step="1" value={displayOp.bevel ?? 0}
+                                            onChange={e => upd({ bevel: Math.max(-60, Math.min(60, parseFloat(e.target.value) || 0)) })}
+                                            style={inputStyle} />
+                                        <input type="range" min="-60" max="60" step="1" value={displayOp.bevel ?? 0}
+                                            onChange={e => upd({ bevel: parseFloat(e.target.value) })}
+                                            style={{ width: '100%', marginTop: '4px', accentColor: 'var(--accent-color)' }} />
+                                    </div>
+
                                     <p className="hint" style={{ gridColumn: '1 / -1', marginTop: '0' }}>
-                                        Back edge (fence) stays at measured length. Cut angles across the front.
+                                        Miter swings the cut across the face. Bevel tilts the blade sideways. Combine both for a compound miter.
                                     </p>
                                 </div>
                             );
@@ -581,8 +603,10 @@ function getToolSummary(op) {
             return `${op.edge || 'top'} edge · ${(op.axis || 'y').toUpperCase()} axis`;
         case 'arc':
             return `${op.startAngle ?? 0}°–${op.endAngle ?? 90}° · ${(op.axis || 'y').toUpperCase()} axis`;
-        case 'miter':
-            return `${faceLabel(op.face || 'x+')} · ${op.angle ?? 45}°`;
+        case 'miter': {
+            const bevel = op.bevel ?? 0;
+            return `${faceLabel(op.face || 'x+')} · ${op.angle ?? 45}°${bevel > 0 ? ` · Bevel ${bevel}°` : ''}`;
+        }
         default:
             return op.type;
     }

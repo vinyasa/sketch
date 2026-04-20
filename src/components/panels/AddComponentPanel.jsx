@@ -24,6 +24,13 @@ const SHAPES = [
         description: 'Round leg, post, disc — set radius & height in the dialog',
         color: '#7ea0bc',
     },
+    {
+        id: 'cabinet',
+        label: 'Cabinet',
+        icon: '🗄',
+        description: 'Box with top, bottom, sides, front & back — ready for dados',
+        color: '#b08855',
+    },
 ];
 
 
@@ -79,7 +86,7 @@ const ShapeCard = ({ shape, onAdd }) => {
 
 // ─── Panel ────────────────────────────────────────────────────────────────────
 const AddComponentPanel = () => {
-    const { manualAddBoard, manualAddCylinder, manualAddTaper } = useStore();
+    const { manualAddBoard, manualAddCylinder, manualAddTaper, setCabinetDialog } = useStore();
 
     const handleAdd = (shape) => {
         if (shape.id === 'box') {
@@ -88,6 +95,12 @@ const AddComponentPanel = () => {
             manualAddTaper();
         } else if (shape.id === 'cylinder') {
             manualAddCylinder();
+        } else if (shape.id === 'cabinet') {
+            setCabinetDialog({
+                width: 24, height: 30, depth: 14,
+                thicknessTB: 0.5, thicknessSide: 0.5,
+                thicknessFront: 0.5, thicknessBack: 0.25,
+            });
         }
     };
 
