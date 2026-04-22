@@ -3,6 +3,7 @@ import { computeWorldAABB, collectChildBoards, calculateGroupAABB } from '../uti
 import { checkConstraintConflict, propagateMove, solveFlushSnap, faceToAxis } from '../utils/constraintSolver';
 import { calculateProceduralBoxWalls } from '../utils/procedural';
 import { persistLibrary, setupDiskBackup, importLibraryFromFile } from '../utils/libraryPersistence';
+import { WOOD_CATALOGUE, PAINT_PALETTE } from '../utils/materialCatalogue';
 // normalizeTaper import removed — no longer needed after applyRotation deletion
 export const createActions = (set, get) => ({
 
@@ -274,7 +275,7 @@ export const createActions = (set, get) => ({
 
 
     saveWorkspace: (isNamedSave = false) => {
-        const { boards, groups, constraints, theme, units, gridSnap, defaultMaterial, showEdges, showDimensions, showBoundingBox, globalBounds, lighting, recentColors, autosaveInterval, recentFiles, setRecentFiles, setCurrentFileName, showToast } = get();
+        const { boards, groups, constraints, theme, units, gridSnap, defaultMaterial, showEdges, showDimensions, showBoundingBox, globalBounds, lighting, recentColors, autosaveInterval, cameraState, recentFiles, setRecentFiles, setCurrentFileName, showToast } = get();
         let name = "My Design";
         if (recentFiles.length > 0) name = recentFiles[0].name;
 
@@ -284,7 +285,7 @@ export const createActions = (set, get) => ({
             name = pName;
         }
 
-        const payload = { boards, groups, constraints, theme, units, gridSnap, defaultMaterial, showEdges, showDimensions, showBoundingBox, globalBounds, lighting, recentColors, autosaveInterval };
+        const payload = { boards, groups, constraints, theme, units, gridSnap, defaultMaterial, showEdges, showDimensions, showBoundingBox, globalBounds, lighting, recentColors, autosaveInterval, cameraState };
         localStorage.setItem('lucey_save_' + name, JSON.stringify(payload));
 
         let newRecents = recentFiles.filter(r => r.name !== name);
@@ -325,6 +326,7 @@ export const createActions = (set, get) => ({
                     if (p.lighting) setLighting(p.lighting);
                     if (p.recentColors) setRecentColors(p.recentColors);
                     if (p.autosaveInterval) setAutosaveInterval(p.autosaveInterval);
+                    if (p.cameraState) get().setCameraState(p.cameraState);
                     if (name) setCurrentFileName(name);
                 }
             } catch (e) { }
@@ -528,6 +530,121 @@ export const createActions = (set, get) => ({
                 ? { ...b, operations: (b.operations || []).filter(o => o.id !== opId) }
                 : b
         ));
+    },
+
+    // ─── Hardware Attachment CRUD ────────────────────────────────────────────
+    addHardware: (boardId, catalogueItem, face) => {
+        const { pushHistory, setBoards } = get();
+        pushHistory();
+        const hw = {
+            id: 'hw_' + Date.now(),
+            name: catalogueItem.label,
+            modelUrl: catalogueItem.modelUrl,
+            catalogueId: catalogueItem.id,
+            face: face || catalogueItem.defaultFace || 'front',
+            offset: [0, 0, 0],
+            rotation: [0, 0, 0],
+            scale: 1,
+        };
+        setBoards(prev => prev.map(b =>
+            b.id.toString() === boardId.toString()
+                ? { ...b, hardware: [...(b.hardware || []), hw] }
+                : b
+        ));
+    },
+
+    updateHardware: (boardId, hwId, patch) => {
+        const { pushHistory, setBoards } = get();
+        pushHistory();
+        setBoards(prev => prev.map(b =>
+            b.id.toString() === boardId.toString()
+                ? { ...b, hardware: (b.hardware || []).map(h => h.id === hwId ? { ...h, ...patch } : h) }
+                : b
+        ));
+    },
+
+    removeHardware: (boardId, hwId) => {
+        const { pushHistory, setBoards } = get();
+        pushHistory();
+        setBoards(prev => prev.map(b =>
+            b.id.toString() === boardId.toString()
+                ? { ...b, hardware: (b.hardware || []).filter(h => h.id !== hwId) }
+                : b
+        ));
+    },
+
+    // ─── Boolean Subtraction ─────────────────────────────────────────────────
+
+    /**
+     * Subtract one board's shape from another (snapshot approach).
+     * The cutter's geometry (size, shape) and the relative transform between
+     * target and cutter are frozen at apply-time so the operation is self-contained.
+     *
+     * @param {string|number} targetBoardId — board that receives the cut
+     * @param {string|number} cutterBoardId — board whose shape is carved out
+     */
+    applySubtraction: (targetBoardId, cutterBoardId) => {
+        const { boards, pushHistory, setBoards, showToast } = get();
+        const targetBoard = boards.find(b => b.id.toString() === targetBoardId.toString());
+        const cutterBoard = boards.find(b => b.id.toString() === cutterBoardId.toString());
+        if (!targetBoard || !cutterBoard) return;
+
+        // ── Validate overlap ──────────────────────────────────────────────
+        const bbOf = (b) => [0, 1, 2].map(i => ({
+            min: b.position[i] - b.size[i] / 2,
+            max: b.position[i] + b.size[i] / 2,
+        }));
+        const ba = bbOf(targetBoard), bb = bbOf(cutterBoard);
+        const overlapping = [0, 1, 2].every(i =>
+            Math.min(ba[i].max, bb[i].max) - Math.max(ba[i].min, bb[i].min) > 0.01
+        );
+        if (!overlapping) {
+            showToast('⚠ Boards must overlap to apply a boolean subtraction');
+            return;
+        }
+
+        // ── Compute relative transform (cutter in target's local space) ───
+        const targetEuler = new THREE.Euler(...(targetBoard.orientation || [0, 0, 0]), 'YXZ');
+        const targetMatrix = new THREE.Matrix4().compose(
+            new THREE.Vector3(...targetBoard.position),
+            new THREE.Quaternion().setFromEuler(targetEuler),
+            new THREE.Vector3(1, 1, 1)
+        );
+
+        const cutterEuler = new THREE.Euler(...(cutterBoard.orientation || [0, 0, 0]), 'YXZ');
+        const cutterMatrix = new THREE.Matrix4().compose(
+            new THREE.Vector3(...cutterBoard.position),
+            new THREE.Quaternion().setFromEuler(cutterEuler),
+            new THREE.Vector3(1, 1, 1)
+        );
+
+        const relativeMatrix = targetMatrix.clone().invert().multiply(cutterMatrix);
+
+        // ── Build the operation (frozen snapshot) ─────────────────────────
+        const op = {
+            id: Date.now(),
+            type: 'subtract',
+            cutterName: cutterBoard.name,
+            cutterId: cutterBoard.id.toString(),
+            cutterSize: [...cutterBoard.size],
+            cutterShape: cutterBoard.shape || 'box',
+            cutterTaper: cutterBoard.taper || null,
+            cutterCylinder: cutterBoard.cylinder || null,
+            relativeMatrix: relativeMatrix.elements.slice(),   // 16-element Float64 array
+        };
+
+        pushHistory();
+        setBoards(prev => prev.map(b => {
+            if (b.id.toString() === targetBoard.id.toString()) {
+                return { ...b, operations: [...(b.operations || []), op] };
+            }
+            // Auto-hide the cutter board
+            if (b.id.toString() === cutterBoard.id.toString()) {
+                return { ...b, visible: false };
+            }
+            return b;
+        }));
+        showToast(`🔪 Subtracted "${cutterBoard.name}" from "${targetBoard.name}"`);
     },
 
     // ─── Automated Rabbet Joint ──────────────────────────────────────────────
@@ -1001,13 +1118,23 @@ export const createActions = (set, get) => ({
         }));
     },
 
-    // ─── AI Command Processor ────────────────────────────────────────────────
-    processAiCommand: (text) => {
-        const { pushHistory, selectedItemIds, setBoards, setGroups, setSelectedItemIds, boards, groups, constraints, defaultMaterial, globalBounds, setChatMessages } = get();
+    // ─── Legacy SI Processor ─────────────────────────────────────────────────
+    processSiCommand: (text) => {
+        const { pushHistory, selectedItemIds, setBoards, setGroups, setSelectedItemIds, boards, groups, constraints, defaultMaterial, globalBounds, setChatMessages, setShowAiHelpDialog } = get();
         pushHistory();
         const lower = text.toLowerCase();
         let reply = "I've processed your request.";
         let updated = false;
+
+        // ── Help / Cheat Sheet ───────────────────────────────────────────────
+        if (/(help|what can you do|cheat sheet|command|syntax|\bhow \b)/.test(lower)) {
+            setShowAiHelpDialog(true);
+            reply = "I've popped open the command cheat sheet for you!";
+            setTimeout(() => {
+                setChatMessages(prev => [...prev, { role: 'ai', text: reply }]);
+            }, 300);
+            return;
+        }
 
         // Parses plain decimals, pure fractions (3/8), and mixed numbers (1 3/8)
         const parseMeasurement = (str) => {
@@ -1031,10 +1158,21 @@ export const createActions = (set, get) => ({
         };
 
         // ── Material change ──────────────────────────────────────────────────
-        if (lower.includes('walnut') || lower.includes('pine') || lower.includes('cherry') || lower.includes('oak')) {
-            const mat = ['walnut', 'pine', 'cherry', 'red-oak', 'white-oak'].find(m => lower.includes(m.replace('-', ' '))) || 'walnut';
-            setBoards(prev => prev.map(b => (selectedItemIds.length > 0 ? (selectedItemIds.includes(b.id.toString()) ? { ...b, material: mat } : b) : { ...b, material: mat })));
-            reply = selectedItemIds.length > 0 ? `Changed selected to ${mat}.` : `Changed all to ${mat}.`;
+        const allWoods = Object.entries(WOOD_CATALOGUE).map(([id, spec]) => ({ id, label: spec.label.toLowerCase(), type: 'wood' }));
+        const allPaints = PAINT_PALETTE.map(({ hex, label }) => ({ hex, label: label.toLowerCase(), type: 'color' }));
+        const allMats = [...allWoods, ...allPaints].sort((a, b) => b.label.length - a.label.length);
+        
+        const matchedMat = allMats.find(m => lower.includes(m.label));
+        
+        if (matchedMat) {
+            const matDesc = matchedMat.type === 'wood' 
+                ? { type: 'wood', id: matchedMat.id }
+                : { type: 'color', hex: matchedMat.hex };
+                
+            setBoards(prev => prev.map(b => (selectedItemIds.length > 0 ? (selectedItemIds.includes(b.id.toString()) ? { ...b, material: matDesc } : b) : { ...b, material: matDesc })));
+            
+            const displayLabel = matchedMat.label.replace(/\b\w/g, l => l.toUpperCase());
+            reply = selectedItemIds.length > 0 ? `Changed selected to ${displayLabel}.` : `Changed all to ${displayLabel}.`;
             updated = true;
 
         // ── Move / Nudge (color-based or directional) ────────────────────────
@@ -1452,11 +1590,320 @@ export const createActions = (set, get) => ({
     },
 
     submitChat: () => {
-        const { chatInput, setChatMessages, setChatInput } = get();
+        const { chatInput, setChatMessages, setChatInput, aiEngine } = get();
         if (chatInput.trim()) {
             setChatMessages(prev => [...prev, { role: 'user', text: chatInput }]);
-            get().processAiCommand(chatInput);
+            
+            if (aiEngine === 'si') {
+                get().processSiCommand(chatInput);
+            } else {
+                get().processGeminiCommand(chatInput);
+            }
+            
             setChatInput('');
+        }
+    },
+
+    // ─── Gemini AI Processor ──────────────────────────────────────────────────
+    processGeminiCommand: async (text) => {
+        const { pushHistory, selectedItemIds, setBoards, setGroups, setSelectedItemIds, boards, groups, constraints, defaultMaterial, globalBounds, setChatMessages, setShowAiHelpDialog } = get();
+        
+        const lower = text.toLowerCase();
+        if (/(help|what can you do|cheat sheet|command|syntax|\bhow \b)/.test(lower)) {
+            setShowAiHelpDialog(true);
+            setChatMessages(prev => [...prev, { role: 'ai', text: "I've popped open the command cheat sheet for you!" }]);
+            return;
+        }
+
+        setChatMessages(prev => [...prev, { role: 'ai', text: "Thinking...", isThinking: true }]);
+
+        try {
+            const { parseUserIntent } = await import('../services/geminiService');
+            
+            // Pass a minimal snapshot for context
+            const workspaceContext = {
+                selectedItemIds,
+                boards: boards.map(b => ({
+                    id: b.id, name: b.name, size: b.size, position: b.position
+                }))
+            };
+
+            const result = await parseUserIntent(text, workspaceContext);
+            
+            pushHistory(); // Commit to history before executing actions
+            let processedActions = 0;
+
+            if (result.actions && Array.isArray(result.actions)) {
+                for (const action of result.actions) {
+                    // Resolve TARGETS
+                    let rawTargetIds = [];
+                    if (action.target === 'all') {
+                        rawTargetIds = get().boards.map(b => b.id.toString());
+                    } else if (action.target === 'selected') {
+                        rawTargetIds = get().selectedItemIds;
+                    } else if (action.target) {
+                        // Find by name
+                        const searchName = action.target.toLowerCase();
+                        const matchedBoards = get().boards.filter(b => b.name?.toLowerCase().includes(searchName)).map(b => b.id.toString());
+                        const matchedGroups = Object.entries(get().groups).filter(([id, g]) => g.name?.toLowerCase().includes(searchName)).map(([id]) => id);
+                        rawTargetIds = [...matchedBoards, ...matchedGroups];
+                    }
+
+                    // Expand any group IDs into their descendant boards
+                    const expandedSet = new Set();
+                    rawTargetIds.forEach(id => {
+                        if (get().groups[id]) {
+                            const children = collectChildBoards(id, get().boards, get().groups);
+                            children.forEach(c => expandedSet.add(c.id.toString()));
+                        } else {
+                            expandedSet.add(id);
+                        }
+                    });
+                    const targetIds = Array.from(expandedSet);
+
+                    // EXECUTE ACTION based on type
+                    switch (action.type) {
+                        case 'resize': {
+                            if (!targetIds.length) break;
+                            const delta = parseFloat(action.delta) || 0;
+                            if (delta === 0) break;
+                            
+                            setBoards(prev => prev.map(b => {
+                                if (!targetIds.includes(b.id.toString())) return b;
+                                let dims = [
+                                    { idx: 0, val: b.size[0] },
+                                    { idx: 1, val: b.size[1] },
+                                    { idx: 2, val: b.size[2] }
+                                ];
+                                dims.sort((a, c) => c.val - a.val);
+
+                                let targetIndex = 2; // fallback thickness
+                                if (action.dimension === 'height') targetIndex = 1; // world Y
+                                else if (action.dimension === 'length') targetIndex = dims[0].idx;
+                                else if (action.dimension === 'width') targetIndex = dims[1].idx;
+                                else if (action.dimension === 'thickness') targetIndex = dims[2].idx;
+
+                                let newSize = [...b.size];
+                                newSize[targetIndex] = Math.max(0.1, newSize[targetIndex] + delta);
+                                return { ...b, size: newSize };
+                            }));
+                            processedActions++;
+                            break;
+                        }
+                        case 'move': {
+                            if (!targetIds.length) break;
+                            const delta = parseFloat(action.delta) || 0;
+                            if (delta === 0) break;
+                            
+                            let axisIndex = 1;
+                            if (action.axis === 'x') axisIndex = 0;
+                            if (action.axis === 'z') axisIndex = 2;
+
+                            const deltaVec = [0, 0, 0];
+                            deltaVec[axisIndex] = delta;
+                            
+                            const moveMap = propagateMove(targetIds, deltaVec, get().constraints);
+
+                            if (moveMap.size > 0) {
+                                setBoards(prev => prev.map(b => {
+                                    const d = moveMap.get(b.id.toString());
+                                    if (d) return { ...b, position: [b.position[0] + d[0], b.position[1] + d[1], b.position[2] + d[2]] };
+                                    return b;
+                                }));
+                                processedActions++;
+                            }
+                            break;
+                        }
+                        case 'rotate': {
+                            if (!targetIds.length) break;
+                            setBoards(prev => prev.map(b => {
+                                if (!targetIds.includes(b.id.toString())) return b;
+                                if (action.reset) return { ...b, orientation: [0,0,0] };
+                                
+                                const ori = [...(b.orientation || [0,0,0])];
+                                let axis = 1;
+                                if (action.axis === 'x') axis = 0;
+                                if (action.axis === 'z') axis = 2;
+                                
+                                if (action.flip) {
+                                    ori[axis] = ori[axis] === 0 ? Math.PI : 0;
+                                } else {
+                                    ori[axis] += (parseFloat(action.degrees) * Math.PI) / 180;
+                                }
+                                return { ...b, orientation: ori };
+                            }));
+                            processedActions++;
+                            break;
+                        }
+                        case 'material': {
+                            if (!targetIds.length && action.target !== 'all') break;
+                            const matDesc = action.materialType === 'color' 
+                                ? { type: 'color', hex: action.value }
+                                : { type: 'wood', id: action.value };
+                            
+                            setBoards(prev => prev.map(b => {
+                                if (action.target === 'all' || targetIds.includes(b.id.toString())) {
+                                    return { ...b, material: matDesc };
+                                }
+                                return b;
+                            }));
+                            processedActions++;
+                            break;
+                        }
+                        case 'addTop': {
+                            const targets = get().boards;
+                            if (!targets.length) break;
+                            const aabb = computeWorldAABB(targets);
+                            const thickness = 0.75;
+                            const newX = (aabb.minX + aabb.maxX) / 2;
+                            const newZ = (aabb.minZ + aabb.maxZ) / 2;
+                            const newY = aabb.maxY + thickness / 2;
+                            const newId = Date.now();
+                            setBoards(prev => [...prev, {
+                                id: newId, name: 'Table Top', parentId: 'Workspace',
+                                size: [Math.max(24, Math.abs(aabb.maxX - aabb.minX)), thickness, Math.max(16, Math.abs(aabb.maxZ - aabb.minZ))],
+                                position: [newX, newY, newZ],
+                                material: defaultMaterial, joint: 'None', operations: []
+                            }]);
+                            setSelectedItemIds([newId.toString()]);
+                            processedActions++;
+                            break;
+                        }
+                        case 'clone': {
+                            if (!targetIds.length) break;
+                            const count = parseInt(action.count) || 1;
+                            let axisIndex = 1;
+                            if (action.axis === 'x') axisIndex = 0;
+                            if (action.axis === 'z') axisIndex = 2;
+                            // Positive or negative gap? Assume positive unless explicitly negative.
+                            const gap = parseFloat(action.gap) || 0;
+
+                            let newClones = [];
+                            const sourceBoards = get().boards.filter(b => targetIds.includes(b.id.toString()));
+                            
+                            sourceBoards.forEach((b, sIdx) => {
+                                let currentPos = [...b.position];
+                                for (let i = 1; i <= count; i++) {
+                                    currentPos[axisIndex] += b.size[axisIndex] + gap;
+                                    newClones.push({
+                                        ...b,
+                                        id: Date.now() + sIdx * 1000 + i,
+                                        name: `${b.name} (Clone ${i})`,
+                                        position: [...currentPos],
+                                        operations: [] // omit operations to save performance on clones
+                                    });
+                                }
+                            });
+                            
+                            const newIds = newClones.map(b => b.id.toString());
+                            setBoards(prev => [...prev, ...newClones]);
+                            setSelectedItemIds(newIds);
+                            processedActions++;
+                            break;
+                        }
+                        case 'addShelf': {
+                            const targetBoards = targetIds.length > 0 
+                                ? get().boards.filter(b => targetIds.includes(b.id.toString()))
+                                : get().boards;
+                            if (!targetBoards.length) break;
+
+                            const parentId = targetBoards[0].parentId || 'Workspace';
+                            const aabb = computeWorldAABB(targetBoards);
+                            const thickness = 0.75;
+                            
+                            let effMinY = aabb.minY;
+                            let effMaxY = aabb.maxY;
+
+                            if (action.relativeBounds) {
+                                if (action.relativeBounds.bottom) {
+                                    if (action.relativeBounds.bottom.toLowerCase() === 'floor') {
+                                        effMinY = 0;
+                                    } else if (action.relativeBounds.bottom !== 'bottom') {
+                                        const botName = action.relativeBounds.bottom.toLowerCase();
+                                        const botBoard = get().boards.find(b => b.name?.toLowerCase().includes(botName));
+                                        if (botBoard) {
+                                            const botAabb = computeWorldAABB([botBoard]);
+                                            effMinY = botAabb.maxY;
+                                        }
+                                    }
+                                }
+                                if (action.relativeBounds.top) {
+                                    if (action.relativeBounds.top !== 'top') {
+                                        const topName = action.relativeBounds.top.toLowerCase();
+                                        const topBoard = get().boards.find(b => b.name?.toLowerCase().includes(topName));
+                                        if (topBoard) {
+                                            const topAabb = computeWorldAABB([topBoard]);
+                                            effMaxY = topAabb.minY;
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            let newY = (effMinY + effMaxY) / 2;
+                            if (action.position === 'bottom') {
+                                newY = effMinY + thickness / 2;
+                            } else if (action.position === 'top') {
+                                newY = effMaxY - thickness / 2;
+                            } else if (typeof action.position === 'string' && action.position.includes('%')) {
+                                const pct = parseFloat(action.position) / 100;
+                                newY = effMinY + (effMaxY - effMinY) * pct;
+                            } else if (typeof action.position === 'string' && action.position.includes('/')) {
+                                const [num, den] = action.position.split('/');
+                                const pct = parseFloat(num) / parseFloat(den);
+                                newY = effMinY + (effMaxY - effMinY) * pct;
+                            } else if (typeof action.position === 'number') {
+                                newY = action.position;
+                            }
+
+                            const newX = (aabb.minX + aabb.maxX) / 2;
+                            const newZ = (aabb.minZ + aabb.maxZ) / 2;
+                            
+                            const count = parseInt(action.count) || 1;
+                            let newShelves = [];
+                            const width = Math.abs(aabb.maxX - aabb.minX);
+                            const depth = Math.abs(aabb.maxZ - aabb.minZ);
+                            
+                            if (count > 1) {
+                                const span = effMaxY - effMinY;
+                                const interval = span / (count + 1);
+                                for (let i = 1; i <= count; i++) {
+                                    newShelves.push({
+                                        id: Date.now() + i, name: `Shelf ${i}`, parentId,
+                                        size: [width, thickness, depth],
+                                        position: [newX, effMinY + (interval * i), newZ],
+                                        material: defaultMaterial, joint: 'None', operations: []
+                                    });
+                                }
+                            } else {
+                                newShelves.push({
+                                    id: Date.now(), name: 'Shelf', parentId,
+                                    size: [width, thickness, depth],
+                                    position: [newX, newY, newZ],
+                                    material: defaultMaterial, joint: 'None', operations: []
+                                });
+                            }
+
+                            const newIds = newShelves.map(b => b.id.toString());
+                            setBoards(prev => [...prev, ...newShelves]);
+                            setSelectedItemIds(newIds);
+                            processedActions++;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // Replace thinking bubble with results
+            setChatMessages(prev => {
+                const filt = prev.filter(m => !m.isThinking);
+                return [...filt, { role: 'ai', text: result.reply || "Done!" }];
+            });
+
+        } catch (e) {
+            setChatMessages(prev => {
+                const filt = prev.filter(m => !m.isThinking);
+                return [...filt, { role: 'ai', text: `Error: ${e.message}` }];
+            });
         }
     },
 

@@ -1,10 +1,31 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { registerPanel, updatePanel, unregisterPanel } from '../../utils/panelLayout';
 
 const DraggablePanel = ({ title, defaultPosition, onFocusCapture, onClose, children, defaultSize = { width: 250 } }) => {
     const [pos, setPos] = useState(defaultPosition);
     const [isDragging, setIsDragging] = useState(false);
     const dragRef = useRef(null);
     const panelRef = useRef(null);
+    const registryId = useRef(null);
+
+    // Register on mount, unregister on unmount
+    useEffect(() => {
+        registryId.current = registerPanel(
+            defaultPosition.x, defaultPosition.y,
+            defaultSize.width, 400 // height estimate
+        );
+        return () => {
+            if (registryId.current !== null) unregisterPanel(registryId.current);
+        };
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Keep registry in sync whenever position changes
+    useEffect(() => {
+        if (registryId.current !== null && panelRef.current) {
+            const rect = panelRef.current.getBoundingClientRect();
+            updatePanel(registryId.current, pos.x, pos.y, rect.width || defaultSize.width, rect.height || 400);
+        }
+    }, [pos]); // eslint-disable-line react-hooks/exhaustive-deps
 
     useEffect(() => {
         const clampToViewport = () => {
@@ -30,7 +51,14 @@ const DraggablePanel = ({ title, defaultPosition, onFocusCapture, onClose, child
         window.addEventListener('resize', clampToViewport);
 
         // Also clamp whenever the panel itself grows (e.g. Inspector expanding after selection)
-        const ro = new ResizeObserver(clampToViewport);
+        const ro = new ResizeObserver(() => {
+            clampToViewport();
+            // Update registry when panel resizes
+            if (registryId.current !== null && panelRef.current) {
+                const rect = panelRef.current.getBoundingClientRect();
+                updatePanel(registryId.current, pos.x, pos.y, rect.width, rect.height);
+            }
+        });
         if (panelRef.current) ro.observe(panelRef.current);
 
         // Fire once on mount to ensure starting position is safe
@@ -40,7 +68,7 @@ const DraggablePanel = ({ title, defaultPosition, onFocusCapture, onClose, child
             window.removeEventListener('resize', clampToViewport);
             ro.disconnect();
         };
-    }, []);
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
     const onPointerDown = (e) => {
         if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'SELECT' && e.target.tagName !== 'BUTTON') {
@@ -112,3 +140,4 @@ const DraggablePanel = ({ title, defaultPosition, onFocusCapture, onClose, child
 };
 
 export default DraggablePanel;
+

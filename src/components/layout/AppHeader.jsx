@@ -15,6 +15,7 @@ const AppHeader = () => {
         showMaterialsPanel, setShowMaterialsPanel,
         showAddComponentPanel, setShowAddComponentPanel,
         showToolsPanel, setShowToolsPanel,
+        showHardwarePanel, setShowHardwarePanel,
         showOutlinerPanel, setShowOutlinerPanel,
         isOrtho, setIsOrtho,
         showGrid, setShowGrid,
@@ -67,7 +68,8 @@ const AppHeader = () => {
                 </div>
             </div>
             <nav className="top-nav">
-                {/* ── Col 1: Shapes (new) ── */}
+                {/* ── Row 1 ── */}
+                {/* Col 1 */}
                 <button
                     className={`nav-btn ${showAddComponentPanel ? 'active' : ''}`}
                     onClick={() => setShowAddComponentPanel(!showAddComponentPanel)}
@@ -75,25 +77,26 @@ const AppHeader = () => {
                 >
                     🔷 Components
                 </button>
-
-                {/* ── Cols 2–5 row 1: Library │ Materials │ Grid ☑ │ (empty) ── */}
+                {/* Col 2 */}
                 <button className={`nav-btn ${showAssemblyLibrary ? 'active' : ''}`} onClick={() => setShowAssemblyLibrary(!showAssemblyLibrary)}>📦 Library</button>
+                {/* Col 3 */}
                 <button className={`nav-btn ${showMaterialsPanel ? 'active' : ''}`} onClick={() => setShowMaterialsPanel(!showMaterialsPanel)}>🎨 Materials</button>
-                {/* ── Col 4 row 1: Outliner ── */}
+                {/* Col 4 */}
                 <button className={`nav-btn ${showOutlinerPanel ? 'active' : ''}`} onClick={() => setShowOutlinerPanel(!showOutlinerPanel)} title="Toggle Outliner">🗂️ Outliner</button>
-
-                {/* ── Col 5 row 1: AI Assistant ── */}
+                {/* Col 5 */}
                 <button className={`nav-btn ${isRightPanelOpen ? 'active' : ''}`} onClick={() => setIsRightPanelOpen(!isRightPanelOpen)}>
                     🤖 AI Assistant
                 </button>
-
-                {/* ── Col 6 row 1: Grid ☑ ── */}
-                <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', fontSize: '0.71rem', color: 'var(--text-muted)', padding: '3px 8px', userSelect: 'none', marginLeft: '20px' }}>
+                {/* Col 6: Grid ☑ */}
+                <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', fontSize: '0.71rem', color: 'var(--text-muted)', padding: '3px 8px', userSelect: 'none' }}>
                     <input type="checkbox" checked={showGrid} onChange={e => setShowGrid(e.target.checked)} style={{ accentColor: 'var(--accent-color)', width: '12px', height: '12px', cursor: 'pointer' }} />
                     Grid
                 </label>
+                {/* Col 7: Cut List */}
+                <button className={`nav-btn ${showCutlistPanel ? 'active' : ''}`} onClick={() => setShowCutlistPanel(!showCutlistPanel)}>📋 Cut List</button>
 
-                {/* ── Col 1 row 2: Tools (below Components) ── */}
+                {/* ── Row 2 ── */}
+                {/* Col 1 */}
                 <button
                     className={`nav-btn ${showToolsPanel ? 'active' : ''}`}
                     onClick={() => setShowToolsPanel(!showToolsPanel)}
@@ -101,24 +104,28 @@ const AppHeader = () => {
                 >
                     🛠 Tools
                 </button>
-
-                {/* ── Col 2–3 row 2: Settings │ Lighting ── */}
+                {/* Col 2 */}
+                <button
+                    className={`nav-btn ${showHardwarePanel ? 'active' : ''}`}
+                    onClick={() => setShowHardwarePanel(!showHardwarePanel)}
+                    title="Attach hinges, pulls, knobs, slides to boards"
+                >
+                    🔩 Hardware
+                </button>
+                {/* Col 3 */}
                 <button className={`nav-btn ${showSettingsPanel ? 'active' : ''}`} onClick={() => setShowSettingsPanel(!showSettingsPanel)}>⚙️ Settings</button>
+                {/* Col 4 */}
                 <button className={`nav-btn ${showLightingPanel ? 'active' : ''}`} onClick={() => setShowLightingPanel(!showLightingPanel)}>💡 Lighting</button>
-
-                {/* ── Col 4 row 2: Perspective ── */}
+                {/* Col 5 */}
                 <button className={`nav-btn ${isOrtho ? 'active' : ''}`} onClick={() => setIsOrtho(!isOrtho)} title={isOrtho ? 'Switch to Perspective' : 'Switch to Parallel'}>
                     {isOrtho ? '📐 Parallel' : '📷 Perspective'}
                 </button>
-
-                {/* ── Col 5 row 2: Cut List ── */}
-                <button className={`nav-btn ${showCutlistPanel ? 'active' : ''}`} onClick={() => setShowCutlistPanel(!showCutlistPanel)}>📋 Cut List</button>
-
-                {/* ── Col 6 row 2: Dims ☑ ── */}
-                <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', fontSize: '0.71rem', color: 'var(--text-muted)', padding: '3px 8px', userSelect: 'none', marginLeft: '20px' }}>
+                {/* Col 6: Dims ☑ (under Grid) */}
+                <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', fontSize: '0.71rem', color: 'var(--text-muted)', padding: '3px 8px', userSelect: 'none' }}>
                     <input type="checkbox" checked={showDimensions} onChange={e => setShowDimensions(e.target.checked)} style={{ accentColor: 'var(--accent-color)', width: '12px', height: '12px', cursor: 'pointer' }} />
                     Dims
                 </label>
+                {/* Col 7: empty */}
             </nav>
         </header>
     );

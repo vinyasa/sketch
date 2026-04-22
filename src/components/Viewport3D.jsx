@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Canvas } from '@react-three/fiber';
-import { PerspectiveCamera, OrthographicCamera, OrbitControls, useTexture, GizmoHelper, Text, Edges, Line, Html } from '@react-three/drei';
+import React, { useState, useEffect, useMemo, Suspense } from 'react';
+import { Canvas, useThree } from '@react-three/fiber';
+import { PerspectiveCamera, OrthographicCamera, OrbitControls, useTexture, useGLTF, GizmoHelper, Text, Edges, Line, Html } from '@react-three/drei';
 import { CustomGizmoViewport } from './CustomGizmoViewport';
 import * as THREE from 'three';
 import useStore from '../store/useStore';
@@ -8,11 +8,55 @@ import { computeWorldAABB, collectChildBoards, calculateGroupAABB } from '../uti
 import { formatUnit } from '../utils/units';
 import { WOOD_CATALOGUE, WOOD_TEXTURE_URLS, normalizeMaterial } from '../utils/materialCatalogue';
 import { buildTaperGeometry, normalizeTaper } from '../utils/geometryBuilders';
+import { computeHardwareTransform } from '../utils/hardwareCatalogue';
 import { Evaluator, SUBTRACTION, INTERSECTION, Brush } from 'three-bvh-csg';
 
 // CSG Evaluator instance
 const csgEvaluator = new Evaluator();
 
+
+// ── Persistent Controls Wrapper ────────────
+function PersistentControls() {
+  const { camera } = useThree();
+  const { cameraState, setCameraState } = useStore();
+  
+  const controlsRef = React.useRef(null);
+  const prevCameraState = React.useRef(null);
+
+  // Sync state if a workspace is loaded
+  React.useEffect(() => {
+    const ctrls = controlsRef.current;
+    if (ctrls && cameraState && prevCameraState.current !== cameraState) {
+        camera.position.set(...cameraState.position);
+        ctrls.target.set(...cameraState.target);
+        ctrls.update();
+        prevCameraState.current = cameraState;
+    }
+  }, [camera, cameraState]);
+
+  const handleEnd = React.useCallback((e) => {
+    const ctrls = e.target;
+    if (!ctrls) return;
+    const newState = {
+        position: [camera.position.x, camera.position.y, camera.position.z],
+        target: [ctrls.target.x, ctrls.target.y, ctrls.target.z]
+    };
+    prevCameraState.current = newState;
+    setCameraState(newState);
+  }, [camera, setCameraState]);
+
+  const initRef = React.useCallback((ctrls) => {
+    controlsRef.current = ctrls;
+    if (ctrls && cameraState && prevCameraState.current !== cameraState) {
+        camera.position.set(...cameraState.position);
+        ctrls.target.set(...cameraState.target);
+        ctrls.update();
+        prevCameraState.current = cameraState;
+    }
+  }, [camera, cameraState]);
+
+  return <OrbitControls ref={initRef} makeDefault onEnd={handleEnd} />;
+}
 
 // ─── SceneLights: renders all lights from the lighting store slice ────────────
 const SceneLights = ({ lighting }) => {
@@ -531,8 +575,11 @@ const CSGGeometry = ({ b }) => {
       };
 
       // ── CSG strategy ────────────────────────────────────────────────────────
-      const subOps    = b.operations.filter(op => op.type === 'hole' || op.type === 'dado' || op.type === 'miter');
-      const intersOps = b.operations.filter(op => op.type === 'arc' || op.type === 'cove');
+      const activeOps = b.operations.filter(op => op.enabled !== false);
+      if (activeOps.length === 0) return baseGeo;
+
+      const subOps    = activeOps.filter(op => op.type === 'hole' || op.type === 'dado' || op.type === 'miter' || op.type === 'subtract');
+      const intersOps = activeOps.filter(op => op.type === 'arc' || op.type === 'cove');
 
       let resultBrush = new Brush(baseGeo);
       resultBrush.updateMatrixWorld();
@@ -541,7 +588,34 @@ const CSGGeometry = ({ b }) => {
       for (const op of subOps) {
         try {
           let opBrush;
-          if (op.type === 'miter') {
+          if (op.type === 'subtract') {
+            // ── Boolean subtract: rebuild cutter from snapshot ──────────
+            const cs = op.cutterSize;
+            let cutterGeo;
+            if (op.cutterShape === 'cylinder') {
+              const cAxis = op.cutterCylinder?.axis || 'y';
+              const cAxisIdx = cAxis === 'x' ? 0 : cAxis === 'z' ? 2 : 1;
+              const cDim1 = cs[(cAxisIdx + 1) % 3];
+              const cDim2 = cs[(cAxisIdx + 2) % 3];
+              const cRadius = Math.min(cDim1, cDim2) / 2;
+              const cHeight = cs[cAxisIdx];
+              cutterGeo = new THREE.CylinderGeometry(cRadius, cRadius, cHeight, 64, 1);
+              if (cAxis === 'x') cutterGeo.rotateZ(Math.PI / 2);
+              if (cAxis === 'z') cutterGeo.rotateX(Math.PI / 2);
+            } else if (op.cutterShape === 'taper' && op.cutterTaper) {
+              const { angleLeft, angleRight, angleFront, angleBack } = normalizeTaper(op.cutterTaper);
+              cutterGeo = buildTaperGeometry(cs[0], cs[1], cs[2], angleLeft, angleRight, angleFront, angleBack);
+            } else {
+              cutterGeo = new THREE.BoxGeometry(cs[0], cs[1], cs[2]);
+            }
+            // Apply the stored relative transform (positions cutter in target's local space)
+            if (op.relativeMatrix) {
+              const m = new THREE.Matrix4().fromArray(op.relativeMatrix);
+              cutterGeo.applyMatrix4(m);
+            }
+            opBrush = new Brush(cutterGeo);
+            opBrush.updateMatrixWorld();
+          } else if (op.type === 'miter') {
             opBrush = new Brush(_buildMiterTool(b.size, op));
             opBrush.updateMatrixWorld();
           } else if (op.type === 'dado') {
@@ -722,6 +796,72 @@ const localFaceToWorld = (localFace, orientation) => {
   return ['x', 'y', 'z'][bestAxis] + (worldN[bestAxis] > 0 ? '+' : '-');
 };
 
+// ── Hardware attachment renderer ─────────────────────────────────────────────
+const HardwareAttachment = ({ hw, boardSize, boardId }) => {
+  const { selectedHardwareId, setSelectedHardwareId, setSelectedItemIds, updateHardware } = useStore();
+  const { scene } = useGLTF(hw.modelUrl);
+  const clonedScene = useMemo(() => scene.clone(true), [scene]);
+  const { position, rotation } = computeHardwareTransform(boardSize, hw.face, hw.offset);
+  const isSelected = selectedHardwareId === hw.id;
+
+  // Auto-scale on first load: if scale is still 1 and model is very small/large relative to board,
+  // compute a sensible default. Models from Sketchfab are typically in meters, boards are in inches.
+  useEffect(() => {
+    if (hw.scale && hw.scale !== 1) return; // user already set a custom scale
+    const box = new THREE.Box3().setFromObject(clonedScene);
+    const modelSize = new THREE.Vector3();
+    box.getSize(modelSize);
+    const maxModelDim = Math.max(modelSize.x, modelSize.y, modelSize.z);
+    if (maxModelDim <= 0) return;
+
+    // Target: hardware should be roughly 1/3 the board's smallest face dimension
+    const targetSize = Math.min(...boardSize) * 0.8;
+    const autoScale = targetSize / maxModelDim;
+
+    // Only auto-adjust if the ratio is very off (model is >5x too big or too small)
+    if (autoScale < 0.2 || autoScale > 5) {
+      const rounded = parseFloat(autoScale.toFixed(2));
+      updateHardware(boardId, hw.id, { scale: rounded });
+    }
+  }, [clonedScene]); // only on first load
+
+  // Combine face rotation with user-specified rotation
+  const finalRotation = [
+    rotation[0] + (hw.rotation?.[0] || 0),
+    rotation[1] + (hw.rotation?.[1] || 0),
+    rotation[2] + (hw.rotation?.[2] || 0),
+  ];
+
+  // Apply emissive highlight when selected
+  useEffect(() => {
+    clonedScene.traverse((child) => {
+      if (child.isMesh && child.material) {
+        const mat = child.material.clone();
+        mat.emissive = new THREE.Color(isSelected ? '#bc8a5f' : '#000000');
+        mat.emissiveIntensity = isSelected ? 0.6 : 0;
+        child.material = mat;
+      }
+    });
+  }, [clonedScene, isSelected]);
+
+  return (
+    <group
+      position={position}
+      rotation={finalRotation}
+      scale={hw.scale || 1}
+      onClick={(e) => {
+        e.stopPropagation();
+        setSelectedItemIds([boardId.toString()]);
+        setSelectedHardwareId(hw.id);
+      }}
+      onPointerOver={() => { document.body.style.cursor = 'pointer'; }}
+      onPointerOut={() => { document.body.style.cursor = 'auto'; }}
+    >
+      <primitive object={clonedScene} />
+    </group>
+  );
+};
+
 const BoardMesh = ({ b, selectedItemIds, toggleSelection, textures, showEdges, constraintTargetMode, hoveredFaceData, setHoveredFaceData, modifierActive }) => {
   if (b.visible === false) return null;
   const isSelected = selectedItemIds.includes(b.id.toString());
@@ -844,6 +984,14 @@ const BoardMesh = ({ b, selectedItemIds, toggleSelection, textures, showEdges, c
           </group>
         );
       })()}
+      {/* ── Hardware attachments ─────────────────────────────────────────── */}
+      {(b.hardware || []).length > 0 && (
+        <Suspense fallback={null}>
+          {(b.hardware || []).map(hw => (
+            <HardwareAttachment key={hw.id} hw={hw} boardSize={b.size} boardId={b.id} />
+          ))}
+        </Suspense>
+      )}
     </mesh>
   );
 };
@@ -1038,7 +1186,7 @@ export default function Viewport3D() {
           <PerspectiveCamera makeDefault position={[30, 20, 40]} near={0.1} far={1000} />
         )}
 
-        <OrbitControls makeDefault />
+        <PersistentControls />
         {/* Floor grid at Y=0 */}
         {showGrid && minorDivs > 0 && (
           <gridHelper key={`min_${minorDivs}_${theme}`} args={[gridRadius, minorDivs, minorColor, minorColor]} position={[0, -0.02, 0]} />

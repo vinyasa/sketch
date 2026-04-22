@@ -33,7 +33,6 @@ const InspectorPanel = () => {
     const [cloneOffset, setCloneOffset] = useState(0.75);
     const [bulkAngleZ, setBulkAngleZ] = useState(2);
     const [bulkAngleX, setBulkAngleX] = useState(2);
-    const [bulkDelta, setBulkDelta] = useState(['0', '0', '0']);
     const [rotationStep, setRotationStep] = useState(5);
 
     const {
@@ -47,10 +46,12 @@ const InspectorPanel = () => {
         removeConstraint, toggleConstraint,
         constraintTargetMode, setConstraintTargetMode,
         updateProceduralBox,
-        removeOperation,
+        removeOperation, updateOperation,
         setComputingMessage,
         showToolsPanel, setShowToolsPanel, setEditingToolOpId,
         toggleRabbetJoint, removeRabbetJoint,
+        removeHardware, updateHardware,
+        selectedHardwareId, setSelectedHardwareId,
     } = useStore();
 
     const selectedBoardId = selectedItemIds?.[0];
@@ -246,19 +247,6 @@ const InspectorPanel = () => {
             }));
         };
 
-        const applyBulkMove = () => {
-            const [dx, dy, dz] = bulkDelta.map(v => parseFloat(v) || 0);
-            if (dx === 0 && dy === 0 && dz === 0) return;
-            pushHistory();
-            const selIds = new Set(selBoards.map(b => b.id));
-            setBoards(prev => prev.map(b =>
-                selIds.has(b.id)
-                    ? { ...b, position: [b.position[0] + dx, b.position[1] + dy, b.position[2] + dz] }
-                    : b
-            ));
-            setBulkDelta(['0', '0', '0']);
-        };
-
         const bbRowStyle = (editable) => ({
             opacity: editable ? 1 : 0.4,
             transition: 'opacity 0.15s',
@@ -302,15 +290,49 @@ const InspectorPanel = () => {
                     )}
                 </div>
                 <div className="inspector-section">
-                    <h4>Move by Δ (in)</h4>
-                    <div className="vec3-inputs">
-                        <div style={{ backgroundColor: 'rgba(255, 60, 60, 0.15)' }}>X<input type="number" step="0.125" value={bulkDelta[0]} onChange={e => setBulkDelta([e.target.value, bulkDelta[1], bulkDelta[2]])} /></div>
-                        <div style={{ backgroundColor: 'rgba(60, 200, 90, 0.15)' }}>Y<input type="number" step="0.125" value={bulkDelta[1]} onChange={e => setBulkDelta([bulkDelta[0], e.target.value, bulkDelta[2]])} /></div>
-                        <div style={{ backgroundColor: 'rgba(60, 150, 255, 0.15)' }}>Z<input type="number" step="0.125" value={bulkDelta[2]} onChange={e => setBulkDelta([bulkDelta[0], bulkDelta[1], e.target.value])} /></div>
-                    </div>
-                    <button style={{ marginTop: '8px', width: '100%' }} className="primary-btn" onClick={applyBulkMove}>
-                        Apply Move
-                    </button>
+                    <h4>Position (in)</h4>
+                    <p className="hint" style={{ marginTop: '2px', marginBottom: '6px' }}>
+                        Selection centroid — changes move all selected items.
+                    </p>
+                    {(() => {
+                        // Compute centroid of all selected boards
+                        const cx = fmt4(selBoards.reduce((s, b) => s + b.position[0], 0) / selBoards.length);
+                        const cy = fmt4(selBoards.reduce((s, b) => s + b.position[1], 0) / selBoards.length);
+                        const cz = fmt4(selBoards.reduce((s, b) => s + b.position[2], 0) / selBoards.length);
+                        const centroid = [cx, cy, cz];
+
+                        const handleCentroidChange = (axis, newVal) => {
+                            const v = parseFloat(newVal);
+                            if (isNaN(v)) return;
+                            const delta = v - centroid[axis];
+                            if (Math.abs(delta) < 0.0001) return;
+                            pushHistory();
+                            const selIds = new Set(selBoards.map(b => b.id));
+                            setBoards(prev => prev.map(b => {
+                                if (!selIds.has(b.id)) return b;
+                                const newPos = [...b.position];
+                                newPos[axis] += delta;
+                                return { ...b, position: newPos };
+                            }));
+                        };
+
+                        return (
+                            <div className="vec3-inputs">
+                                <div style={{ backgroundColor: 'rgba(255, 60, 60, 0.15)' }}>
+                                    X<input type="number" step="0.125" value={centroid[0]}
+                                        onChange={e => handleCentroidChange(0, e.target.value)} />
+                                </div>
+                                <div style={{ backgroundColor: 'rgba(60, 200, 90, 0.15)' }}>
+                                    Y<input type="number" step="0.125" value={centroid[1]}
+                                        onChange={e => handleCentroidChange(1, e.target.value)} />
+                                </div>
+                                <div style={{ backgroundColor: 'rgba(60, 150, 255, 0.15)' }}>
+                                    Z<input type="number" step="0.125" value={centroid[2]}
+                                        onChange={e => handleCentroidChange(2, e.target.value)} />
+                                </div>
+                            </div>
+                        );
+                    })()}
                 </div>
                 <div className="inspector-section">
                     <p className="hint">{selBoards.length} board{selBoards.length !== 1 ? 's' : ''} in selection. Use AI Chat for bulk transforms.</p>
@@ -696,12 +718,22 @@ const InspectorPanel = () => {
                                         background: 'rgba(255,255,255,0.03)',
                                         border: '1px solid var(--border-color)',
                                         borderRadius: '6px',
+                                        opacity: op.enabled === false ? 0.5 : 1
                                     }}>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                             <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-main)', textTransform: 'capitalize' }}>
                                                 {icon} {op.type}
                                             </span>
                                             <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                                                <button
+                                                    onClick={() => updateOperation(selectedBoard.id, op.id, { enabled: op.enabled === false ? true : false })}
+                                                    title={op.enabled === false ? 'Enable Cut' : 'Disable Cut'}
+                                                    style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.85rem', padding: '0 4px', transition: 'color 0.2s' }}
+                                                    onMouseEnter={e => e.target.style.color = 'var(--text-main)'}
+                                                    onMouseLeave={e => e.target.style.color = 'var(--text-muted)'}
+                                                >
+                                                    {op.enabled === false ? '⊘' : '👁'}
+                                                </button>
                                                 <button
                                                     onClick={() => { setEditingToolOpId(op.id); setShowToolsPanel(true); }}
                                                     style={{ background: 'none', border: 'none', color: 'var(--accent-color)', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600, padding: '1px 5px' }}
@@ -1007,6 +1039,82 @@ const InspectorPanel = () => {
                 <div className="inspector-card">
                     <h4>Parent Node:</h4>
                     <div style={{ fontSize: '0.85rem', color: 'var(--text-main)', marginBottom: '8px' }}><strong>{selectedBoard.parentId}</strong></div>
+                </div>
+                {/* ── Hardware ── */}
+                <div className="inspector-card">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <h4 style={{ margin: 0 }}>🔩 Hardware</h4>
+                        <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>{(selectedBoard.hardware || []).length} attached</span>
+                    </div>
+                    {(selectedBoard.hardware || []).length === 0 ? (
+                        <div className="hint" style={{ marginTop: '6px' }}>No hardware attached. Use the Hardware panel to add hinges, pulls, etc.</div>
+                    ) : (
+                        (selectedBoard.hardware || []).map(hw => {
+                            const isHwSelected = selectedHardwareId === hw.id;
+                            return (
+                            <div key={hw.id}
+                                onClick={() => setSelectedHardwareId(isHwSelected ? null : hw.id)}
+                                style={{
+                                padding: '8px', marginTop: '6px',
+                                background: isHwSelected ? 'rgba(188,138,95,0.12)' : 'rgba(255,255,255,0.03)',
+                                border: `1px solid ${isHwSelected ? 'var(--accent-color)' : 'var(--border-color)'}`,
+                                borderRadius: '6px',
+                                cursor: 'pointer',
+                                transition: 'all 0.15s',
+                            }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                                    <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-main)' }}>
+                                        {hw.name}
+                                    </span>
+                                    <button
+                                        onClick={() => removeHardware(selectedBoard.id, hw.id)}
+                                        style={{ background: 'none', border: 'none', color: '#ff3b30', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600, padding: '1px 5px' }}
+                                    >✕ Remove</button>
+                                </div>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px', fontSize: '0.72rem' }}>
+                                    <div>
+                                        <div style={{ color: 'var(--text-muted)', marginBottom: '2px' }}>Face</div>
+                                        <select
+                                            value={hw.face}
+                                            onChange={e => updateHardware(selectedBoard.id, hw.id, { face: e.target.value })}
+                                            style={{ width: '100%', padding: '3px', background: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '4px', fontSize: '0.75rem' }}
+                                        >
+                                            {['front','back','left','right','top','bottom'].map(f => (
+                                                <option key={f} value={f}>{f}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <div style={{ color: 'var(--text-muted)', marginBottom: '2px' }}>Scale</div>
+                                        <input
+                                            type="number" step="0.1" min="0.1" max="5"
+                                            value={hw.scale || 1}
+                                            onChange={e => updateHardware(selectedBoard.id, hw.id, { scale: parseFloat(e.target.value) || 1 })}
+                                            style={{ width: '100%', padding: '3px', background: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '4px', fontSize: '0.75rem' }}
+                                        />
+                                    </div>
+                                </div>
+                                <div style={{ marginTop: '4px', fontSize: '0.72rem' }}>
+                                    <div style={{ color: 'var(--text-muted)', marginBottom: '2px' }}>Offset (X, Y, Standoff)</div>
+                                    <div style={{ display: 'flex', gap: '4px', minWidth: 0 }}>
+                                        {[0, 1, 2].map(i => (
+                                            <input
+                                                key={i}
+                                                type="number" step="0.125"
+                                                value={hw.offset?.[i] || 0}
+                                                onChange={e => {
+                                                    const newOffset = [...(hw.offset || [0, 0, 0])];
+                                                    newOffset[i] = parseFloat(e.target.value) || 0;
+                                                    updateHardware(selectedBoard.id, hw.id, { offset: newOffset });
+                                                }}
+                                                style={{ flex: 1, minWidth: 0, width: 0, padding: '3px', background: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '4px', fontSize: '0.72rem' }}
+                                            />
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        )})
+                    )}
                 </div>
                 <div className="inspector-card">
                     <h4>Clone Component</h4>

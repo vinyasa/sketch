@@ -1,7 +1,10 @@
 import { create } from 'zustand';
 import { createActions } from './actions';
 import { loadLibrarySync, loadLibraryFromDiskIfNeeded, loadStoredHandle } from '../utils/libraryPersistence';
+import { loadHardwareLibrarySync, loadHardwareLibraryFromDiskIfNeeded, loadStoredHardwareHandle, persistHardwareLibrary } from '../utils/hardwareLibraryPersistence';
 import { DEFAULT_LIGHTING } from '../utils/lightingPresets';
+
+const _initialHardwareLibrary = loadHardwareLibrarySync();
 
 // ─── Fresh-start flag: append ?fresh to the URL to skip localStorage ─────────
 const FRESH_START = typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('fresh');
@@ -61,6 +64,20 @@ const useStore = create((set, get) => ({
     isOrtho: false,
     setIsOrtho: (v) => set({ isOrtho: typeof v === 'function' ? v(get().isOrtho) : v }),
 
+    cameraState: loadState('cameraState', null),
+    setCameraState: (v) => {
+        const next = typeof v === 'function' ? v(get().cameraState) : v;
+        set({ cameraState: next });
+        try {
+            const s = localStorage.getItem('lucey_save');
+            if (s) {
+                const p = JSON.parse(s);
+                p.cameraState = next;
+                localStorage.setItem('lucey_save', JSON.stringify(p));
+            }
+        } catch(e) {}
+    },
+
     showGrid: true,
     setShowGrid: (v) => set({ showGrid: typeof v === 'function' ? v(get().showGrid) : v }),
 
@@ -81,6 +98,42 @@ const useStore = create((set, get) => ({
 
     showToolsPanel: false,
     setShowToolsPanel: (v) => set({ showToolsPanel: typeof v === 'function' ? v(get().showToolsPanel) : v }),
+
+    showHardwarePanel: false,
+    setShowHardwarePanel: (v) => set({ showHardwarePanel: typeof v === 'function' ? v(get().showHardwarePanel) : v }),
+
+    // Which hardware piece is currently selected (null = none)
+    selectedHardwareId: null,
+    setSelectedHardwareId: (v) => set({ selectedHardwareId: v }),
+
+    // Custom imported hardware catalogue entries — persisted to localStorage + disk
+    customHardware: _initialHardwareLibrary,
+    addCustomHardware: (item) => {
+        const next = [...get().customHardware, item];
+        set({ customHardware: next });
+        persistHardwareLibrary(next, get().hardwareLibraryDiskHandle);
+    },
+    removeCustomHardware: (id) => {
+        const next = get().customHardware.filter(h => h.id !== id);
+        set({ customHardware: next });
+        persistHardwareLibrary(next, get().hardwareLibraryDiskHandle);
+    },
+
+    // Disk file handle for hardware library auto-save
+    hardwareLibraryDiskHandle: null,
+    setHardwareLibraryDiskHandle: (v) => set({ hardwareLibraryDiskHandle: v }),
+
+    // Hidden built-in hardware IDs (so user can remove defaults they don't want)
+    hiddenBuiltinHardware: loadState('lucey_hidden_builtin_hw', []),
+    hideBuiltinHardware: (id) => {
+        const next = [...get().hiddenBuiltinHardware, id];
+        set({ hiddenBuiltinHardware: next });
+        try { localStorage.setItem('lucey_hidden_builtin_hw', JSON.stringify(next)); } catch {}
+    },
+    restoreBuiltinHardware: () => {
+        set({ hiddenBuiltinHardware: [] });
+        try { localStorage.removeItem('lucey_hidden_builtin_hw'); } catch {}
+    },
 
     // Which operation ID the Tools panel should focus on for editing (null = none)
     editingToolOpId: null,
@@ -114,6 +167,9 @@ const useStore = create((set, get) => ({
     recentFiles: loadRecentFiles(),
     setRecentFiles: (v) => set({ recentFiles: typeof v === 'function' ? v(get().recentFiles) : v }),
 
+    showAiHelpDialog: false,
+    setShowAiHelpDialog: (v) => set({ showAiHelpDialog: typeof v === 'function' ? v(get().showAiHelpDialog) : v }),
+
     currentFileName: (() => { const rf = loadRecentFiles(); return rf.length > 0 ? rf[0].name : 'Untitled'; })(),
     setCurrentFileName: (v) => set({ currentFileName: v }),
 
@@ -145,6 +201,9 @@ const useStore = create((set, get) => ({
     // FileSystemFileHandle stored in IndexedDB; loaded async on mount
     libraryDiskHandle: null,
     setLibraryDiskHandle: (v) => set({ libraryDiskHandle: v }),
+
+    aiEngine: 'si', // 'si' or 'ai'
+    setAiEngine: (v) => set({ aiEngine: typeof v === 'function' ? v(get().aiEngine) : v }),
 
     chatInput: '',
     setChatInput: (v) => set({ chatInput: typeof v === 'function' ? v(get().chatInput) : v }),
@@ -293,6 +352,20 @@ const useStore = create((set, get) => ({
             if (recovered.length > 0) {
                 useStore.setState({ assemblyLibrary: recovered });
             }
+        }
+    } catch { /* non-fatal */ }
+
+    // ── Hardware library disk recovery ──
+    try {
+        const hwHandle = await loadStoredHardwareHandle();
+        if (hwHandle) useStore.setState({ hardwareLibraryDiskHandle: hwHandle });
+
+        if (_initialHardwareLibrary.length === 0) {
+            const { entries, handle } = await loadHardwareLibraryFromDiskIfNeeded();
+            if (entries.length > 0) {
+                useStore.setState({ customHardware: entries });
+            }
+            if (handle) useStore.setState({ hardwareLibraryDiskHandle: handle });
         }
     } catch { /* non-fatal */ }
 })();

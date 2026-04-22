@@ -10,10 +10,11 @@ const ToolsPanel = () => {
     const {
         boards, selectedItemIds,
         setBoards, pushHistory,
-        removeOperation,
+        removeOperation, updateOperation,
         setComputingMessage,
         editingToolOpId, setEditingToolOpId,
         applyRabbetJoint, toggleRabbetJoint, removeRabbetJoint,
+        applySubtraction, toggleBoardVisibility,
     } = useStore();
 
     const selectedBoard = selectedItemIds.length === 1 && boards.find(b => b.id.toString() === selectedItemIds[0]);
@@ -139,6 +140,49 @@ const ToolsPanel = () => {
                 );
             })()}
 
+            {/* ── Boolean Subtract Section (2 boards selected) ── */}
+            {canShowRabbetJoint && (() => {
+                const [bA, bB] = selectedBoards;
+                return (
+                    <div style={{
+                        padding: '12px', marginBottom: '14px', borderRadius: '8px',
+                        background: 'rgba(255, 140, 50, 0.06)',
+                        border: '1px solid rgba(255, 140, 50, 0.3)',
+                    }}>
+                        <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#ff8c32', marginBottom: '8px' }}>
+                            🔪 Boolean Subtract
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '8px' }}>
+                            Carve one board's shape out of another. The cutter board will be hidden.
+                        </div>
+                        <div style={{ display: 'flex', gap: '6px' }}>
+                            <button
+                                onClick={() => applySubtraction(bA.id, bB.id)}
+                                title={`"${bB.name}" carves into "${bA.name}"`}
+                                style={{
+                                    flex: 1, padding: '7px', fontSize: '0.75rem', fontWeight: 600,
+                                    background: 'rgba(255, 140, 50, 0.12)', border: '1px solid rgba(255, 140, 50, 0.4)',
+                                    borderRadius: '6px', color: '#ff8c32', cursor: 'pointer', transition: 'all 0.15s',
+                                }}
+                                onMouseEnter={e => e.target.style.filter = 'brightness(1.2)'}
+                                onMouseLeave={e => e.target.style.filter = ''}
+                            >{bA.name} − {bB.name}</button>
+                            <button
+                                onClick={() => applySubtraction(bB.id, bA.id)}
+                                title={`"${bA.name}" carves into "${bB.name}"`}
+                                style={{
+                                    flex: 1, padding: '7px', fontSize: '0.75rem', fontWeight: 600,
+                                    background: 'rgba(255, 140, 50, 0.12)', border: '1px solid rgba(255, 140, 50, 0.4)',
+                                    borderRadius: '6px', color: '#ff8c32', cursor: 'pointer', transition: 'all 0.15s',
+                                }}
+                                onMouseEnter={e => e.target.style.filter = 'brightness(1.2)'}
+                                onMouseLeave={e => e.target.style.filter = ''}
+                            >{bB.name} − {bA.name}</button>
+                        </div>
+                    </div>
+                );
+            })()}
+
             {/* ── Tool Type Buttons ── */}
             {selectedBoard ? (
                 <div style={{ display: 'flex', gap: '6px', marginBottom: '14px' }}>
@@ -183,20 +227,30 @@ const ToolsPanel = () => {
                     <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px' }}>Applied Tools</div>
                     {allOps.map((op) => {
                         const isNew = pendingIds.has(op.id);
-                        const icon = { hole: '◎', cove: '◡', arc: '◠', dado: '✂', miter: '⊿' }[op.type] || '●';
+                        const icon = { hole: '◎', cove: '◡', arc: '◠', dado: '✂', miter: '⊿', subtract: '🔪' }[op.type] || '●';
                         const summary = getToolSummary(op);
                         return (
                             <div key={op.id} style={{
                                 padding: '8px 10px', marginBottom: '4px',
                                 background: isNew ? 'rgba(188,138,95,0.06)' : 'rgba(255,255,255,0.03)',
                                 border: isNew ? '1px solid rgba(188,138,95,0.4)' : '1px solid var(--border-color)',
-                                borderRadius: '6px', transition: 'border-color 0.2s',
+                                borderRadius: '6px', transition: 'all 0.2s',
+                                opacity: op.enabled === false ? 0.4 : 1
                             }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                     <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-main)', textTransform: 'capitalize' }}>
                                         {icon} {op.type}
                                     </span>
                                     <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                                        <button
+                                            onClick={() => updateOperation(selectedBoard.id, op.id, { enabled: op.enabled === false ? true : false })}
+                                            title={op.enabled === false ? 'Enable Cut' : 'Disable Cut'}
+                                            style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '1rem', padding: '0 4px', transition: 'color 0.2s' }}
+                                            onMouseEnter={e => e.target.style.color = 'var(--text-main)'}
+                                            onMouseLeave={e => e.target.style.color = 'var(--text-muted)'}
+                                        >
+                                            {op.enabled === false ? '⊘' : '👁'}
+                                        </button>
                                         <button
                                             onClick={() => setEditingToolOpId(op.id)}
                                             style={{ background: 'none', border: 'none', color: 'var(--accent-color)', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600, padding: '2px 6px' }}
@@ -289,7 +343,7 @@ const ToolsPanel = () => {
                     setEditingToolOpId(null);
                 };
 
-                const icon = { hole: '◎', cove: '◡', arc: '◠', dado: '✂', miter: '⊿' }[op.type] || '●';
+                const icon = { hole: '◎', cove: '◡', arc: '◠', dado: '✂', miter: '⊿', subtract: '🔪' }[op.type] || '●';
 
                 return (
                     <div style={{
@@ -554,6 +608,53 @@ const ToolsPanel = () => {
                             );
                         })()}
 
+                        {/* ── Subtract Editor ── */}
+                        {op.type === 'subtract' && (
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '8px' }}>
+                                <div>
+                                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Cutter Board</div>
+                                    <div style={{
+                                        padding: '6px 10px', borderRadius: '6px',
+                                        background: 'rgba(255, 140, 50, 0.08)',
+                                        border: '1px solid rgba(255, 140, 50, 0.2)',
+                                        fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-main)',
+                                    }}>
+                                        {displayOp.cutterName || 'Unknown'}
+                                    </div>
+                                </div>
+                                <div>
+                                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Cutter Size</div>
+                                    <div style={{ fontSize: '0.78rem', color: 'var(--text-main)' }}>
+                                        {displayOp.cutterSize ? `${displayOp.cutterSize[0]}" × ${displayOp.cutterSize[1]}" × ${displayOp.cutterSize[2]}"` : '—'}
+                                    </div>
+                                </div>
+                                <div>
+                                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Shape</div>
+                                    <div style={{ fontSize: '0.78rem', color: 'var(--text-main)', textTransform: 'capitalize' }}>
+                                        {displayOp.cutterShape || 'box'}
+                                    </div>
+                                </div>
+                                {displayOp.cutterId && (() => {
+                                    const cutterBoard = boards.find(bd => bd.id.toString() === displayOp.cutterId);
+                                    if (!cutterBoard) return null;
+                                    return (
+                                        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                                            <input
+                                                type="checkbox"
+                                                checked={cutterBoard.visible !== false}
+                                                onChange={() => toggleBoardVisibility(cutterBoard.id)}
+                                                style={{ accentColor: '#ff8c32', cursor: 'pointer' }}
+                                            />
+                                            Show cutter board
+                                        </label>
+                                    );
+                                })()}
+                                <p className="hint" style={{ marginTop: '0' }}>
+                                    This is a frozen snapshot. The cut shape won't change if you move the cutter board.
+                                </p>
+                            </div>
+                        )}
+
                         <div style={{ display: 'flex', gap: '6px', marginTop: '12px' }}>
                             <button onClick={applyStaged} disabled={!hasPending} style={{
                                 flex: 1, padding: '7px',
@@ -607,6 +708,8 @@ function getToolSummary(op) {
             const bevel = op.bevel ?? 0;
             return `${faceLabel(op.face || 'x+')} · ${op.angle ?? 45}°${bevel > 0 ? ` · Bevel ${bevel}°` : ''}`;
         }
+        case 'subtract':
+            return `Subtracting "${op.cutterName || 'unknown'}" · ${op.cutterShape || 'box'}`;
         default:
             return op.type;
     }

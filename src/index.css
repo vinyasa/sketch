@@ -1,7 +1,7 @@
 :root {
   --bg-color: #0d0f12;
-  --panel-bg: rgba(22, 24, 29, 0.35);
-  --menu-bg: rgba(13, 15, 18, 0.9);
+  --panel-bg: rgba(22, 24, 29, 0.85);
+  --menu-bg: rgba(13, 15, 18, 0.95);
   --panel-blur: blur(24px);
   --title-bg: rgba(255, 255, 255, 0.1);
   --accent-color: #bc8a5f;
@@ -14,8 +14,8 @@
 
 :root.light-mode {
   --bg-color: #e8eaed;
-  --panel-bg: rgba(255, 255, 255, 0.45);
-  --menu-bg: rgba(232, 234, 237, 0.9);
+  --panel-bg: rgba(255, 255, 255, 0.90);
+  --menu-bg: rgba(232, 234, 237, 0.95);
   --panel-blur: blur(24px);
   --title-bg: rgba(0, 0, 0, 0.15);
   --accent-color: #a87b55;

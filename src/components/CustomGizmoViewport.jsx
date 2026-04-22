@@ -1,4 +1,4 @@
-import { useRef, useMemo } from 'react';
+import React, { useRef, useMemo } from 'react';
 import { useGizmoContext } from '@react-three/drei';
 import * as THREE from 'three';
 

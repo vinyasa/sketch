@@ -14,10 +14,13 @@ import LightingPanel from './components/panels/LightingPanel';
 import MaterialsPanel from './components/panels/MaterialsPanel';
 import AddComponentPanel from './components/panels/AddComponentPanel';
 import ToolsPanel from './components/panels/ToolsPanel';
+import HardwarePanel from './components/panels/HardwarePanel';
 import NewBoardDialog from './components/dialogs/NewBoardDialog';
 import CabinetBuilderDialog from './components/dialogs/CabinetBuilderDialog';
+import AiHelpDialog from './components/dialogs/AiHelpDialog';
 import ErrorBoundary from './components/layout/ErrorBoundary';
 import useStore from './store/useStore';
+import { getSmartPosition } from './utils/panelLayout';
 
 export default function App() {
     const {
@@ -29,6 +32,7 @@ export default function App() {
         showMaterialsPanel, setShowMaterialsPanel,
         showAddComponentPanel, setShowAddComponentPanel,
         showToolsPanel, setShowToolsPanel,
+        showHardwarePanel, setShowHardwarePanel,
         showOutlinerPanel, setShowOutlinerPanel,
         isRightPanelOpen, setIsRightPanelOpen,
         selectedItemIds,
@@ -55,8 +59,8 @@ export default function App() {
         if (autosaveInterval === 'off') return;
         const ms = parseInt(autosaveInterval, 10) * 60 * 1000;
         const id = setInterval(() => {
-            const { boards, groups, constraints, theme, units, gridSnap, defaultMaterial, showEdges, showDimensions, showBoundingBox, globalBounds, lighting, recentColors, autosaveInterval: ai } = useStore.getState();
-            const payload = { boards, groups, constraints, theme, units, gridSnap, defaultMaterial, showEdges, showDimensions, showBoundingBox, globalBounds, lighting, recentColors, autosaveInterval: ai };
+            const { boards, groups, constraints, theme, units, gridSnap, defaultMaterial, showEdges, showDimensions, showBoundingBox, globalBounds, lighting, recentColors, autosaveInterval: ai, cameraState } = useStore.getState();
+            const payload = { boards, groups, constraints, theme, units, gridSnap, defaultMaterial, showEdges, showDimensions, showBoundingBox, globalBounds, lighting, recentColors, autosaveInterval: ai, cameraState };
             localStorage.setItem('lucey_save', JSON.stringify(payload));
         }, ms);
         return () => clearInterval(id);
@@ -79,62 +83,68 @@ export default function App() {
 
                 <main className="main-workspace">
                     {isRightPanelOpen && (
-                        <DraggablePanel title="AI Assistant" defaultPosition={{ x: 20, y: 90 }} onClose={() => setIsRightPanelOpen(false)}>
+                        <DraggablePanel title="AI Assistant" defaultPosition={{ x: 20, y: 100 }} onClose={() => setIsRightPanelOpen(false)}>
                             <AIChatPanel />
                         </DraggablePanel>
                     )}
 
                     {showSettingsPanel && (
-                        <DraggablePanel title="Settings" defaultPosition={{ x: window.innerWidth / 2 - 250, y: 100 }} defaultSize={{ width: 500 }} onClose={() => setShowSettingsPanel(false)}>
+                        <DraggablePanel title="Settings" defaultPosition={getSmartPosition(500, 500, 'center')} defaultSize={{ width: 500 }} onClose={() => setShowSettingsPanel(false)}>
                             <SettingsPanel />
                         </DraggablePanel>
                     )}
 
                     {showOutlinerPanel && (
-                        <DraggablePanel title="Outliner" defaultPosition={{ x: window.innerWidth - 270, y: 80 }} onClose={() => setShowOutlinerPanel(false)}>
+                        <DraggablePanel title="Outliner" defaultPosition={{ x: window.innerWidth - 220, y: 100 }} defaultSize={{ width: 200 }} onClose={() => setShowOutlinerPanel(false)}>
                             <OutlinerPanel />
                         </DraggablePanel>
                     )}
 
                     {selectedItemIds.length > 0 && (
-                        <DraggablePanel title="Inspector" defaultPosition={{ x: window.innerWidth - 540, y: 80 }} defaultSize={{ width: 375 }} onFocusCapture={(e) => { if (e.target.tagName === 'INPUT') pushHistory(); }}>
+                        <DraggablePanel title="Inspector" defaultPosition={getSmartPosition(300, 600, 'right')} defaultSize={{ width: 300 }} onFocusCapture={(e) => { if (e.target.tagName === 'INPUT') pushHistory(); }}>
                             <InspectorPanel />
                         </DraggablePanel>
                     )}
 
                     {showCutlistPanel && (
-                        <DraggablePanel title="Project Cut List" defaultPosition={{ x: 100, y: 100 }} defaultSize={{ width: 600 }} onClose={() => setShowCutlistPanel(false)}>
+                        <DraggablePanel title="Project Cut List" defaultPosition={getSmartPosition(600, 500, 'center')} defaultSize={{ width: 600 }} onClose={() => setShowCutlistPanel(false)}>
                             <CutListPanel />
                         </DraggablePanel>
                     )}
 
                     {showAssemblyLibrary && (
-                        <DraggablePanel title="📦 Assembly Library" defaultPosition={{ x: 20, y: 100 }} defaultSize={{ width: 330 }} onClose={() => setShowAssemblyLibrary(false)}>
+                        <DraggablePanel title="📦 Assembly Library" defaultPosition={getSmartPosition(330, 400, 'left')} defaultSize={{ width: 330 }} onClose={() => setShowAssemblyLibrary(false)}>
                             <AssemblyLibraryPanel />
                         </DraggablePanel>
                     )}
 
                     {showLightingPanel && (
-                        <DraggablePanel title="💡 Lighting" defaultPosition={{ x: 370, y: 100 }} defaultSize={{ width: 310 }} onClose={() => setShowLightingPanel(false)}>
+                        <DraggablePanel title="💡 Lighting" defaultPosition={getSmartPosition(310, 400, 'left')} defaultSize={{ width: 310 }} onClose={() => setShowLightingPanel(false)}>
                             <LightingPanel />
                         </DraggablePanel>
                     )}
 
                     {showMaterialsPanel && (
-                        <DraggablePanel title="🎨 Materials" defaultPosition={{ x: 700, y: 100 }} defaultSize={{ width: 290 }} onClose={() => setShowMaterialsPanel(false)}>
+                        <DraggablePanel title="🎨 Materials" defaultPosition={getSmartPosition(290, 400, 'left')} defaultSize={{ width: 290 }} onClose={() => setShowMaterialsPanel(false)}>
                             <MaterialsPanel />
                         </DraggablePanel>
                     )}
 
                     {showAddComponentPanel && (
-                        <DraggablePanel title="＋ Add Component" defaultPosition={{ x: window.innerWidth / 2 - 130, y: 100 }} defaultSize={{ width: 260 }} onClose={() => setShowAddComponentPanel(false)}>
+                        <DraggablePanel title="＋ Add Component" defaultPosition={getSmartPosition(260, 300, 'left')} defaultSize={{ width: 260 }} onClose={() => setShowAddComponentPanel(false)}>
                             <AddComponentPanel />
                         </DraggablePanel>
                     )}
 
                     {showToolsPanel && (
-                        <DraggablePanel title="🛠 Tools" defaultPosition={{ x: window.innerWidth / 2 - 170, y: 120 }} defaultSize={{ width: 340 }} onClose={() => setShowToolsPanel(false)} onFocusCapture={(e) => { if (e.target.tagName === 'INPUT') pushHistory(); }}>
+                        <DraggablePanel title="🛠 Tools" defaultPosition={getSmartPosition(340, 250, 'left')} defaultSize={{ width: 340 }} onClose={() => setShowToolsPanel(false)} onFocusCapture={(e) => { if (e.target.tagName === 'INPUT') pushHistory(); }}>
                             <ToolsPanel />
+                        </DraggablePanel>
+                    )}
+
+                    {showHardwarePanel && (
+                        <DraggablePanel title="🔩 Hardware" defaultPosition={getSmartPosition(280, 450, 'left')} defaultSize={{ width: 280 }} onClose={() => setShowHardwarePanel(false)}>
+                            <HardwarePanel />
                         </DraggablePanel>
                     )}
                 </main>
@@ -163,6 +173,7 @@ export default function App() {
 
                 <NewBoardDialog />
                 <CabinetBuilderDialog />
+                <AiHelpDialog />
             </div>
         </div>
         </ErrorBoundary>
