@@ -1718,7 +1718,50 @@ export const createActions = (set, get) => ({
                             if (!targetIds.length) break;
                             setBoards(prev => prev.map(b => {
                                 if (!targetIds.includes(b.id.toString())) return b;
-                                if (action.reset) return { ...b, orientation: [0,0,0] };
+                                if (action.reset) {
+                                    // Compensate position when clearing pivot
+                                    const oldPiv = b.pivot || [0, 0, 0];
+                                    return { ...b, orientation: [0,0,0], pivot: undefined,
+                                        position: [b.position[0] - oldPiv[0], b.position[1] - oldPiv[1], b.position[2] - oldPiv[2]] };
+                                }
+
+                                // Resolve pivot preset name to [x, y, z] offset
+                                let pivotUpdate = {};
+                                let posUpdate = {};
+                                if (action.pivot && action.pivot !== 'center') {
+                                    const hx = b.size[0] / 2, hy = b.size[1] / 2, hz = b.size[2] / 2;
+                                    const pivotMap = {
+                                        'top':    [0,  hy, 0],   'bottom': [0, -hy, 0],
+                                        'front':  [0, 0,  hz],   'back':   [0, 0, -hz],
+                                        'right':  [ hx, 0, 0],   'left':   [-hx, 0, 0],
+                                        'bottom-left-front':  [-hx, -hy,  hz],
+                                        'bottom-right-front': [ hx, -hy,  hz],
+                                        'bottom-left-back':   [-hx, -hy, -hz],
+                                        'bottom-right-back':  [ hx, -hy, -hz],
+                                        'top-left-front':     [-hx,  hy,  hz],
+                                        'top-right-front':    [ hx,  hy,  hz],
+                                        'top-left-back':      [-hx,  hy, -hz],
+                                        'top-right-back':     [ hx,  hy, -hz],
+                                    };
+                                    const resolved = pivotMap[action.pivot];
+                                    if (resolved) {
+                                        const oldPiv = b.pivot || [0, 0, 0];
+                                        const dx = resolved[0] - oldPiv[0], dy = resolved[1] - oldPiv[1], dz = resolved[2] - oldPiv[2];
+                                        // For unrotated boards (most AI use cases), R=identity
+                                        const [rx, ry, rz] = b.orientation || [0, 0, 0];
+                                        let wx = dx, wy = dy, wz = dz;
+                                        if (rx !== 0 || ry !== 0 || rz !== 0) {
+                                            const ca = Math.cos(rx), sb = Math.sin(rx);
+                                            const cc = Math.cos(ry), sd = Math.sin(ry);
+                                            const ce = Math.cos(rz), sf = Math.sin(rz);
+                                            wx = (cc*ce+sd*sf*sb)*dx + (sd*sb*ce-cc*sf)*dy + (ca*sd)*dz;
+                                            wy = (ca*sf)*dx + (ca*ce)*dy + (-sb)*dz;
+                                            wz = (cc*sf*sb-sd*ce)*dx + (sd*sf+cc*ce*sb)*dy + (ca*cc)*dz;
+                                        }
+                                        pivotUpdate = { pivot: [...resolved] };
+                                        posUpdate = { position: [b.position[0] + wx, b.position[1] + wy, b.position[2] + wz] };
+                                    }
+                                }
                                 
                                 const ori = [...(b.orientation || [0,0,0])];
                                 let axis = 1;
@@ -1730,7 +1773,7 @@ export const createActions = (set, get) => ({
                                 } else {
                                     ori[axis] += (parseFloat(action.degrees) * Math.PI) / 180;
                                 }
-                                return { ...b, orientation: ori };
+                                return { ...b, orientation: ori, ...pivotUpdate, ...posUpdate };
                             }));
                             processedActions++;
                             break;

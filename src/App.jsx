@@ -15,6 +15,7 @@ import MaterialsPanel from './components/panels/MaterialsPanel';
 import AddComponentPanel from './components/panels/AddComponentPanel';
 import ToolsPanel from './components/panels/ToolsPanel';
 import HardwarePanel from './components/panels/HardwarePanel';
+import AnimationPanel from './components/panels/AnimationPanel';
 import NewBoardDialog from './components/dialogs/NewBoardDialog';
 import CabinetBuilderDialog from './components/dialogs/CabinetBuilderDialog';
 import AiHelpDialog from './components/dialogs/AiHelpDialog';
@@ -33,9 +34,11 @@ export default function App() {
         showAddComponentPanel, setShowAddComponentPanel,
         showToolsPanel, setShowToolsPanel,
         showHardwarePanel, setShowHardwarePanel,
+        showAnimationPanel, setShowAnimationPanel,
         showOutlinerPanel, setShowOutlinerPanel,
         isRightPanelOpen, setIsRightPanelOpen,
         selectedItemIds,
+        boards, groups,
         toast,
         computingMessage,
         confirmDialog, setConfirmDialog,
@@ -101,7 +104,15 @@ export default function App() {
                     )}
 
                     {selectedItemIds.length > 0 && (
-                        <DraggablePanel title="Inspector" defaultPosition={getSmartPosition(300, 600, 'right')} defaultSize={{ width: 300 }} onFocusCapture={(e) => { if (e.target.tagName === 'INPUT') pushHistory(); }}>
+                        <DraggablePanel title={`Inspector — ${(() => {
+                            if (selectedItemIds.length > 1) return `${selectedItemIds.length} Selected`;
+                            const id = selectedItemIds[0];
+                            const board = boards.find(b => b.id.toString() === id);
+                            if (board) return board.name;
+                            const group = Object.entries(groups || {}).find(([gid]) => gid === id);
+                            if (group) return group[1].name || group[0];
+                            return 'Selection';
+                        })()}`} defaultPosition={getSmartPosition(300, 600, 'right')} defaultSize={{ width: 300 }} onFocusCapture={(e) => { if (e.target.tagName === 'INPUT') pushHistory(); }}>
                             <InspectorPanel />
                         </DraggablePanel>
                     )}
@@ -145,6 +156,12 @@ export default function App() {
                     {showHardwarePanel && (
                         <DraggablePanel title="🔩 Hardware" defaultPosition={getSmartPosition(280, 450, 'left')} defaultSize={{ width: 280 }} onClose={() => setShowHardwarePanel(false)}>
                             <HardwarePanel />
+                        </DraggablePanel>
+                    )}
+
+                    {showAnimationPanel && (
+                        <DraggablePanel title="🎬 Animation" defaultPosition={getSmartPosition(320, 500, 'left')} defaultSize={{ width: 320 }} onClose={() => setShowAnimationPanel(false)}>
+                            <AnimationPanel />
                         </DraggablePanel>
                     )}
                 </main>

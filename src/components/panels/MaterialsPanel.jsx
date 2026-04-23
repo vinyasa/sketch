@@ -168,6 +168,7 @@ const MaterialsPanel = () => {
                 {/* ════ WOOD TAB ════ */}
                 {activeTab === 'wood' && (
                     <>
+                        <div className="inspector-card">
                         <span style={sectionLabel}>12 Species — click to apply</span>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '6px' }}>
                             {Object.entries(WOOD_CATALOGUE).map(([id, spec]) => (
@@ -180,6 +181,7 @@ const MaterialsPanel = () => {
                                 />
                             ))}
                         </div>
+                        </div>
                     </>
                 )}
 
@@ -187,7 +189,7 @@ const MaterialsPanel = () => {
                 {activeTab === 'color' && (
                     <>
                         {/* Custom picker */}
-                        <div>
+                        <div className="inspector-card">
                             <span style={sectionLabel}>Custom Colour</span>
                             <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                                 <input
@@ -219,7 +221,7 @@ const MaterialsPanel = () => {
 
                         {/* Recent colours */}
                         {recentColors.length > 0 && (
-                            <div>
+                            <div className="inspector-card">
                                 <span style={sectionLabel}>Recent</span>
                                 <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
                                     {recentColors.map(hex => (
@@ -234,7 +236,7 @@ const MaterialsPanel = () => {
                         )}
 
                         {/* Curated palette */}
-                        <div>
+                        <div className="inspector-card">
                             <span style={sectionLabel}>Palette</span>
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '5px' }}>
                                 {PAINT_PALETTE.map(({ hex, label }) => (

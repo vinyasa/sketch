@@ -65,10 +65,9 @@ const ToolsPanel = () => {
                     : null;
 
                 return (
-                    <div style={{
-                        padding: '12px', marginBottom: '14px', borderRadius: '8px',
+                    <div className="inspector-card" style={{
                         background: 'rgba(100, 180, 255, 0.06)',
-                        border: '1px solid rgba(100, 180, 255, 0.3)',
+                        borderColor: 'rgba(100, 180, 255, 0.3)',
                     }}>
                         <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#64b4ff', marginBottom: '8px' }}>
                             🔗 Dual Rabbet Joint
@@ -144,10 +143,9 @@ const ToolsPanel = () => {
             {canShowRabbetJoint && (() => {
                 const [bA, bB] = selectedBoards;
                 return (
-                    <div style={{
-                        padding: '12px', marginBottom: '14px', borderRadius: '8px',
+                    <div className="inspector-card" style={{
                         background: 'rgba(255, 140, 50, 0.06)',
-                        border: '1px solid rgba(255, 140, 50, 0.3)',
+                        borderColor: 'rgba(255, 140, 50, 0.3)',
                     }}>
                         <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#ff8c32', marginBottom: '8px' }}>
                             🔪 Boolean Subtract
@@ -185,7 +183,7 @@ const ToolsPanel = () => {
 
             {/* ── Tool Type Buttons ── */}
             {selectedBoard ? (
-                <div style={{ display: 'flex', gap: '6px', marginBottom: '14px' }}>
+                <div className="inspector-card" style={{ display: 'flex', gap: '6px' }}>
                     <button
                         onClick={() => handleAddTool({ id: Date.now(), type: 'hole', radius: 1, offsetX: 0, offsetY: 0, axis: 'y' })}
                         style={addToolBtnStyle}
@@ -223,7 +221,7 @@ const ToolsPanel = () => {
 
             {/* ── Tool summaries (when not editing a specific tool) ── */}
             {selectedBoard && !editingOp && allOps.length > 0 && (
-                <div>
+                <div className="inspector-card">
                     <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px' }}>Applied Tools</div>
                     {allOps.map((op) => {
                         const isNew = pendingIds.has(op.id);
@@ -346,10 +344,9 @@ const ToolsPanel = () => {
                 const icon = { hole: '◎', cove: '◡', arc: '◠', dado: '✂', miter: '⊿', subtract: '🔪' }[op.type] || '●';
 
                 return (
-                    <div style={{
-                        padding: '12px', borderRadius: '8px',
+                    <div className="inspector-card" style={{
                         background: 'rgba(188,138,95,0.06)',
-                        border: '1px solid rgba(188,138,95,0.4)',
+                        borderColor: 'rgba(188,138,95,0.4)',
                     }}>
                         {/* Header */}
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>

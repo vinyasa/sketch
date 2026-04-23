@@ -70,11 +70,9 @@ const useStore = create((set, get) => ({
         set({ cameraState: next });
         try {
             const s = localStorage.getItem('lucey_save');
-            if (s) {
-                const p = JSON.parse(s);
-                p.cameraState = next;
-                localStorage.setItem('lucey_save', JSON.stringify(p));
-            }
+            const p = s ? JSON.parse(s) : {};
+            p.cameraState = next;
+            localStorage.setItem('lucey_save', JSON.stringify(p));
         } catch(e) {}
     },
 
@@ -101,6 +99,33 @@ const useStore = create((set, get) => ({
 
     showHardwarePanel: false,
     setShowHardwarePanel: (v) => set({ showHardwarePanel: typeof v === 'function' ? v(get().showHardwarePanel) : v }),
+
+    showAnimationPanel: false,
+    setShowAnimationPanel: (v) => set({ showAnimationPanel: typeof v === 'function' ? v(get().showAnimationPanel) : v }),
+
+    // ─── Animation state ──────────────────────────────────────────────────────
+    animation: {
+        boardAnim: {
+            boardId: null,
+            start: null,    // { orientation: [x,y,z], pivot: [x,y,z]|undefined }
+            end: null,
+            playing: false,
+            progress: 0,
+            speed: 1.0,
+            duration: 2.0,
+            loop: false,
+            bounce: false,
+            easing: 'ease-in-out',
+        },
+        turntable: {
+            playing: false,
+            speed: 6,
+            height: 20,
+        },
+    },
+    setAnimation: (updater) => set(state => ({
+        animation: typeof updater === 'function' ? updater(state.animation) : { ...state.animation, ...updater },
+    })),
 
     // Which hardware piece is currently selected (null = none)
     selectedHardwareId: null,

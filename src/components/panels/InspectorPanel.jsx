@@ -149,18 +149,34 @@ const InspectorPanel = () => {
                         <div style={{ backgroundColor: 'rgba(60, 150, 255, 0.15)' }}>Z<input type="number" value={fmt4(overallSize[2])} disabled /></div>
                     </div>
                 </div>
-                {!isWorkspace && (
-                    <div className="inspector-section">
-                        <h4>Move Group (delta in)</h4>
-                        <div className="vec3-inputs">
-                            <div style={{ backgroundColor: 'rgba(255, 60, 60, 0.15)' }}>X<input type="number" step="0.5" defaultValue={0} onBlur={e => { const v = parseFloat(e.target.value) || 0; if (v !== 0) { moveGroup(selectedGroup, 0, v); e.target.value = 0; } }} onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); }} /></div>
-                            <div style={{ backgroundColor: 'rgba(60, 200, 90, 0.15)' }}>Y<input type="number" step="0.5" defaultValue={0} onBlur={e => { const v = parseFloat(e.target.value) || 0; if (v !== 0) { moveGroup(selectedGroup, 1, v); e.target.value = 0; } }} onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); }} /></div>
-                            <div style={{ backgroundColor: 'rgba(60, 150, 255, 0.15)' }}>Z<input type="number" step="0.5" defaultValue={0} onBlur={e => { const v = parseFloat(e.target.value) || 0; if (v !== 0) { moveGroup(selectedGroup, 2, v); e.target.value = 0; } }} onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); }} /></div>
+                {!isWorkspace && (() => {
+                    // Compute centroid of all child boards
+                    const cx = childBoards.length > 0 ? fmt4(childBoards.reduce((s, b) => s + b.position[0], 0) / childBoards.length) : 0;
+                    const cy = childBoards.length > 0 ? fmt4(childBoards.reduce((s, b) => s + b.position[1], 0) / childBoards.length) : 0;
+                    const cz = childBoards.length > 0 ? fmt4(childBoards.reduce((s, b) => s + b.position[2], 0) / childBoards.length) : 0;
+                    const centroid = [cx, cy, cz];
+
+                    const handleCentroidChange = (axis, newVal) => {
+                        const v = parseFloat(newVal);
+                        if (isNaN(v)) return;
+                        const delta = v - centroid[axis];
+                        if (Math.abs(delta) < 0.0001) return;
+                        moveGroup(selectedGroup, axis, delta);
+                    };
+
+                    return (
+                        <div className="inspector-section">
+                            <h4>Position (in)</h4>
+                            <div className="vec3-inputs">
+                                <div style={{ backgroundColor: 'rgba(255, 60, 60, 0.15)' }}>X<input type="number" step="0.125" value={centroid[0]} onChange={e => handleCentroidChange(0, e.target.value)} /></div>
+                                <div style={{ backgroundColor: 'rgba(60, 200, 90, 0.15)' }}>Y<input type="number" step="0.125" value={centroid[1]} onChange={e => handleCentroidChange(1, e.target.value)} /></div>
+                                <div style={{ backgroundColor: 'rgba(60, 150, 255, 0.15)' }}>Z<input type="number" step="0.125" value={centroid[2]} onChange={e => handleCentroidChange(2, e.target.value)} /></div>
+                            </div>
+                            <button style={{ marginTop: '8px', width: '100%' }} className="primary-btn" onClick={dropGroupToFloor}>↓ Set on Floor</button>
+                            <p className="hint" style={{ marginTop: '6px' }}>Assembly centroid — changes move all children in real time.</p>
                         </div>
-                        <button style={{ marginTop: '8px', width: '100%' }} className="primary-btn" onClick={dropGroupToFloor}>↓ Set on Floor</button>
-                        <p className="hint" style={{ marginTop: '6px' }}>Enter a delta value and press Enter to shift all children.</p>
-                    </div>
-                )}
+                    );
+                })()}
                 {groups[selectedGroup].meta && groups[selectedGroup].meta.type === 'procedural-box' && (
                     <div className="inspector-section" style={{ background: 'rgba(188, 138, 95, 0.1)', border: '1px solid rgba(188, 138, 95, 0.3)' }}>
                         <h4 style={{ color: 'var(--accent-color)' }}>Procedural Box Generator</h4>
@@ -466,10 +482,7 @@ const InspectorPanel = () => {
         return (
             <>
                 {ConstraintBanner}
-                <div className="inspector-title" style={{ marginBottom: '16px' }}>
-                    <input type="text" value={selectedBoard.name} onChange={e => { const v = e.target.value; setBoards(prev => prev.map(b => b.id === selectedBoard.id ? { ...b, name: v } : b)); }} title="Click to rename component" style={{ width: '100%', background: 'rgba(128,128,128,0.15)', padding: '6px 12px', borderRadius: '6px', border: '1px solid var(--border-color)', color: 'var(--accent-color)', fontSize: 'inherit', fontWeight: 'inherit', outline: 'none' }} />
-                </div>
-                <div className="inspector-section">
+                <div className="inspector-card">
                     <h4>Size (in)</h4>
                     <div className="vec3-inputs">
                         <div style={{ backgroundColor: 'rgba(255, 60, 60, 0.15)' }}>X<input type="number" step="0.125" value={fmt4(selectedBoard.size[0])} onChange={e => updateVector('size', 0, e.target.value)} /></div>
@@ -481,7 +494,7 @@ const InspectorPanel = () => {
                     </div>
                 </div>
 
-                <div className="inspector-section">
+                <div className="inspector-card">
                     <h4>Position (in)</h4>
                     <div className="vec3-inputs">
                         <div style={{ backgroundColor: 'rgba(255, 60, 60, 0.15)' }}>X<input type="number" step="0.125" value={fmt4(selectedBoard.position[0])} onChange={e => updateVector('position', 0, e.target.value)} /></div>
@@ -490,7 +503,156 @@ const InspectorPanel = () => {
                     </div>
                     <button style={{ marginTop: '8px', width: '100%' }} className="primary-btn" onClick={dropBoardToFloor}>↓ Set on Floor</button>
                 </div>
-                <div className="inspector-section">
+                {/* ── Pivot Point ── */}
+                <div className="inspector-card">
+                    <h4>Pivot Point</h4>
+                    {(() => {
+                        const pivot = selectedBoard.pivot || [0, 0, 0];
+                        const hasPivot = pivot[0] !== 0 || pivot[1] !== 0 || pivot[2] !== 0;
+                        const hx = selectedBoard.size[0] / 2;
+                        const hy = selectedBoard.size[1] / 2;
+                        const hz = selectedBoard.size[2] / 2;
+
+                        // Build preset list: [label, [px, py, pz]]
+                        const presets = [
+                            ['Center', [0, 0, 0]],
+                            // Face centers
+                            ['Top Face',    [0,  hy, 0]],
+                            ['Bottom Face', [0, -hy, 0]],
+                            ['Front Face',  [0, 0,  hz]],
+                            ['Back Face',   [0, 0, -hz]],
+                            ['Right Face',  [ hx, 0, 0]],
+                            ['Left Face',   [-hx, 0, 0]],
+                            // Bottom corners
+                            ['Bottom-Left-Front',   [-hx, -hy,  hz]],
+                            ['Bottom-Right-Front',  [ hx, -hy,  hz]],
+                            ['Bottom-Left-Back',    [-hx, -hy, -hz]],
+                            ['Bottom-Right-Back',   [ hx, -hy, -hz]],
+                            // Top corners
+                            ['Top-Left-Front',      [-hx,  hy,  hz]],
+                            ['Top-Right-Front',     [ hx,  hy,  hz]],
+                            ['Top-Left-Back',       [-hx,  hy, -hz]],
+                            ['Top-Right-Back',      [ hx,  hy, -hz]],
+                        ];
+
+                        // Find which preset matches the current pivot
+                        const matchIdx = presets.findIndex(([_, p]) =>
+                            Math.abs(p[0] - pivot[0]) < 0.001 &&
+                            Math.abs(p[1] - pivot[1]) < 0.001 &&
+                            Math.abs(p[2] - pivot[2]) < 0.001
+                        );
+
+                        const handlePresetChange = (e) => {
+                            const idx = parseInt(e.target.value);
+                            if (isNaN(idx) || idx < 0) return;
+                            const [_, newPivot] = presets[idx];
+                            pushHistory();
+                            setBoards(prev => prev.map(bd => {
+                                if (bd.id !== selectedBoard.id) return bd;
+                                const oldPiv = bd.pivot || [0, 0, 0];
+                                const np = newPivot[0] === 0 && newPivot[1] === 0 && newPivot[2] === 0 ? undefined : [...newPivot];
+                                const dx = (np ? np[0] : 0) - oldPiv[0];
+                                const dy = (np ? np[1] : 0) - oldPiv[1];
+                                const dz = (np ? np[2] : 0) - oldPiv[2];
+                                // Rotate the delta through the board's orientation so position stays correct
+                                const [rx, ry, rz] = bd.orientation || [0, 0, 0];
+                                let wx = dx, wy = dy, wz = dz;
+                                if (rx !== 0 || ry !== 0 || rz !== 0) {
+                                    const a = Math.cos(rx), sb = Math.sin(rx);
+                                    const c = Math.cos(ry), d = Math.sin(ry);
+                                    const ce = Math.cos(rz), f = Math.sin(rz);
+                                    const cce = c*ce, ccf = c*f, de = d*ce, df = d*f;
+                                    wx = (cce+df*sb)*dx + (de*sb-ccf)*dy + (a*d)*dz;
+                                    wy = (a*f)*dx + (a*ce)*dy + (-sb)*dz;
+                                    wz = (ccf*sb-de)*dx + (df+cce*sb)*dy + (a*c)*dz;
+                                }
+                                return {
+                                    ...bd,
+                                    pivot: np,
+                                    position: [bd.position[0] + wx, bd.position[1] + wy, bd.position[2] + wz],
+                                };
+                            }));
+                        };
+
+                        const handleReset = () => {
+                            pushHistory();
+                            setBoards(prev => prev.map(bd => {
+                                if (bd.id !== selectedBoard.id) return bd;
+                                const oldPiv = bd.pivot || [0, 0, 0];
+                                // Reverse: new pivot is [0,0,0], so delta = -oldPiv
+                                const dx = -oldPiv[0], dy = -oldPiv[1], dz = -oldPiv[2];
+                                const [rx, ry, rz] = bd.orientation || [0, 0, 0];
+                                let wx = dx, wy = dy, wz = dz;
+                                if (rx !== 0 || ry !== 0 || rz !== 0) {
+                                    const a = Math.cos(rx), sb = Math.sin(rx);
+                                    const c = Math.cos(ry), d = Math.sin(ry);
+                                    const ce = Math.cos(rz), f = Math.sin(rz);
+                                    const cce = c*ce, ccf = c*f, de = d*ce, df = d*f;
+                                    wx = (cce+df*sb)*dx + (de*sb-ccf)*dy + (a*d)*dz;
+                                    wy = (a*f)*dx + (a*ce)*dy + (-sb)*dz;
+                                    wz = (ccf*sb-de)*dx + (df+cce*sb)*dy + (a*c)*dz;
+                                }
+                                return {
+                                    ...bd,
+                                    pivot: undefined,
+                                    position: [bd.position[0] + wx, bd.position[1] + wy, bd.position[2] + wz],
+                                };
+                            }));
+                        };
+
+                        return (
+                            <>
+                                <select
+                                    value={matchIdx >= 0 ? matchIdx : -1}
+                                    onChange={handlePresetChange}
+                                    style={{
+                                        width: '100%', padding: '6px 8px', marginTop: '4px',
+                                        background: 'var(--bg-color)', color: 'var(--text-main)',
+                                        border: `1px solid ${hasPivot ? 'rgba(255, 0, 255, 0.5)' : 'var(--border-color)'}`,
+                                        borderRadius: '6px', fontSize: '0.82rem', outline: 'none',
+                                        cursor: 'pointer',
+                                    }}
+                                >
+                                    {matchIdx < 0 && <option value={-1} disabled>Custom ({pivot.map(v => v.toFixed(2)).join(', ')})</option>}
+                                    <optgroup label="Default">
+                                        <option value={0}>⊕ Center (default)</option>
+                                    </optgroup>
+                                    <optgroup label="Face Centers">
+                                        {presets.slice(1, 7).map((p, i) => (
+                                            <option key={i + 1} value={i + 1}>◻ {p[0]}</option>
+                                        ))}
+                                    </optgroup>
+                                    <optgroup label="Bottom Corners">
+                                        {presets.slice(7, 11).map((p, i) => (
+                                            <option key={i + 7} value={i + 7}>◇ {p[0]}</option>
+                                        ))}
+                                    </optgroup>
+                                    <optgroup label="Top Corners">
+                                        {presets.slice(11).map((p, i) => (
+                                            <option key={i + 11} value={i + 11}>◇ {p[0]}</option>
+                                        ))}
+                                    </optgroup>
+                                </select>
+                                {hasPivot && (
+                                    <button
+                                        className="nav-btn"
+                                        style={{ marginTop: '6px', width: '100%', padding: '4px', fontSize: '0.72rem', border: '1px solid var(--border-color)' }}
+                                        onClick={handleReset}
+                                    >
+                                        Reset to Center
+                                    </button>
+                                )}
+                                <p className="hint" style={{ marginTop: '6px' }}>
+                                    {hasPivot
+                                        ? '⊕ Magenta sphere shows the current pivot in the 3D view.'
+                                        : 'Board rotates around its center. Change to rotate around an edge or corner.'}
+                                </p>
+                            </>
+                        );
+                    })()}
+                </div>
+
+                <div className="inspector-card">
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <h4>Local Orientation</h4>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -538,216 +700,34 @@ const InspectorPanel = () => {
                     <p className="hint" style={{ marginTop: '6px' }}>Orientation is local — operations (miter, dado, etc.) stay on their original faces.</p>
                 </div>
 
-                    {/* ── Shape Picker ── */}
-                <div className="inspector-card">
-                    <h4>Shape</h4>
-                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '4px' }}>
-                        {['box', 'taper', 'cylinder'].map(s => (
-                            <button
-                                key={s}
-                                onClick={() => {
-                                    pushHistory();
-                                    let patch;
-                                    if (s === 'box') {
-                                        patch = { shape: undefined, taper: undefined, cylinder: undefined };
-                                    } else if (s === 'taper') {
-                                        patch = { shape: 'taper', taper: { angleLeft: 2, angleRight: 2, angleFront: 2, angleBack: 2 }, cylinder: undefined };
-                                    } else if (s === 'cylinder') {
-                                        const r = Math.min(selectedBoard.size[0], selectedBoard.size[2]) / 2;
-                                        const h = selectedBoard.size[1];
-                                        patch = { shape: 'cylinder', cylinder: { radius: r, axis: 'y' }, size: [r * 2, h, r * 2], taper: undefined };
-                                    }
-                                    setBoards(prev => prev.map(bd =>
-                                        bd.id === selectedBoard.id ? { ...bd, ...patch } : bd
-                                    ));
-                                }}
-                                style={{
-                                    padding: '5px 14px',
-                                    fontSize: '0.78rem',
-                                    fontWeight: 600,
-                                    borderRadius: '6px',
-                                    border: (selectedBoard.shape ?? 'box') === s
-                                        ? '1px solid rgba(188,138,95,0.8)'
-                                        : '1px solid var(--border-color)',
-                                    background: (selectedBoard.shape ?? 'box') === s
-                                        ? 'rgba(188,138,95,0.2)'
-                                        : 'transparent',
-                                    color: (selectedBoard.shape ?? 'box') === s
-                                        ? 'var(--accent-color)'
-                                        : 'var(--text-muted)',
-                                    cursor: 'pointer',
-                                    textTransform: 'capitalize',
-                                    transition: 'all 0.15s',
-                                }}
-                            >
-                                {s === 'box' ? '■ Box' : s === 'taper' ? '◢ Taper' : '○ Cylinder'}
-                            </button>
-                        ))}
-                    </div>
-
-                    {selectedBoard.shape === 'taper' && (() => {
-                        const { angleLeft: aL, angleRight: aR, angleFront: aF, angleBack: aB } = normalizeTaper(selectedBoard.taper);
-                        const { xBottom, zBottom, xWarn, zWarn } = taperValidation(
-                            selectedBoard.size[0], selectedBoard.size[1], selectedBoard.size[2], aL, aR, aF, aB
-                        );
-                        const setAngle = (key, val) => {
-                            const v = Math.max(0, Math.min(89, parseFloat(val) || 0));
-                            pushHistory();
-                            setBoards(prev => prev.map(bd =>
-                                bd.id === selectedBoard.id
-                                    ? { ...bd, taper: { ...normalizeTaper(bd.taper), [key]: v } } : bd
-                            ));
-                        };
-                        const inputStyle = (warn) => ({
-                            width: '100%', padding: '5px 8px', background: 'var(--bg-color)', color: 'var(--text-main)',
-                            border: `1px solid ${warn ? '#ff3b30' : 'var(--border-color)'}`, borderRadius: '6px', outline: 'none', fontSize: '0.9rem',
-                        });
-
-                        return (
-                            <div style={{ marginTop: '10px' }}>
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
-                                    <div>
-                                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Left (X−) °</div>
-                                        <input type="number" min="0" max="89" step="0.5" value={aL}
-                                            onChange={e => setAngle('angleLeft', e.target.value)}
-                                            style={inputStyle(xWarn)} />
-                                    </div>
-                                    <div>
-                                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Right (X+) °</div>
-                                        <input type="number" min="0" max="89" step="0.5" value={aR}
-                                            onChange={e => setAngle('angleRight', e.target.value)}
-                                            style={inputStyle(xWarn)} />
-                                    </div>
-                                    <div>
-                                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Front (Z+) °</div>
-                                        <input type="number" min="0" max="89" step="0.5" value={aF}
-                                            onChange={e => setAngle('angleFront', e.target.value)}
-                                            style={inputStyle(zWarn)} />
-                                    </div>
-                                    <div>
-                                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Back (Z−) °</div>
-                                        <input type="number" min="0" max="89" step="0.5" value={aB}
-                                            onChange={e => setAngle('angleBack', e.target.value)}
-                                            style={inputStyle(zWarn)} />
-                                    </div>
-                                </div>
-                                <div style={{ padding: '7px 10px', borderRadius: '6px', fontSize: '0.75rem', background: (xWarn || zWarn) ? 'rgba(255,59,48,0.08)' : 'rgba(60,200,90,0.08)', border: `1px solid ${(xWarn || zWarn) ? 'rgba(255,59,48,0.3)' : 'rgba(60,200,90,0.25)'}`, color: 'var(--text-muted)' }}>
-                                    Bottom: <span style={{ color: xWarn ? '#ff3b30' : 'var(--text-main)', fontWeight: 600 }}>X' = {Math.max(0, xBottom).toFixed(3)}"</span> × <span style={{ color: zWarn ? '#ff3b30' : 'var(--text-main)', fontWeight: 600 }}>Z' = {Math.max(0, zBottom).toFixed(3)}"</span>
-                                </div>
-                                <p className="hint" style={{ marginTop: '6px' }}>Top face is full size. Each side tapers inward independently. Bounding box and constraints use full size.</p>
-                            </div>
-                        );
-                    })()}
-
-                    {selectedBoard.shape === 'cylinder' && (() => {
-                        const axis = selectedBoard.cylinder?.axis || 'y';
-                        const axisIdx = axis === 'x' ? 0 : axis === 'z' ? 2 : 1;
-
-                        const dim1 = selectedBoard.size[(axisIdx + 1) % 3];
-                        const dim2 = selectedBoard.size[(axisIdx + 2) % 3];
-
-                        const radius = selectedBoard.cylinder?.radius ?? Math.min(dim1, dim2) / 2;
-                        const height = selectedBoard.size[axisIdx];
-
-                        const setRadius = (val) => {
-                            const r = Math.max(0.0625, parseFloat(val) || 0.0625);
-                            pushHistory();
-                            setBoards(prev => prev.map(bd => {
-                                if (bd.id !== selectedBoard.id) return bd;
-                                const newSize = [...bd.size];
-                                newSize[(axisIdx + 1) % 3] = r * 2;
-                                newSize[(axisIdx + 2) % 3] = r * 2;
-                                return { ...bd, cylinder: { ...(bd.cylinder || {}), radius: r }, size: newSize };
-                            }));
-                        };
-                        const setHeight = (val) => {
-                            const h = Math.max(0.0625, parseFloat(val) || 0.0625);
-                            pushHistory();
-                            setBoards(prev => prev.map(bd => {
-                                if (bd.id !== selectedBoard.id) return bd;
-                                const newSize = [...bd.size];
-                                newSize[axisIdx] = h;
-                                return { ...bd, size: newSize };
-                            }));
-                        };
-                        return (
-                            <div style={{ marginTop: '10px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                                <div>
-                                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Radius (in)</div>
-                                    <input
-                                        type="number" min="0.0625" step="0.125" value={parseFloat(radius.toFixed(4))}
-                                        onChange={e => setRadius(e.target.value)}
-                                        style={{ width: '100%', padding: '5px 8px', background: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '6px', outline: 'none', fontSize: '0.9rem' }}
-                                    />
-                                    <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: '2px' }}>Diam: {(radius * 2).toFixed(4)}"</div>
-                                </div>
-                                <div>
-                                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Height (in)</div>
-                                    <input
-                                        type="number" min="0.0625" step="0.125" value={parseFloat(height.toFixed(4))}
-                                        onChange={e => setHeight(e.target.value)}
-                                        style={{ width: '100%', padding: '5px 8px', background: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '6px', outline: 'none', fontSize: '0.9rem' }}
-                                    />
-                                </div>
-                                <p className="hint" style={{ gridColumn: '1 / -1', marginTop: '2px' }}>
-                                    AABB (for constraints): {selectedBoard.size[0].toFixed(3)}" × {selectedBoard.size[1].toFixed(3)}" × {selectedBoard.size[2].toFixed(3)}"
-                                </p>
-                            </div>
-                        );
-                    })()}
-
-                    {/* ── Operations Stack ── */}
-                    </div>
-                    <div className="inspector-card" style={{ marginTop: '14px' }}>
+                    <div className="inspector-card">
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <h4 style={{ margin: 0 }}>Tools</h4>
                             <button
                                 onClick={() => setShowToolsPanel(true)}
                                 style={{ background: 'none', border: 'none', color: 'var(--accent-color)', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600 }}
-                            >+ Add</button>
+                            >{(selectedBoard.operations || []).length > 0 ? '🛠 Open Tools Panel' : '+ Add'}</button>
                         </div>
                         {(selectedBoard.operations || []).length === 0 ? (
                             <div className="hint" style={{ marginTop: '6px' }}>No tools applied.</div>
                         ) : (
-                            (selectedBoard.operations || []).map(op => {
-                                const icon = { hole: '◎', cove: '◡', arc: '◠', dado: '✂', miter: '⊿' }[op.type] || '●';
-                                const summary = getToolSummary(op);
-                                return (
-                                    <div key={op.id} style={{
-                                        padding: '6px 8px', marginTop: '6px',
-                                        background: 'rgba(255,255,255,0.03)',
-                                        border: '1px solid var(--border-color)',
-                                        borderRadius: '6px',
-                                        opacity: op.enabled === false ? 0.5 : 1
-                                    }}>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                            <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-main)', textTransform: 'capitalize' }}>
-                                                {icon} {op.type}
-                                            </span>
-                                            <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-                                                <button
-                                                    onClick={() => updateOperation(selectedBoard.id, op.id, { enabled: op.enabled === false ? true : false })}
-                                                    title={op.enabled === false ? 'Enable Cut' : 'Disable Cut'}
-                                                    style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.85rem', padding: '0 4px', transition: 'color 0.2s' }}
-                                                    onMouseEnter={e => e.target.style.color = 'var(--text-main)'}
-                                                    onMouseLeave={e => e.target.style.color = 'var(--text-muted)'}
-                                                >
-                                                    {op.enabled === false ? '⊘' : '👁'}
-                                                </button>
-                                                <button
-                                                    onClick={() => { setEditingToolOpId(op.id); setShowToolsPanel(true); }}
-                                                    style={{ background: 'none', border: 'none', color: 'var(--accent-color)', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600, padding: '1px 5px' }}
-                                                >✎ Edit</button>
-                                                <button
-                                                    onClick={() => removeOperation(selectedBoard.id, op.id)}
-                                                    style={{ background: 'none', border: 'none', color: '#ff3b30', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600, padding: '1px 5px' }}
-                                                >✕</button>
-                                            </div>
-                                        </div>
-                                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '2px' }}>{summary}</div>
-                                    </div>
-                                );
-                            })
+                            <div style={{ marginTop: '6px', display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                                {(selectedBoard.operations || []).map(op => {
+                                    const icon = { hole: '◎', cove: '◡', arc: '◠', dado: '✂', miter: '⊿' }[op.type] || '●';
+                                    return (
+                                        <span key={op.id} style={{
+                                            padding: '2px 8px', fontSize: '0.72rem', fontWeight: 500,
+                                            borderRadius: '4px', textTransform: 'capitalize',
+                                            background: op.enabled === false ? 'rgba(128,128,128,0.1)' : 'rgba(188,138,95,0.12)',
+                                            border: `1px solid ${op.enabled === false ? 'var(--border-color)' : 'rgba(188,138,95,0.3)'}`,
+                                            color: op.enabled === false ? 'var(--text-muted)' : 'var(--accent-color)',
+                                            opacity: op.enabled === false ? 0.6 : 1,
+                                        }}>
+                                            {icon} {op.type}
+                                        </span>
+                                    );
+                                })}
+                            </div>
                         )}
                     </div>
                 {/* ── Material ── */}

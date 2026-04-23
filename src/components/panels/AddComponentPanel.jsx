@@ -45,12 +45,12 @@ const ShapeCard = ({ shape, onAdd }) => {
             onClick={() => onAdd(shape)}
             style={{
                 display: 'flex', alignItems: 'center', gap: '10px',
-                cursor: 'pointer', margin: 0, marginBottom: '6px',
-                background: hov ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.03)',
-                border: `1px solid ${hov ? shape.color + '80' : 'var(--border-color)'}`,
+                cursor: 'pointer',
+                background: hov ? 'rgba(255,255,255,0.08)' : undefined,
+                borderColor: hov ? shape.color + '80' : undefined,
                 transition: 'all 0.15s',
-                transform: hov ? 'translateY(-2px)' : 'none',
-                boxShadow: hov ? `0 6px 16px rgba(0,0,0,0.3)` : 'none',
+                transform: hov ? 'translateY(-1px)' : 'none',
+                boxShadow: hov ? '0 4px 12px rgba(0,0,0,0.25)' : 'none',
             }}
         >
             {/* Icon bubble */}

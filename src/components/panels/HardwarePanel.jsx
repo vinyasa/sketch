@@ -13,12 +13,12 @@ const HardwareCard = ({ item, onAdd, onRemove }) => {
             onMouseLeave={() => setHov(false)}
             style={{
                 display: 'flex', alignItems: 'center', gap: '10px',
-                cursor: 'pointer', margin: 0, marginBottom: '6px',
-                background: hov ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.03)',
-                border: `1px solid ${hov ? 'var(--accent-color)' : 'var(--border-color)'}`,
+                cursor: 'pointer',
+                background: hov ? 'rgba(255,255,255,0.08)' : undefined,
+                borderColor: hov ? 'var(--accent-color)' : undefined,
                 transition: 'all 0.15s',
-                transform: hov ? 'translateY(-2px)' : 'none',
-                boxShadow: hov ? '0 6px 16px rgba(0,0,0,0.3)' : 'none',
+                transform: hov ? 'translateY(-1px)' : 'none',
+                boxShadow: hov ? '0 4px 12px rgba(0,0,0,0.25)' : 'none',
             }}
         >
             <div style={{
@@ -193,7 +193,7 @@ const HardwarePanel = () => {
             )}
 
             {visibleCategories.map(([category, items]) => (
-                <div key={category}>
+                <div key={category} className="inspector-card">
                     <div style={{
                         fontSize: '0.6rem', color: 'var(--text-muted)', textTransform: 'uppercase',
                         letterSpacing: '0.6px', fontWeight: 700, marginBottom: '6px',
@@ -223,7 +223,7 @@ const HardwarePanel = () => {
             )}
 
             {/* ── Custom Models Section ── */}
-            <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '10px' }}>
+            <div className="inspector-card">
                 <div style={{
                     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                     marginBottom: '6px',

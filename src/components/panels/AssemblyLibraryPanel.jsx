@@ -511,7 +511,7 @@ const AssemblyLibraryPanel = () => {
 
             {/* ── Filter row ── */}
             {assemblyLibrary.length > 0 && (
-                <div style={{ display: 'flex', gap: '6px' }}>
+                <div className="inspector-card" style={{ display: 'flex', gap: '6px' }}>
                     <input
                         value={filterText}
                         onChange={e => setFilterText(e.target.value)}
@@ -555,7 +555,7 @@ const AssemblyLibraryPanel = () => {
                     No matches for "{filterText}"
                 </div>
             ) : (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', overflowY: 'auto', alignContent: 'flex-start' }}>
+                <div className="inspector-card" style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', overflowY: 'auto', alignContent: 'flex-start' }}>
                     {filtered.map(entry => (
                         <LibraryCard
                             key={entry.id}
@@ -569,7 +569,7 @@ const AssemblyLibraryPanel = () => {
             )}
 
             {/* ── Footer ── */}
-            <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '8px', display: 'flex', flexDirection: 'column', gap: '4px', marginTop: 'auto' }}>
+            <div className="inspector-card" style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: 'auto' }}>
                 <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: '2px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: libraryDiskHandle ? '#34c759' : '#ff9f0a', display: 'inline-block', flexShrink: 0 }} />
                     {libraryDiskHandle ? 'Disk backup: active' : 'Disk backup: not configured'}

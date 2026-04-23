@@ -16,6 +16,7 @@ const AppHeader = () => {
         showAddComponentPanel, setShowAddComponentPanel,
         showToolsPanel, setShowToolsPanel,
         showHardwarePanel, setShowHardwarePanel,
+        showAnimationPanel, setShowAnimationPanel,
         showOutlinerPanel, setShowOutlinerPanel,
         isOrtho, setIsOrtho,
         showGrid, setShowGrid,
@@ -125,7 +126,14 @@ const AppHeader = () => {
                     <input type="checkbox" checked={showDimensions} onChange={e => setShowDimensions(e.target.checked)} style={{ accentColor: 'var(--accent-color)', width: '12px', height: '12px', cursor: 'pointer' }} />
                     Dims
                 </label>
-                {/* Col 7: empty */}
+                {/* Col 7: Animate (under Cut List) */}
+                <button
+                    className={`nav-btn ${showAnimationPanel ? 'active' : ''}`}
+                    onClick={() => setShowAnimationPanel(!showAnimationPanel)}
+                    title="Animate board rotations and camera turntable"
+                >
+                    🎬 Animate
+                </button>
             </nav>
         </header>
     );

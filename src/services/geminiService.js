@@ -37,7 +37,8 @@ Available Action Types & Schemas:
   "axis": "x" | "y" | "z",
   "degrees": float (amount to rotate. 0 if resetting),
   "flip": boolean (true if the user asks to "flip", sets orientation to exactly 180),
-  "reset": boolean (true if user asks to reset rotation to 0)
+  "reset": boolean (true if user asks to reset rotation to 0),
+  "pivot": string (OPTIONAL — sets the rotation pivot point. Use when the user mentions rotating around an edge, corner, or face. Values: "center" (default), "top", "bottom", "front", "back", "left", "right", "bottom-left-front", "bottom-right-front", "bottom-left-back", "bottom-right-back", "top-left-front", "top-right-front", "top-left-back", "top-right-back". Interpret edge references: "top back edge" = "top-left-back" or "top-right-back" — pick the one closest to the rotation axis. "back edge" = "back". For hinges, use the face or corner closest to the hinge.)
 }
 
 4. MATERIAL: Changing the wood species or paint.
@@ -109,12 +110,6 @@ IMPORTANT:
 `;
 
 export async function parseUserIntent(query, workspaceContext) {
-    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-
-    if (!apiKey) {
-        throw new Error("VITE_GEMINI_API_KEY is not defined in the environment variables.");
-    }
-
     const contextString = `
 Current Workspace State:
 Selected Items Count: ${workspaceContext.selectedItemIds.length}
@@ -126,7 +121,7 @@ ${workspaceContext.boards.slice(0, 5).map(b => `- "${b.name}" (ID: ${b.id}) Size
 User Query: "${query}"
 `;
 
-    const payload = {
+    const geminiPayload = {
         system_instruction: {
             parts: [{ text: SYSTEM_PROMPT }]
         },
@@ -143,11 +138,24 @@ User Query: "${query}"
     };
 
     try {
-        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
+        let response;
+        const localApiKey = import.meta.env.VITE_GEMINI_API_KEY;
+
+        if (localApiKey) {
+            // Local dev — call Gemini directly (no PHP server running)
+            response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${localApiKey}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(geminiPayload)
+            });
+        } else {
+            // Production — route through PHP proxy (API key stays server-side)
+            response = await fetch(`${import.meta.env.BASE_URL}api/gemini.php`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ model: 'gemini-2.5-flash', payload: geminiPayload })
+            });
+        }
 
         if (!response.ok) {
             const errBody = await response.text();
@@ -166,3 +174,4 @@ User Query: "${query}"
         throw e;
     }
 }
+

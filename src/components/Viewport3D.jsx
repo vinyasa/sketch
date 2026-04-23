@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
-import { Canvas, useThree } from '@react-three/fiber';
+import { Canvas, useThree, useFrame } from '@react-three/fiber';
 import { PerspectiveCamera, OrthographicCamera, OrbitControls, useTexture, useGLTF, GizmoHelper, Text, Edges, Line, Html } from '@react-three/drei';
 import { CustomGizmoViewport } from './CustomGizmoViewport';
 import * as THREE from 'three';
@@ -16,21 +16,28 @@ const csgEvaluator = new Evaluator();
 
 
 // ── Persistent Controls Wrapper ────────────
+// Restores the orbit target from persisted state and captures camera
+// position + target on every interaction end.  The camera *position*
+// is handled by the declarative <PerspectiveCamera>/<OrthographicCamera>
+// which already reads its initial value from the store.
 function PersistentControls() {
   const { camera } = useThree();
-  const { cameraState, setCameraState } = useStore();
-  
-  const controlsRef = React.useRef(null);
-  const prevCameraState = React.useRef(null);
+  const cameraState = useStore(s => s.cameraState);
+  const setCameraState = useStore(s => s.setCameraState);
 
-  // Sync state if a workspace is loaded
+  const controlsRef = React.useRef(null);
+  // Track which cameraState object we last applied so we don't re-apply
+  // the same value (which would fight user interaction).
+  const appliedRef = React.useRef(null);
+
+  // When cameraState changes (e.g. workspace load), apply it.
   React.useEffect(() => {
     const ctrls = controlsRef.current;
-    if (ctrls && cameraState && prevCameraState.current !== cameraState) {
-        camera.position.set(...cameraState.position);
-        ctrls.target.set(...cameraState.target);
-        ctrls.update();
-        prevCameraState.current = cameraState;
+    if (ctrls && cameraState && appliedRef.current !== cameraState) {
+      camera.position.set(...cameraState.position);
+      ctrls.target.set(...cameraState.target);
+      ctrls.update();
+      appliedRef.current = cameraState;
     }
   }, [camera, cameraState]);
 
@@ -38,24 +45,142 @@ function PersistentControls() {
     const ctrls = e.target;
     if (!ctrls) return;
     const newState = {
-        position: [camera.position.x, camera.position.y, camera.position.z],
-        target: [ctrls.target.x, ctrls.target.y, ctrls.target.z]
+      position: [camera.position.x, camera.position.y, camera.position.z],
+      target:   [ctrls.target.x,    ctrls.target.y,    ctrls.target.z],
     };
-    prevCameraState.current = newState;
+    appliedRef.current = newState;
     setCameraState(newState);
   }, [camera, setCameraState]);
 
+  // Ref-callback: fires once when OrbitControls mounts.
+  // Sets the orbit target from persisted state (position is already
+  // correct because the declarative camera read it from the store).
   const initRef = React.useCallback((ctrls) => {
     controlsRef.current = ctrls;
-    if (ctrls && cameraState && prevCameraState.current !== cameraState) {
-        camera.position.set(...cameraState.position);
-        ctrls.target.set(...cameraState.target);
-        ctrls.update();
-        prevCameraState.current = cameraState;
+    if (ctrls && cameraState && appliedRef.current !== cameraState) {
+      camera.position.set(...cameraState.position);
+      ctrls.target.set(...cameraState.target);
+      ctrls.update();
+      appliedRef.current = cameraState;
     }
   }, [camera, cameraState]);
 
   return <OrbitControls ref={initRef} makeDefault onEnd={handleEnd} />;
+}
+
+// ── Animation Driver ────────────────────────────────────────────────
+// Runs inside Canvas via useFrame for 60fps board interpolation
+// and camera turntable orbit.  Reads store via getState() to avoid
+// stale closure issues with pause/reset.
+function AnimationDriver() {
+  const { camera } = useThree();
+
+  // Easing functions
+  const ease = (t, type) => {
+    switch (type) {
+      case 'ease-in':     return t * t;
+      case 'ease-out':    return t * (2 - t);
+      case 'ease-in-out': return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+      default:            return t; // linear
+    }
+  };
+
+  // Track bounce direction: 1 = forward, -1 = backward
+  const dirRef = React.useRef(1);
+
+  useFrame((_, delta) => {
+    // Always read FRESH state from the store
+    const state = useStore.getState();
+    const { boardAnim, turntable } = state.animation || {};
+    if (!boardAnim || !turntable) return;
+
+    // ── Board animation ─────────────────────────────────────
+    if (boardAnim.playing && boardAnim.start && boardAnim.end && boardAnim.boardId) {
+      const duration = boardAnim.duration || 2;
+      const increment = (delta / duration) * dirRef.current;
+      let newProgress = boardAnim.progress + increment;
+      let stillPlaying = true;
+
+      if (newProgress >= 1) {
+        if (boardAnim.loop) {
+          if (boardAnim.bounce) {
+            newProgress = 1;
+            dirRef.current = -1; // reverse
+          } else {
+            newProgress = 0; // restart
+          }
+        } else {
+          newProgress = 1;
+          stillPlaying = false;
+        }
+      } else if (newProgress <= 0 && boardAnim.bounce) {
+        newProgress = 0;
+        dirRef.current = 1; // forward again
+        if (!boardAnim.loop) {
+          stillPlaying = false;
+        }
+      }
+
+      const eased = ease(Math.max(0, Math.min(1, newProgress)), boardAnim.easing);
+
+      // Lerp orientation
+      const startOri = boardAnim.start.orientation;
+      const endOri = boardAnim.end.orientation;
+      const lerpedOri = [
+        startOri[0] + (endOri[0] - startOri[0]) * eased,
+        startOri[1] + (endOri[1] - startOri[1]) * eased,
+        startOri[2] + (endOri[2] - startOri[2]) * eased,
+      ];
+
+      // Lerp pivot if both have it
+      const startPiv = boardAnim.start.pivot || [0, 0, 0];
+      const endPiv = boardAnim.end.pivot || [0, 0, 0];
+      const lerpedPiv = [
+        startPiv[0] + (endPiv[0] - startPiv[0]) * eased,
+        startPiv[1] + (endPiv[1] - startPiv[1]) * eased,
+        startPiv[2] + (endPiv[2] - startPiv[2]) * eased,
+      ];
+      const hasPiv = lerpedPiv[0] !== 0 || lerpedPiv[1] !== 0 || lerpedPiv[2] !== 0;
+
+      // Apply to board
+      state.setBoards(prev => prev.map(b => {
+        if (b.id.toString() !== boardAnim.boardId) return b;
+        return {
+          ...b,
+          orientation: lerpedOri,
+          pivot: hasPiv ? lerpedPiv : undefined,
+        };
+      }));
+
+      // Update progress
+      state.setAnimation(prev => ({
+        ...prev,
+        boardAnim: { ...prev.boardAnim, progress: newProgress, playing: stillPlaying },
+      }));
+    } else {
+      // Reset direction when not playing
+      dirRef.current = 1;
+    }
+
+    // ── Camera turntable ────────────────────────────────────
+    if (turntable.playing) {
+      const rpm = turntable.speed || 6;
+      const angularSpeed = (rpm * 2 * Math.PI) / 60; // radians per second
+      const angle = angularSpeed * delta;
+
+      // Rotate camera position around Y-axis, keeping current radius and height
+      const cx = camera.position.x;
+      const cz = camera.position.z;
+      const cosA = Math.cos(angle);
+      const sinA = Math.sin(angle);
+      camera.position.x = cx * cosA - cz * sinA;
+      camera.position.z = cx * sinA + cz * cosA;
+      camera.position.y = turntable.height;
+      camera.lookAt(0, turntable.height * 0.3, 0);
+    }
+  });
+
+  return null;
 }
 
 // ─── SceneLights: renders all lights from the lighting store slice ────────────
@@ -866,6 +991,10 @@ const BoardMesh = ({ b, selectedItemIds, toggleSelection, textures, showEdges, c
   if (b.visible === false) return null;
   const isSelected = selectedItemIds.includes(b.id.toString());
 
+  // Pivot offset in LOCAL board space (default [0,0,0] = center)
+  const pivot = b.pivot || [0, 0, 0];
+  const hasPivot = pivot[0] !== 0 || pivot[1] !== 0 || pivot[2] !== 0;
+
   // Face labels are in LOCAL board space — orientation is handled by the mesh transform
   const faceLabels = {
     'x+': 'right', 'x-': 'left',
@@ -874,125 +1003,163 @@ const BoardMesh = ({ b, selectedItemIds, toggleSelection, textures, showEdges, c
   };
 
   return (
-    <mesh
-      raycast={(modifierActive && constraintTargetMode?.active) ? () => null : undefined}
+    <group
       position={b.position}
       rotation={b.orientation ? [...b.orientation, 'YXZ'] : [0, 0, 0, 'YXZ']}
-      castShadow
-      receiveShadow
-      onClick={(e) => {
-        e.stopPropagation(); // stop from bubbling to Canvas onPointerMissed only
-        const localFace = getSemanticFace(e, b);
-        // Convert to world face for constraints — solver works in world space
-        const faceStr = localFaceToWorld(localFace, b.orientation);
-        toggleSelection(b.id.toString(), e.shiftKey || e.ctrlKey || e.metaKey, faceStr);
-      }}
-      onPointerMove={(e) => {
-        const isActiveMode = constraintTargetMode && constraintTargetMode.active;
-        if (isSelected || isActiveMode) {
-          e.stopPropagation();
-          const fStr = getSemanticFace(e, b);
-          if (fStr && (!hoveredFaceData || hoveredFaceData.id !== b.id.toString() || hoveredFaceData.faceStr !== fStr)) {
-            setHoveredFaceData({ id: b.id.toString(), faceStr: fStr });
-          }
-        }
-      }}
-      onPointerOut={(e) => {
-        if (hoveredFaceData && hoveredFaceData.id === b.id.toString()) {
-          setHoveredFaceData(null);
-        }
-      }}
     >
-      <CSGGeometry b={b} />
-      {(() => {
-        const matDesc = normalizeMaterial(b.material);
-        // Key forces React to remount the material when type changes,
-        // preventing stale color/map bleed-over between paint and wood.
-        const matKey = matDesc.type === 'color' ? `color-${matDesc.hex}` : `wood-${matDesc.id}`;
-        const commonProps = {
-          emissive: isSelected ? '#bc8a5f' : '#000000',
-          emissiveIntensity: isSelected ? 0.4 : 0,
-        };
-        if (matDesc.type === 'color') {
+      {/* Inner mesh is offset by -pivot so the board geometry rotates around the pivot */}
+      <mesh
+        position={[-pivot[0], -pivot[1], -pivot[2]]}
+        raycast={(modifierActive && constraintTargetMode?.active) ? () => null : undefined}
+        castShadow
+        receiveShadow
+        onClick={(e) => {
+          e.stopPropagation();
+          const localFace = getSemanticFace(e, b);
+          const faceStr = localFaceToWorld(localFace, b.orientation);
+          toggleSelection(b.id.toString(), e.shiftKey || e.ctrlKey || e.metaKey, faceStr);
+        }}
+        onPointerMove={(e) => {
+          const isActiveMode = constraintTargetMode && constraintTargetMode.active;
+          if (isSelected || isActiveMode) {
+            e.stopPropagation();
+            const fStr = getSemanticFace(e, b);
+            if (fStr && (!hoveredFaceData || hoveredFaceData.id !== b.id.toString() || hoveredFaceData.faceStr !== fStr)) {
+              setHoveredFaceData({ id: b.id.toString(), faceStr: fStr });
+            }
+          }
+        }}
+        onPointerOut={(e) => {
+          if (hoveredFaceData && hoveredFaceData.id === b.id.toString()) {
+            setHoveredFaceData(null);
+          }
+        }}
+      >
+        <CSGGeometry b={b} />
+        {(() => {
+          const matDesc = normalizeMaterial(b.material);
+          const matKey = matDesc.type === 'color' ? `color-${matDesc.hex}` : `wood-${matDesc.id}`;
+          const commonProps = {
+            emissive: isSelected ? '#bc8a5f' : '#000000',
+            emissiveIntensity: isSelected ? 0.4 : 0,
+          };
+          if (matDesc.type === 'color') {
+            return (
+              <meshStandardMaterial
+                key={matKey}
+                color={matDesc.hex}
+                roughness={0.85}
+                {...commonProps}
+              />
+            );
+          }
+          const spec = WOOD_CATALOGUE[matDesc.id] ?? WOOD_CATALOGUE['pine'];
           return (
             <meshStandardMaterial
               key={matKey}
-              color={matDesc.hex}
-              roughness={0.85}
+              color="#ffffff"
+              map={textures[matDesc.id] ?? textures['pine']}
+              roughness={spec.roughness}
               {...commonProps}
             />
           );
-        }
-        const spec = WOOD_CATALOGUE[matDesc.id] ?? WOOD_CATALOGUE['pine'];
-        return (
-          <meshStandardMaterial
-            key={matKey}
-            color="#ffffff"  // explicitly reset — Three.js multiplies map by color; stale tints = wrong result
-            map={textures[matDesc.id] ?? textures['pine']}
-            roughness={spec.roughness}
-            {...commonProps}
+        })()}
+        {showEdges && <Edges scale={1} threshold={15} color={isSelected ? '#ffffff' : '#222222'} />}
+        {/* Axes helper on the mesh (at board center, not pivot) */}
+        {isSelected && <axesHelper args={[Math.max(...b.size) * 0.75 + 2.25]} />}
+        {((isSelected || (constraintTargetMode && constraintTargetMode.active)) && hoveredFaceData && hoveredFaceData.id === b.id.toString()) && (() => {
+          const faceStr = hoveredFaceData.faceStr;
+          if (!faceStr) return null;
+          let pos = [0, 0, 0], rot = [0, 0, 0];
+          const w = b.size[0] / 2 + 0.01;
+          const h = b.size[1] / 2 + 0.01;
+          const d = b.size[2] / 2 + 0.01;
+          if (faceStr === 'x+') { pos = [w, 0, 0]; rot = [0, Math.PI / 2, 0]; }
+          if (faceStr === 'x-') { pos = [-w, 0, 0]; rot = [0, -Math.PI / 2, 0]; }
+          if (faceStr === 'y+') { pos = [0, h, 0]; rot = [-Math.PI / 2, 0, 0]; }
+          if (faceStr === 'y-') { pos = [0, -h, 0]; rot = [Math.PI / 2, 0, 0]; }
+          if (faceStr === 'z+') { pos = [0, 0, d]; rot = [0, 0, 0]; }
+          if (faceStr === 'z-') { pos = [0, 0, -d]; rot = [0, Math.PI, 0]; }
+          
+          let planeW = faceStr.startsWith('x') ? b.size[2] : b.size[0];
+          let planeH = faceStr.startsWith('y') ? b.size[2] : b.size[1];
+          if (faceStr.startsWith('x')) planeH = b.size[1];
+          if (faceStr.startsWith('z')) planeH = b.size[1];
+
+          const tooltipLabel = faceLabels[faceStr] || faceStr;
+
+          return (
+            <group>
+              <mesh position={pos} rotation={rot} raycast={() => null}>
+                <planeGeometry args={[planeW, planeH]} />
+                <meshBasicMaterial color="#00ffff" transparent opacity={0.4} depthTest={false} side={THREE.DoubleSide} />
+              </mesh>
+              <Html position={pos} center style={{ pointerEvents: 'none', zIndex: 10 }}>
+                <div style={{
+                  background: 'rgba(0, 0, 0, 0.75)',
+                  color: 'white',
+                  padding: '4px 8px',
+                  borderRadius: '6px',
+                  fontSize: '0.8rem',
+                  fontWeight: 'bold',
+                  whiteSpace: 'nowrap',
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.5)'
+                }}>
+                  {tooltipLabel}
+                </div>
+              </Html>
+            </group>
+          );
+        })()}
+        {/* ── Hardware attachments ─────────────────────────────────────────── */}
+        {(b.hardware || []).length > 0 && (
+          <Suspense fallback={null}>
+            {(b.hardware || []).map(hw => (
+              <HardwareAttachment key={hw.id} hw={hw} boardSize={b.size} boardId={b.id} />
+            ))}
+          </Suspense>
+        )}
+      </mesh>
+
+      {/* ── Pivot Visualizer ───────────────────────────────────────────────── */}
+      {/* Shown when board is selected and pivot is not at center.              */}
+      {/* The pivot point is at the group origin (0,0,0); the board center     */}
+      {/* is at (-pivot). We draw a sphere at origin and a dashed line to it.  */}
+      {isSelected && hasPivot && (
+        <group>
+          {/* Pivot sphere — magenta, always visible */}
+          <mesh raycast={() => null}>
+            <sphereGeometry args={[0.35, 16, 16]} />
+            <meshBasicMaterial color="#ff00ff" transparent opacity={0.85} depthTest={false} />
+          </mesh>
+          {/* Dashed line from pivot to board center */}
+          <Line
+            points={[[0, 0, 0], [-pivot[0], -pivot[1], -pivot[2]]]}
+            color="#ff00ff"
+            lineWidth={2}
+            dashed
+            dashScale={8}
+            dashSize={1}
+            dashOffset={0}
           />
-        );
-      })()}
-      {showEdges && <Edges scale={1} threshold={15} color={isSelected ? '#ffffff' : '#222222'} />}
-      {isSelected && <axesHelper args={[Math.max(...b.size) / 2 + 1.5]} />}
-      {((isSelected || (constraintTargetMode && constraintTargetMode.active)) && hoveredFaceData && hoveredFaceData.id === b.id.toString()) && (() => {
-        const faceStr = hoveredFaceData.faceStr;
-        // Guard: faceStr may be undefined for curved shapes — bail out cleanly
-        if (!faceStr) return null;
-        let pos = [0, 0, 0], rot = [0, 0, 0];
-        const w = b.size[0] / 2 + 0.01;
-        const h = b.size[1] / 2 + 0.01;
-        const d = b.size[2] / 2 + 0.01;
-        if (faceStr === 'x+') { pos = [w, 0, 0]; rot = [0, Math.PI / 2, 0]; }
-        if (faceStr === 'x-') { pos = [-w, 0, 0]; rot = [0, -Math.PI / 2, 0]; }
-        if (faceStr === 'y+') { pos = [0, h, 0]; rot = [-Math.PI / 2, 0, 0]; }
-        if (faceStr === 'y-') { pos = [0, -h, 0]; rot = [Math.PI / 2, 0, 0]; }
-        if (faceStr === 'z+') { pos = [0, 0, d]; rot = [0, 0, 0]; }
-        if (faceStr === 'z-') { pos = [0, 0, -d]; rot = [0, Math.PI, 0]; }
-        
-        let planeW = faceStr.startsWith('x') ? b.size[2] : b.size[0];
-        let planeH = faceStr.startsWith('y') ? b.size[2] : b.size[1];
-        if (faceStr.startsWith('x')) planeH = b.size[1];
-        if (faceStr.startsWith('z')) planeH = b.size[1];
-
-        // The tooltip always displays the board's LOCAL face to maintain consistency 
-        // with the shape's inherent dimensions and tool modifiers (e.g. "Right", "Top").
-        // (Note: The onClick handler still maps this to world space for the constraint solver)
-        const tooltipLabel = faceLabels[faceStr] || faceStr;
-
-        return (
-          <group>
-            <mesh position={pos} rotation={rot} raycast={() => null}>
-              <planeGeometry args={[planeW, planeH]} />
-              <meshBasicMaterial color="#00ffff" transparent opacity={0.4} depthTest={false} side={THREE.DoubleSide} />
-            </mesh>
-            <Html position={pos} center style={{ pointerEvents: 'none', zIndex: 10 }}>
-              <div style={{
-                background: 'rgba(0, 0, 0, 0.75)',
-                color: 'white',
-                padding: '4px 8px',
-                borderRadius: '6px',
-                fontSize: '0.8rem',
-                fontWeight: 'bold',
-                whiteSpace: 'nowrap',
-                boxShadow: '0 2px 4px rgba(0,0,0,0.5)'
-              }}>
-                {tooltipLabel}
-              </div>
-            </Html>
-          </group>
-        );
-      })()}
-      {/* ── Hardware attachments ─────────────────────────────────────────── */}
-      {(b.hardware || []).length > 0 && (
-        <Suspense fallback={null}>
-          {(b.hardware || []).map(hw => (
-            <HardwareAttachment key={hw.id} hw={hw} boardSize={b.size} boardId={b.id} />
-          ))}
-        </Suspense>
+          {/* Pivot label */}
+          <Html center style={{ pointerEvents: 'none' }}>
+            <div style={{
+              background: 'rgba(180, 0, 180, 0.8)',
+              color: 'white',
+              padding: '2px 6px',
+              borderRadius: '10px',
+              fontSize: '0.65rem',
+              fontWeight: 'bold',
+              whiteSpace: 'nowrap',
+              transform: 'translateY(-14px)',
+            }}>
+              ⊕ Pivot
+            </div>
+          </Html>
+        </group>
       )}
-    </mesh>
+    </group>
   );
 };
 
@@ -1133,9 +1300,16 @@ function WoodJoint({ boards, groups, selectedItemIds, toggleSelection, showEdges
 }
 
 export default function Viewport3D() {
-  const { boards, groups, selectedItemIds, setSelectedItemIds, toggleSelection, gridSnap, theme, globalBounds, showEdges, showDimensions, showBoundingBox, units, constraintTargetMode, constraints, lighting, isOrtho, showGrid } = useStore();
+  const { boards, groups, selectedItemIds, setSelectedItemIds, toggleSelection, gridSnap, theme, globalBounds, showEdges, showDimensions, showBoundingBox, units, constraintTargetMode, constraints, lighting, isOrtho, showGrid, cameraState } = useStore();
   const [hoveredFaceData, setHoveredFaceData] = useState(null);
   const [modifierActive, setModifierActive] = useState(false);
+
+  // Read the persisted camera position once on mount so the declarative
+  // <PerspectiveCamera> / <OrthographicCamera> starts at the saved position
+  // instead of the hardcoded default.  We memoise on the reference so it
+  // only changes when a workspace is loaded (setCameraState produces a new object).
+  const _defaultCamPos = [30, 20, 40];
+  const _cameraPos = cameraState?.position ?? _defaultCamPos;
 
   useEffect(() => {
     const handleKey = (e) => setModifierActive(e.shiftKey || e.altKey);
@@ -1181,12 +1355,13 @@ export default function Viewport3D() {
         </GizmoHelper>
 
         {isOrtho ? (
-          <OrthographicCamera makeDefault position={[30, 20, 40]} zoom={12} near={0.1} far={1000} />
+          <OrthographicCamera makeDefault position={_cameraPos} zoom={12} near={0.1} far={1000} />
         ) : (
-          <PerspectiveCamera makeDefault position={[30, 20, 40]} near={0.1} far={1000} />
+          <PerspectiveCamera makeDefault position={_cameraPos} near={0.1} far={1000} />
         )}
 
         <PersistentControls />
+        <AnimationDriver />
         {/* Floor grid at Y=0 */}
         {showGrid && minorDivs > 0 && (
           <gridHelper key={`min_${minorDivs}_${theme}`} args={[gridRadius, minorDivs, minorColor, minorColor]} position={[0, -0.02, 0]} />

@@ -172,14 +172,25 @@
 /* Semantic card — used for Shape, Material, Joint, Constraints, etc.
    Gives visual lift without overwhelming the data sections above. */
 .inspector-card {
-  margin-bottom: 6px;
-  padding: 8px 10px;
+  margin-bottom: 0;
+  padding: 6px 8px;
   border-radius: 7px;
-  border: 1px solid var(--border-color);
+  border: 2px solid rgba(255,255,255,0.12);
   background: rgba(255,255,255,0.03);
 }
 .inspector-card h4 {
-  font-size: 0.65rem; text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px;
+  font-size: 0.65rem; text-transform: uppercase; color: var(--text-muted); margin-bottom: 4px;
+}
+
+/* Flash-confirm animation for capture buttons */
+@keyframes flash-confirm {
+  0%   { transform: scale(1); filter: brightness(1); }
+  20%  { transform: scale(1.06); filter: brightness(1.8); }
+  50%  { transform: scale(1.02); filter: brightness(1.4); }
+  100% { transform: scale(1); filter: brightness(1); }
+}
+.flash-confirm {
+  animation: flash-confirm 0.6s ease-out;
 }
 
 /* Inputs */

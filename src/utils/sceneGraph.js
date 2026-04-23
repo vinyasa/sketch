@@ -24,15 +24,18 @@ export const computeWorldAABB = (boardList) => {
         const [px, py, pz] = b.position;
         const hx = b.size[0] / 2, hy = b.size[1] / 2, hz = b.size[2] / 2;
         const [rx, ry, rz] = b.orientation || [0, 0, 0];
+        // Pivot offset: the mesh center is shifted by -pivot relative to b.position
+        const piv = b.pivot || [0, 0, 0];
 
         if (rx === 0 && ry === 0 && rz === 0) {
-            // Fast path — axis-aligned
-            if (px - hx < minX) minX = px - hx;
-            if (px + hx > maxX) maxX = px + hx;
-            if (py - hy < minY) minY = py - hy;
-            if (py + hy > maxY) maxY = py + hy;
-            if (pz - hz < minZ) minZ = pz - hz;
-            if (pz + hz > maxZ) maxZ = pz + hz;
+            // Fast path — axis-aligned (pivot just shifts the center)
+            const cx = px - piv[0], cy = py - piv[1], cz = pz - piv[2];
+            if (cx - hx < minX) minX = cx - hx;
+            if (cx + hx > maxX) maxX = cx + hx;
+            if (cy - hy < minY) minY = cy - hy;
+            if (cy + hy > maxY) maxY = cy + hy;
+            if (cz - hz < minZ) minZ = cz - hz;
+            if (cz + hz > maxZ) maxZ = cz + hz;
         } else {
             // Oriented — rotate all 8 corners and expand the AABB
             // Three.js YXZ Euler order: a=cos(x),b=sin(x),c=cos(y),d=sin(y),e=cos(z),f=sin(z)
@@ -48,7 +51,8 @@ export const computeWorldAABB = (boardList) => {
             for (let ix = -1; ix <= 1; ix += 2) {
                 for (let iy = -1; iy <= 1; iy += 2) {
                     for (let iz = -1; iz <= 1; iz += 2) {
-                        const lx = hx * ix, ly = hy * iy, lz = hz * iz;
+                        // Local corner relative to board center, then offset by -pivot
+                        const lx = hx * ix - piv[0], ly = hy * iy - piv[1], lz = hz * iz - piv[2];
                         const wx = px + R00*lx + R01*ly + R02*lz;
                         const wy = py + R10*lx + R11*ly + R12*lz;
                         const wz = pz + R20*lx + R21*ly + R22*lz;
