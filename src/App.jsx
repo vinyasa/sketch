@@ -15,10 +15,13 @@ import MaterialsPanel from './components/panels/MaterialsPanel';
 import AddComponentPanel from './components/panels/AddComponentPanel';
 import ToolsPanel from './components/panels/ToolsPanel';
 import HardwarePanel from './components/panels/HardwarePanel';
+import AssembliesPanel from './components/panels/AssembliesPanel';
 import AnimationPanel from './components/panels/AnimationPanel';
 import NewBoardDialog from './components/dialogs/NewBoardDialog';
 import CabinetBuilderDialog from './components/dialogs/CabinetBuilderDialog';
+import ShakerDoorBuilderDialog from './components/dialogs/ShakerDoorBuilderDialog';
 import AiHelpDialog from './components/dialogs/AiHelpDialog';
+import PrintDialog from './components/dialogs/PrintDialog';
 import ErrorBoundary from './components/layout/ErrorBoundary';
 import useStore from './store/useStore';
 import { getSmartPosition } from './utils/panelLayout';
@@ -32,6 +35,7 @@ export default function App() {
         showLightingPanel, setShowLightingPanel,
         showMaterialsPanel, setShowMaterialsPanel,
         showAddComponentPanel, setShowAddComponentPanel,
+        showAssembliesPanel, setShowAssembliesPanel,
         showToolsPanel, setShowToolsPanel,
         showHardwarePanel, setShowHardwarePanel,
         showAnimationPanel, setShowAnimationPanel,
@@ -42,6 +46,8 @@ export default function App() {
         toast,
         computingMessage,
         confirmDialog, setConfirmDialog,
+        showNewWorkspaceDialog, setShowNewWorkspaceDialog,
+        newWorkspace,
         // Settings for App mount
         theme,
         // History for focus capture
@@ -62,8 +68,8 @@ export default function App() {
         if (autosaveInterval === 'off') return;
         const ms = parseInt(autosaveInterval, 10) * 60 * 1000;
         const id = setInterval(() => {
-            const { boards, groups, constraints, theme, units, gridSnap, defaultMaterial, showEdges, showDimensions, showBoundingBox, globalBounds, lighting, recentColors, autosaveInterval: ai, cameraState } = useStore.getState();
-            const payload = { boards, groups, constraints, theme, units, gridSnap, defaultMaterial, showEdges, showDimensions, showBoundingBox, globalBounds, lighting, recentColors, autosaveInterval: ai, cameraState };
+            const { boards, groups, constraints, theme, units, gridSnap, defaultMaterial, showEdges, showDimensions, showBoundingBox, globalBounds, lighting, recentColors, autosaveInterval: ai, cameraState, measurements, showMeasurements } = useStore.getState();
+            const payload = { boards, groups, constraints, theme, units, gridSnap, defaultMaterial, showEdges, showDimensions, showBoundingBox, globalBounds, lighting, recentColors, autosaveInterval: ai, cameraState, measurements, showMeasurements };
             localStorage.setItem('lucey_save', JSON.stringify(payload));
         }, ms);
         return () => clearInterval(id);
@@ -98,7 +104,7 @@ export default function App() {
                     )}
 
                     {showOutlinerPanel && (
-                        <DraggablePanel title="Outliner" defaultPosition={{ x: window.innerWidth - 220, y: 100 }} defaultSize={{ width: 200 }} onClose={() => setShowOutlinerPanel(false)}>
+                        <DraggablePanel title="Outliner" defaultPosition={{ x: window.innerWidth - 220, y: 134 }} defaultSize={{ width: 200 }} onClose={() => setShowOutlinerPanel(false)}>
                             <OutlinerPanel />
                         </DraggablePanel>
                     )}
@@ -147,6 +153,12 @@ export default function App() {
                         </DraggablePanel>
                     )}
 
+                    {showAssembliesPanel && (
+                        <DraggablePanel title="🧱 Builders" defaultPosition={getSmartPosition(260, 300, 'left')} defaultSize={{ width: 260 }} onClose={() => setShowAssembliesPanel(false)}>
+                            <AssembliesPanel />
+                        </DraggablePanel>
+                    )}
+
                     {showToolsPanel && (
                         <DraggablePanel title="🛠 Tools" defaultPosition={getSmartPosition(340, 250, 'left')} defaultSize={{ width: 340 }} onClose={() => setShowToolsPanel(false)} onFocusCapture={(e) => { if (e.target.tagName === 'INPUT') pushHistory(); }}>
                             <ToolsPanel />
@@ -188,9 +200,36 @@ export default function App() {
                     </div>
                 )}
 
+                {showNewWorkspaceDialog && (
+                    <div className="app-overlay" style={{ background: 'rgba(0,0,0,0.6)', zIndex: 10001, display: 'flex', justifyContent: 'center', alignItems: 'center', position: 'fixed', inset: 0 }} onClick={() => setShowNewWorkspaceDialog(false)}>
+                        <div className="glass-panel" style={{ padding: '28px', width: '420px', borderRadius: '12px', display: 'flex', flexDirection: 'column', gap: '20px' }} onClick={e => e.stopPropagation()}>
+                            <h3 style={{ margin: 0, color: 'var(--text-main)' }}>✨ New Workspace</h3>
+                            <p style={{ margin: 0, fontSize: '0.95rem', color: 'var(--text-main)', lineHeight: 1.5 }}>
+                                Do you want to save the current project before starting a new one?
+                            </p>
+                            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '12px', flexWrap: 'wrap' }}>
+                                <button className="nav-btn" style={{ padding: '8px 16px', border: '1px solid var(--border-color)' }} onClick={() => setShowNewWorkspaceDialog(false)}>Cancel</button>
+                                <button className="nav-btn" style={{ padding: '8px 16px', background: 'rgba(255, 59, 48, 0.15)', color: '#ff3b30', border: '1px solid rgba(255, 59, 48, 0.3)', fontWeight: 'bold' }} onClick={() => {
+                                    newWorkspace();
+                                    setShowNewWorkspaceDialog(false);
+                                }}>Clear Without Saving</button>
+                                <button className="nav-btn primary" style={{ padding: '8px 16px', background: 'var(--accent-color)', color: '#fff', border: 'none', fontWeight: 'bold' }} onClick={() => {
+                                    const saved = saveWorkspace(true);
+                                    if (saved) {
+                                        newWorkspace();
+                                        setShowNewWorkspaceDialog(false);
+                                    }
+                                }}>Save & Clear</button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 <NewBoardDialog />
                 <CabinetBuilderDialog />
+                <ShakerDoorBuilderDialog />
                 <AiHelpDialog />
+                <PrintDialog />
             </div>
         </div>
         </ErrorBoundary>

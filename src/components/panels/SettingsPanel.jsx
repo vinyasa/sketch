@@ -8,7 +8,7 @@ const SettingsPanel = () => {
         gridSnap, setGridSnap,
         defaultMaterial, setDefaultMaterial,
         showEdges, setShowEdges,
-        showDimensions, setShowDimensions,
+        showMeasurements, setShowMeasurements,
         showBoundingBox, setShowBoundingBox,
         globalBounds, setGlobalBounds,
         theme, setTheme,
@@ -57,7 +57,7 @@ const SettingsPanel = () => {
 
             <div className="inspector-card">
                 <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: '600', opacity: 0.85 }}>
-                    <input type="checkbox" checked={showDimensions} onChange={(e) => setShowDimensions(e.target.checked)} style={{ width: '18px', height: '18px' }} />
+                    <input type="checkbox" checked={showMeasurements} onChange={(e) => setShowMeasurements(e.target.checked)} style={{ width: '18px', height: '18px' }} />
                     Show Dimensions
                 </label>
                 <p className="hint" style={{ marginTop: '4px' }}>Renders 3D bounding dimension lines and text in the viewport.</p>

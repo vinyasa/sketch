@@ -273,34 +273,48 @@ export const createActions = (set, get) => ({
         }
     },
 
+    newWorkspace: () => {
+        const { setBoards, setGroups, setConstraints, setSelectedItemIds, setCurrentFileName, resetHistory, setMeasurements, setHardwareInstances } = get();
+        
+        setBoards([]);
+        setGroups({});
+        setConstraints({});
+        setSelectedItemIds([]);
+        setMeasurements([]);
+        if (setHardwareInstances) setHardwareInstances([]);
+        setCurrentFileName(null);
+        if (resetHistory) resetHistory();
+    },
 
     saveWorkspace: (isNamedSave = false) => {
-        const { boards, groups, constraints, theme, units, gridSnap, defaultMaterial, showEdges, showDimensions, showBoundingBox, globalBounds, lighting, recentColors, autosaveInterval, cameraState, recentFiles, setRecentFiles, setCurrentFileName, showToast } = get();
+        const { boards, groups, constraints, theme, units, gridSnap, defaultMaterial, showEdges, showDimensions, showBoundingBox, globalBounds, lighting, recentColors, autosaveInterval, cameraState, measurements, showMeasurements, recentFiles, setRecentFiles, setCurrentFileName, showToast } = get();
         let name = "My Design";
         if (recentFiles.length > 0) name = recentFiles[0].name;
 
         if (isNamedSave) {
             let pName = prompt("Save Project As:", name);
-            if (!pName) return;
+            if (!pName) return false;
             name = pName;
         }
 
-        const payload = { boards, groups, constraints, theme, units, gridSnap, defaultMaterial, showEdges, showDimensions, showBoundingBox, globalBounds, lighting, recentColors, autosaveInterval, cameraState };
+        const payload = { boards, groups, constraints, theme, units, gridSnap, defaultMaterial, showEdges, showDimensions, showBoundingBox, globalBounds, lighting, recentColors, autosaveInterval, cameraState, measurements, showMeasurements };
         localStorage.setItem('lucey_save_' + name, JSON.stringify(payload));
 
-        let newRecents = recentFiles.filter(r => r.name !== name);
-        newRecents.unshift({ name, timestamp: Date.now() });
-        if (newRecents.length > 5) newRecents = newRecents.slice(0, 5);
-        setRecentFiles(newRecents);
-        localStorage.setItem('lucey_recent_files', JSON.stringify(newRecents));
-
-        localStorage.setItem('lucey_save', JSON.stringify(payload));
-        setCurrentFileName(name);
-        showToast(`Saved layout to local storage`);
+        if (isNamedSave) {
+            let newRecents = recentFiles.filter(r => r.name !== name);
+            newRecents.unshift({ name, timestamp: Date.now() });
+            if (newRecents.length > 5) newRecents = newRecents.slice(0, 5);
+            setRecentFiles(newRecents);
+            localStorage.setItem('lucey_recent_files', JSON.stringify(newRecents));
+            setCurrentFileName(name);
+        }
+        
+        showToast(isNamedSave ? `Saved as "${name}"` : 'Workspace saved');
+        return true;
     },
 
     loadWorkspace: (name) => {
-        const { setBoards, setGroups, setConstraints, setTheme, setUnits, setGridSnap, setDefaultMaterial, setShowEdges, setShowDimensions, setLighting, setRecentColors, setAutosaveInterval, setCurrentFileName } = get();
+        const { setBoards, setGroups, setConstraints, setTheme, setUnits, setGridSnap, setDefaultMaterial, setShowEdges, setShowDimensions, setLighting, setRecentColors, setAutosaveInterval, setCurrentFileName, setMeasurements, setShowMeasurements } = get();
         const key = name ? 'lucey_save_' + name : 'lucey_save';
         const s = localStorage.getItem(key);
         if (s) {
@@ -327,6 +341,8 @@ export const createActions = (set, get) => ({
                     if (p.recentColors) setRecentColors(p.recentColors);
                     if (p.autosaveInterval) setAutosaveInterval(p.autosaveInterval);
                     if (p.cameraState) get().setCameraState(p.cameraState);
+                    if (p.measurements) setMeasurements(p.measurements);
+                    if (p.showMeasurements !== undefined) setShowMeasurements(p.showMeasurements);
                     if (name) setCurrentFileName(name);
                 }
             } catch (e) { }
@@ -2354,6 +2370,105 @@ export const createActions = (set, get) => ({
         setSelectedItemIds([groupId]);
     },
 
+    buildShakerDoor: (cfg) => {
+        const { pushHistory, setBoards, setGroups, setSelectedItemIds, defaultMaterial } = get();
+        pushHistory();
+
+        const W      = cfg.width ?? 18;
+        const H      = cfg.height ?? 30;
+        const tFrame = cfg.thicknessFrame ?? 0.75;
+        const tPanel = cfg.thicknessPanel ?? 0.25;
+        const wStile = cfg.widthStileRail ?? 2;
+        const grooveD= cfg.grooveDepth ?? 0.375;
+        const grooveW= cfg.grooveWidth ?? 0.25;
+        const clear  = cfg.panelClearance ?? 0.125;
+
+        // Create assembly group
+        const groupId = 'Shaker Door ' + Math.floor(Math.random() * 1000);
+        setGroups(prev => ({
+            ...prev,
+            [groupId]: { parentId: 'Workspace', isExpanded: true, visible: true }
+        }));
+
+        // Coordinate system: Origin at back-bottom-left of the door.
+        // X = left/right, Y = up/down, Z = front/back (thickness).
+        // Door is flat, so its thickness spans Z = 0 to tFrame.
+        // We'll place the panel centered in the thickness.
+
+        const panelW = W - (2 * wStile) + (2 * grooveD) - clear;
+        const panelH = H - (2 * wStile) + (2 * grooveD) - clear;
+        
+        // The rails extend into the stiles by grooveD on each side
+        const railTotalW = W - (2 * wStile) + (2 * grooveD);
+
+        // Center Z of the frame
+        const midZ = tFrame / 2;
+        
+        const baseId = Date.now();
+        
+        // Tenon cut parameters for the rails
+        const tenonCutDepth = (tFrame - grooveW) / 2;
+        const tenonOffsetLeft = -(railTotalW / 2) + (grooveD / 2);
+        const tenonOffsetRight = (railTotalW / 2) - (grooveD / 2);
+        
+        const makeTenons = (idBase) => [
+            { id: idBase + 1, type: 'dado', face: 'front', direction: 'y', width: grooveD, depth: tenonCutDepth, offset: tenonOffsetLeft, length: 0, lengthOffset: 0, source: 'shaker' },
+            { id: idBase + 2, type: 'dado', face: 'front', direction: 'y', width: grooveD, depth: tenonCutDepth, offset: tenonOffsetRight, length: 0, lengthOffset: 0, source: 'shaker' },
+            { id: idBase + 3, type: 'dado', face: 'back', direction: 'y', width: grooveD, depth: tenonCutDepth, offset: tenonOffsetLeft, length: 0, lengthOffset: 0, source: 'shaker' },
+            { id: idBase + 4, type: 'dado', face: 'back', direction: 'y', width: grooveD, depth: tenonCutDepth, offset: tenonOffsetRight, length: 0, lengthOffset: 0, source: 'shaker' },
+        ];
+
+        const panelDefs = [
+            // Left Stile
+            { 
+                name: 'Left Stile', size: [wStile, H, tFrame], position: [wStile / 2, H / 2, midZ],
+                operations: [ { id: baseId + 10, type: 'dado', face: 'right', direction: 'y', width: grooveW, depth: grooveD, offset: 0, length: 0, lengthOffset: 0, source: 'shaker' } ]
+            },
+            // Right Stile
+            { 
+                name: 'Right Stile', size: [wStile, H, tFrame], position: [W - wStile / 2, H / 2, midZ],
+                operations: [ { id: baseId + 20, type: 'dado', face: 'left', direction: 'y', width: grooveW, depth: grooveD, offset: 0, length: 0, lengthOffset: 0, source: 'shaker' } ]
+            },
+            // Top Rail (groove on bottom)
+            { 
+                name: 'Top Rail', size: [railTotalW, wStile, tFrame], position: [W / 2, H - wStile / 2, midZ],
+                operations: [ 
+                    { id: baseId + 30, type: 'dado', face: 'bottom', direction: 'x', width: grooveW, depth: grooveD, offset: 0, length: 0, lengthOffset: 0, source: 'shaker' },
+                    ...makeTenons(baseId + 30)
+                ]
+            },
+            // Bottom Rail (groove on top)
+            { 
+                name: 'Bottom Rail', size: [railTotalW, wStile, tFrame], position: [W / 2, wStile / 2, midZ],
+                operations: [ 
+                    { id: baseId + 40, type: 'dado', face: 'top', direction: 'x', width: grooveW, depth: grooveD, offset: 0, length: 0, lengthOffset: 0, source: 'shaker' },
+                    ...makeTenons(baseId + 40)
+                ]
+            },
+            // Center Panel
+            { 
+                name: 'Panel', size: [panelW, panelH, tPanel], position: [W / 2, H / 2, midZ],
+                operations: []
+            },
+        ];
+
+        const newBoards = panelDefs.map((pd, i) => ({
+            id: baseId + 100 + i,
+            name: pd.name,
+            parentId: groupId,
+            size: pd.size,
+            position: pd.position,
+            material: defaultMaterial,
+            joint: 'None',
+            shape: 'box',
+            operations: pd.operations,
+        }));
+
+        setBoards(prev => [...prev, ...newBoards]);
+        setSelectedItemIds([groupId]);
+    },
+
+
     manualAddAssembly: () => {
         const { pushHistory, selectedItemIds, groups, boards, setGroups, setSelectedItemIds } = get();
         const selectedBoard = selectedItemIds.length === 1 && boards.find(b => b.id.toString() === selectedItemIds[0]);
@@ -2409,6 +2524,27 @@ export const createActions = (set, get) => ({
         }]);
         setSelectedItemIds([newId.toString()]);
         setNewBoardDialog(null);
+    },
+
+    // ─── Measurement Actions ────────────────────────────────────────────────────────────
+
+    addMeasurement: (pointA, pointB, offset, offsetDir) => {
+        const { pushHistory, setMeasurements } = get();
+        pushHistory();
+        const m = { id: 'm_' + Date.now(), pointA, pointB, color: '#ff9f0a', offset: offset || 0, offsetDir: offsetDir || null };
+        setMeasurements(prev => [...prev, m]);
+    },
+
+    removeMeasurement: (id) => {
+        const { pushHistory, setMeasurements } = get();
+        pushHistory();
+        setMeasurements(prev => prev.filter(m => m.id !== id));
+    },
+
+    clearAllMeasurements: () => {
+        const { pushHistory, setMeasurements } = get();
+        pushHistory();
+        setMeasurements([]);
     },
 
 });

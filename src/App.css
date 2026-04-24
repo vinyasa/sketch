@@ -34,17 +34,92 @@
   box-shadow: var(--shadow);
 }
 
-/* Header */
-.app-header {
-  position: relative;
+/* ── Header Two-Card Layout ── */
+.header-overlay {
+  position: absolute;
+  top: 12px; left: 16px; right: 16px;
   z-index: 9999;
   display: flex;
   justify-content: space-between;
+  align-items: flex-start;
+  pointer-events: none; /* Let clicks pass through empty space */
+}
+
+.header-left-card {
+  pointer-events: auto;
+  display: flex;
   align-items: center;
+  gap: 32px;
   height: 72px;
   padding: 0 20px;
-  margin: 12px 16px;
   border-radius: 12px;
+}
+
+.header-right-wrapper {
+  pointer-events: auto;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  overflow: visible; /* Need visibility for the drawer to slide out without clipping the button */
+}
+
+.nav-toggle-btn {
+  height: 72px;
+  width: 32px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: var(--panel-bg);
+  backdrop-filter: var(--panel-blur);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  cursor: pointer;
+  color: var(--text-muted);
+  box-shadow: var(--shadow);
+  transition: all 0.2s;
+  z-index: 2; /* Sit above the sliding drawer */
+}
+.nav-toggle-btn:hover {
+  color: var(--accent-color);
+  background: rgba(255,255,255,0.05);
+}
+
+.nav-drawer {
+  padding: 10px 16px;
+  border-radius: 12px;
+  transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  transform-origin: right center;
+  /* Add hardware acceleration for smooth sliding */
+  will-change: transform, opacity;
+}
+
+.nav-drawer.collapsed {
+  transform: translateX(120%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.top-nav {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(90px, auto));
+  grid-template-rows: repeat(3, auto);
+  gap: 4px;
+  justify-items: stretch;
+  align-items: center;
+}
+
+/* Smaller buttons specifically in the header top-nav */
+.top-nav .nav-btn {
+  font-size: 0.71rem;
+  padding: 6px 8px;
+  border-radius: 5px;
+  text-align: center;
+  height: 100%;
+}
+.top-nav label {
+  height: 100%;
+  display: flex;
+  justify-content: center;
 }
 
 .logo {
@@ -68,23 +143,6 @@
 .toolbar-menus span { cursor: pointer; transition: color 0.2s; }
 .toolbar-menus span:hover { color: var(--text-main); }
 
-.top-nav {
-  display: grid;
-  grid-template-columns: repeat(7, minmax(100px, auto));
-  grid-template-rows: auto auto;
-  row-gap: 2px;
-  column-gap: 0;
-  justify-items: start;
-  align-items: center;
-}
-
-/* Smaller buttons specifically in the header top-nav */
-.top-nav .nav-btn {
-  font-size: 0.71rem;
-  padding: 3px 8px;
-  border-radius: 5px;
-}
-
 .divider {
   width: 1px; height: 20px;
   background: var(--border-color);
@@ -99,6 +157,7 @@
   font-weight: 500;
   padding: 8px 16px;
   border-radius: 6px;
+  cursor: pointer;
 }
 
 .nav-btn:hover { background-color: rgba(188, 138, 95, 0.1); color: var(--accent-color); }

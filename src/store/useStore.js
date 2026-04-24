@@ -172,6 +172,8 @@ const useStore = create((set, get) => ({
 
     fileMenuOpen: false,
     setFileMenuOpen: (v) => set({ fileMenuOpen: typeof v === 'function' ? v(get().fileMenuOpen) : v }),
+    showAssembliesPanel: false,
+    setShowAssembliesPanel: (v) => set({ showAssembliesPanel: typeof v === 'function' ? v(get().showAssembliesPanel) : v }),
 
     toast: null,
     setToast: (v) => set({ toast: v }),
@@ -186,8 +188,13 @@ const useStore = create((set, get) => ({
     confirmDialog: null,
     setConfirmDialog: (v) => set({ confirmDialog: typeof v === 'function' ? v(get().confirmDialog) : v }),
 
+    showNewWorkspaceDialog: false,
+    setShowNewWorkspaceDialog: (v) => set({ showNewWorkspaceDialog: typeof v === 'function' ? v(get().showNewWorkspaceDialog) : v }),
+
     cabinetDialog: null,
     setCabinetDialog: (v) => set({ cabinetDialog: typeof v === 'function' ? v(get().cabinetDialog) : v }),
+    shakerDoorDialog: null,
+    setShakerDoorDialog: (v) => set({ shakerDoorDialog: typeof v === 'function' ? v(get().shakerDoorDialog) : v }),
 
     recentFiles: loadRecentFiles(),
     setRecentFiles: (v) => set({ recentFiles: typeof v === 'function' ? v(get().recentFiles) : v }),
@@ -264,6 +271,37 @@ const useStore = create((set, get) => ({
 
     showBoundingBox: loadState('showBoundingBox', true),
     setShowBoundingBox: (v) => set({ showBoundingBox: typeof v === 'function' ? v(get().showBoundingBox) : v }),
+
+    // ── Measurement layer ─────────────────────────────────────────────────
+    // Measure mode interaction state (like constraintTargetMode)
+    // null = inactive
+    // { active: true, firstPoint: null } = waiting for first click
+    // { active: true, firstPoint: { localOffset, boardId, snapType } } = waiting for second
+    measureMode: null,
+    setMeasureMode: (v) => set({ measureMode: typeof v === 'function' ? v(get().measureMode) : v }),
+
+    // Persisted custom measurements
+    measurements: loadState('measurements', []),
+    setMeasurements: (v) => set({ measurements: typeof v === 'function' ? v(get().measurements) : v }),
+
+    // Visibility toggle (controls both auto-dims AND custom measurements)
+    showMeasurements: loadState('showMeasurements', true),
+    setShowMeasurements: (v) => set({ showMeasurements: typeof v === 'function' ? v(get().showMeasurements) : v }),
+
+    // Which measurement is selected (for deletion)
+    selectedMeasurementId: null,
+    setSelectedMeasurementId: (v) => set({ selectedMeasurementId: v }),
+
+    // Hovered snap point during measure mode (for preview markers)
+    measureHoverSnap: null,  // { worldPos: [x,y,z], type: 'corner'|'edge'|'face' }
+    setMeasureHoverSnap: (v) => set({ measureHoverSnap: v }),
+
+    // ── Print ────────────────────────────────────────────────────────────────
+    showPrintDialog: false,
+    setShowPrintDialog: (v) => set({ showPrintDialog: v }),
+    // Set to an options object to trigger capture, null when idle
+    printCapture: null,
+    setPrintCapture: (v) => set({ printCapture: v }),
 
     globalBounds: loadState('globalBounds', { enabled: false, x: 18, y: 25, z: 18 }),
     setGlobalBounds: (v) => set({ globalBounds: typeof v === 'function' ? v(get().globalBounds) : v }),
