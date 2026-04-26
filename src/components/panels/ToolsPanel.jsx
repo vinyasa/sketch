@@ -6,6 +6,10 @@ const ToolsPanel = () => {
     const [stagedOps, setStagedOps] = useState({});
     // New modifiers that haven't been committed to the store yet
     const [pendingNewOps, setPendingNewOps] = useState([]);
+    
+    // UI state for bulk edge joints
+    const [bulkJointType, setBulkJointType] = useState('rabbet');
+    const [bulkSideOverTop, setBulkSideOverTop] = useState(true);
 
     const {
         boards, selectedItemIds,
@@ -13,17 +17,19 @@ const ToolsPanel = () => {
         removeOperation, updateOperation,
         setComputingMessage,
         editingToolOpId, setEditingToolOpId,
-        applyRabbetJoint, toggleRabbetJoint, removeRabbetJoint,
+        applyEdgeJoint, toggleEdgeJoint, removeEdgeJoint, switchEdgeJointType,
+        applyBulkEdgeJoints, removeBulkEdgeJoints,
         applySubtraction, toggleBoardVisibility,
     } = useStore();
 
     const selectedBoard = selectedItemIds.length === 1 && boards.find(b => b.id.toString() === selectedItemIds[0]);
 
     // Multi-board selection for joint tools
-    const selectedBoards = selectedItemIds.length === 2
+    const selectedBoards = selectedItemIds.length >= 2
         ? selectedItemIds.map(id => boards.find(b => b.id.toString() === id)).filter(Boolean)
         : [];
-    const canShowRabbetJoint = selectedBoards.length === 2;
+    const canShowedgeJoint = selectedBoards.length >= 2;
+    const canShowSubtraction = selectedBoards.length === 2;
 
     // Clear staged modifier edits when the selected board changes
     const selectedBoardId = selectedItemIds?.[0];
@@ -53,94 +59,116 @@ const ToolsPanel = () => {
 
     return (
         <div>
-            {/* ── Dual Rabbet Joint Section (2 boards selected) ── */}
-            {canShowRabbetJoint && (() => {
-                const [bA, bB] = selectedBoards;
-                const existingJoint = bA.rabbetJoint && bA.rabbetJoint.partnerId === bB.id.toString();
-                const overBoard = existingJoint
-                    ? boards.find(b => b.id.toString() === bA.rabbetJoint.overBoardId)
-                    : null;
-                const underBoard = existingJoint && overBoard
-                    ? (overBoard.id === bA.id ? bB : bA)
-                    : null;
+            {/* ── Edge Joint Section (2+ boards selected) ── */}
+            {canShowedgeJoint && (() => {
+                const boardIds = selectedBoards.map(b => b.id.toString());
+                
+                // Count how many joints exist among selection
+                let existingJoints = 0;
+                let firstJointType = null;
+                
+                selectedBoards.forEach(b => {
+                    if (b.edgeJoints) {
+                        b.edgeJoints.forEach(j => {
+                            if (boardIds.includes(j.partnerId)) {
+                                existingJoints++;
+                                if (!firstJointType) firstJointType = j.type;
+                            }
+                        });
+                    }
+                });
+                
+                // Since each joint is tracked on both boards, existingJoints is 2x the actual joint count
+                const actualJointCount = existingJoints / 2;
+                
+                // If there are existing joints, maybe show their type as active
+                const activeType = actualJointCount > 0 ? (firstJointType || 'rabbet') : bulkJointType;
+
+                const handleTypeClick = (type) => {
+                    setBulkJointType(type);
+                    applyBulkEdgeJoints(boardIds, type, bulkSideOverTop);
+                };
+                
+                const handleFlip = () => {
+                    const newSideOverTop = !bulkSideOverTop;
+                    setBulkSideOverTop(newSideOverTop);
+                    applyBulkEdgeJoints(boardIds, activeType, newSideOverTop);
+                };
 
                 return (
                     <div className="inspector-card" style={{
                         background: 'rgba(100, 180, 255, 0.06)',
                         borderColor: 'rgba(100, 180, 255, 0.3)',
                     }}>
-                        <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#64b4ff', marginBottom: '8px' }}>
-                            🔗 Dual Rabbet Joint
-                        </div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '8px' }}>
-                            {bA.name} ↔ {bB.name}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                            <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#64b4ff' }}>
+                                🔗 Edge Joints {selectedBoards.length > 2 && `(${selectedBoards.length} boards)`}
+                            </div>
+                            {actualJointCount > 0 && (
+                                <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>
+                                    {actualJointCount} active joint{actualJointCount > 1 ? 's' : ''}
+                                </div>
+                            )}
                         </div>
 
-                        {existingJoint ? (
-                            <div>
-                                <div style={{
-                                    fontSize: '0.75rem', color: 'var(--text-main)',
-                                    padding: '6px 10px', marginBottom: '8px',
-                                    background: 'rgba(100, 180, 255, 0.08)', borderRadius: '6px',
-                                    border: '1px solid rgba(100, 180, 255, 0.15)',
-                                }}>
-                                    <strong>{overBoard?.name}</strong> over <strong>{underBoard?.name}</strong>
-                                </div>
-                                <div style={{ display: 'flex', gap: '6px' }}>
-                                    <button
-                                        onClick={() => toggleRabbetJoint(bA.id)}
-                                        style={{
-                                            flex: 1, padding: '7px', fontSize: '0.78rem', fontWeight: 600,
-                                            background: 'rgba(100, 180, 255, 0.12)', border: '1px solid rgba(100, 180, 255, 0.4)',
-                                            borderRadius: '6px', color: '#64b4ff', cursor: 'pointer', transition: 'all 0.15s',
-                                        }}
-                                        onMouseEnter={e => e.target.style.filter = 'brightness(1.2)'}
-                                        onMouseLeave={e => e.target.style.filter = ''}
-                                    >⇄ Flip</button>
-                                    <button
-                                        onClick={() => removeRabbetJoint(bA.id)}
-                                        style={{
-                                            padding: '7px 14px', fontSize: '0.78rem', fontWeight: 600,
-                                            background: 'rgba(255,59,48,0.08)', border: '1px solid rgba(255,59,48,0.3)',
-                                            borderRadius: '6px', color: '#ff3b30', cursor: 'pointer', transition: 'all 0.15s',
-                                        }}
-                                        onMouseEnter={e => e.target.style.filter = 'brightness(1.2)'}
-                                        onMouseLeave={e => e.target.style.filter = ''}
-                                    >✕ Remove</button>
-                                </div>
-                            </div>
-                        ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            {/* Row 1: Type Selection */}
                             <div style={{ display: 'flex', gap: '6px' }}>
                                 <button
-                                    onClick={() => applyRabbetJoint(bA.id, bB.id)}
-                                    title={`${bA.name} keeps full size, ${bB.name} shrinks`}
+                                    onClick={() => handleTypeClick('butt')}
                                     style={{
                                         flex: 1, padding: '7px', fontSize: '0.75rem', fontWeight: 600,
-                                        background: 'rgba(60,200,90,0.12)', border: '1px solid rgba(60,200,90,0.4)',
-                                        borderRadius: '6px', color: '#34c759', cursor: 'pointer', transition: 'all 0.15s',
+                                        background: activeType === 'butt' ? 'rgba(100, 180, 255, 0.2)' : 'rgba(100, 180, 255, 0.05)',
+                                        border: `1px solid rgba(100, 180, 255, ${activeType === 'butt' ? '0.6' : '0.2'})`,
+                                        borderRadius: '6px', color: activeType === 'butt' ? '#64b4ff' : 'var(--text-muted)',
+                                        cursor: 'pointer', transition: 'all 0.15s',
                                     }}
-                                    onMouseEnter={e => e.target.style.filter = 'brightness(1.2)'}
-                                    onMouseLeave={e => e.target.style.filter = ''}
-                                >{bA.name} over {bB.name}</button>
+                                >Butt</button>
                                 <button
-                                    onClick={() => applyRabbetJoint(bB.id, bA.id)}
-                                    title={`${bB.name} keeps full size, ${bA.name} shrinks`}
+                                    onClick={() => handleTypeClick('rabbet')}
                                     style={{
                                         flex: 1, padding: '7px', fontSize: '0.75rem', fontWeight: 600,
-                                        background: 'rgba(60,200,90,0.12)', border: '1px solid rgba(60,200,90,0.4)',
-                                        borderRadius: '6px', color: '#34c759', cursor: 'pointer', transition: 'all 0.15s',
+                                        background: activeType === 'rabbet' ? 'rgba(100, 180, 255, 0.2)' : 'rgba(100, 180, 255, 0.05)',
+                                        border: `1px solid rgba(100, 180, 255, ${activeType === 'rabbet' ? '0.6' : '0.2'})`,
+                                        borderRadius: '6px', color: activeType === 'rabbet' ? '#64b4ff' : 'var(--text-muted)',
+                                        cursor: 'pointer', transition: 'all 0.15s',
                                     }}
-                                    onMouseEnter={e => e.target.style.filter = 'brightness(1.2)'}
-                                    onMouseLeave={e => e.target.style.filter = ''}
-                                >{bB.name} over {bA.name}</button>
+                                >Rabbet</button>
                             </div>
-                        )}
+
+                            {/* Row 2: Orientation */}
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(0,0,0,0.1)', padding: '6px 10px', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
+                                <div style={{ fontSize: '0.75rem', color: 'var(--text-main)', fontWeight: 500 }}>
+                                    {bulkSideOverTop ? 'Sides over T/B' : 'T/B over Sides'}
+                                </div>
+                                <button
+                                    onClick={handleFlip}
+                                    style={{
+                                        padding: '4px 10px', fontSize: '0.72rem', fontWeight: 600,
+                                        background: 'rgba(100, 180, 255, 0.12)', border: '1px solid rgba(100, 180, 255, 0.4)',
+                                        borderRadius: '4px', color: '#64b4ff', cursor: 'pointer', transition: 'all 0.15s',
+                                    }}
+                                >⇄ Flip</button>
+                            </div>
+
+                            {/* Row 3: Remove */}
+                            <button
+                                onClick={() => removeBulkEdgeJoints(boardIds)}
+                                style={{
+                                    width: '100%', padding: '7px', fontSize: '0.75rem', fontWeight: 600,
+                                    background: 'rgba(255,59,48,0.08)', border: '1px solid rgba(255,59,48,0.3)',
+                                    borderRadius: '6px', color: '#ff3b30', cursor: 'pointer', transition: 'all 0.15s',
+                                    opacity: actualJointCount > 0 ? 1 : 0.5,
+                                    pointerEvents: actualJointCount > 0 ? 'auto' : 'none',
+                                }}
+                            >✕ Remove</button>
+                        </div>
                     </div>
                 );
             })()}
 
             {/* ── Boolean Subtract Section (2 boards selected) ── */}
-            {canShowRabbetJoint && (() => {
+            {canShowSubtraction && (() => {
                 const [bA, bB] = selectedBoards;
                 return (
                     <div className="inspector-card" style={{
@@ -215,7 +243,7 @@ const ToolsPanel = () => {
                         onMouseLeave={e => e.target.style.background = 'var(--bg-color)'}
                     >⊿ Miter</button>
                 </div>
-            ) : !canShowRabbetJoint && (
+            ) : !canShowedgeJoint && (
                 <div className="hint" style={{ marginBottom: '14px' }}>Select a board to add or edit tools.</div>
             )}
 

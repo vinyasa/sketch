@@ -54,11 +54,11 @@ function rectsOverlap(ax, ay, aw, ah, bx, by, bw, bh, pad) {
  * @param {'center'|'left'|'right'} preference - The preferred spawning region.
  * @returns {{x: number, y: number}} The best computed coordinate.
  */
-export function getSmartPosition(width = 250, heightHint = 300, preference = 'left') {
+export function getSmartPosition(width = 250, heightHint = 300, preference = 'left', topMargin = 100) {
     if (typeof window === 'undefined') return { x: 0, y: 0 };
 
     const PADDING = 14;
-    const TOP_MARGIN = 100;
+    const TOP_MARGIN = topMargin;
     const vWidth = window.innerWidth;
     const vHeight = window.innerHeight;
 
@@ -76,6 +76,9 @@ export function getSmartPosition(width = 250, heightHint = 300, preference = 'le
         startY = Math.max(TOP_MARGIN, Math.round((vHeight - heightHint) / 2) - 50);
     } else if (preference === 'right') {
         startX = vWidth - width - 20;
+    } else if (preference === 'inspector') {
+        // Offset by 240 to clear the default OutlinerPanel position (200w + 20pad + 20gap)
+        startX = vWidth - width - 240;
     } else {
         startX = 20;
     }

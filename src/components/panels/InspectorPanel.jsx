@@ -43,15 +43,17 @@ const InspectorPanel = () => {
         dropBoardToFloor, dropGroupToFloor, dropSelectionToFloor,
         incrementRotation, resetRotation,
         handleAssemblyDelete, handleComponentDelete, handleMultiDelete,
+        glueAssembly, unglueAssembly, createPivotProxy,
         removeConstraint, toggleConstraint,
         constraintTargetMode, setConstraintTargetMode,
         updateProceduralBox,
         removeOperation, updateOperation,
         setComputingMessage,
         showToolsPanel, setShowToolsPanel, setEditingToolOpId,
-        toggleRabbetJoint, removeRabbetJoint,
+        toggleEdgeJoint, removeEdgeJoint,
         removeHardware, updateHardware,
         selectedHardwareId, setSelectedHardwareId,
+        setCabinetDialog, setShakerDoorDialog, setDrawerDialog, cloneAssembly,
     } = useStore();
 
     const selectedBoardId = selectedItemIds?.[0];
@@ -105,6 +107,8 @@ const InspectorPanel = () => {
         // Compute overall dimensions from child boards
         const childBoards = collectChildBoards(selectedGroup, boards, groups);
         let overallSize = [0, 0, 0];
+        let isGlued = false;
+        
         if (childBoards.length > 0) {
             const aabb = computeWorldAABB(childBoards);
             overallSize = [
@@ -112,6 +116,11 @@ const InspectorPanel = () => {
                 Math.abs(aabb.maxY - aabb.minY),
                 Math.abs(aabb.maxZ - aabb.minZ)
             ];
+
+            const childIds = new Set(childBoards.map(b => b.id.toString()));
+            isGlued = Object.values(constraints).some(c => 
+                c.type === 'Glue' && childIds.has(c.boardAId) && childIds.has(c.boardBId)
+            );
         }
 
         return (
@@ -144,9 +153,9 @@ const InspectorPanel = () => {
                 <div className="inspector-section">
                     <h4>Overall Dimensions (in)</h4>
                     <div className="vec3-inputs">
-                        <div style={{ backgroundColor: 'rgba(255, 60, 60, 0.15)' }}>X<input type="number" value={fmt4(overallSize[0])} disabled /></div>
-                        <div style={{ backgroundColor: 'rgba(60, 200, 90, 0.15)' }}>Y<input type="number" value={fmt4(overallSize[1])} disabled /></div>
-                        <div style={{ backgroundColor: 'rgba(60, 150, 255, 0.15)' }}>Z<input type="number" value={fmt4(overallSize[2])} disabled /></div>
+                        <div style={{ backgroundColor: 'rgba(255, 60, 60, 0.15)' }}>X<input type="number" value={fmt4(overallSize[0])} disabled style={{ opacity: 0.5, cursor: 'not-allowed' }} /></div>
+                        <div style={{ backgroundColor: 'rgba(60, 200, 90, 0.15)' }}>Y<input type="number" value={fmt4(overallSize[1])} disabled style={{ opacity: 0.5, cursor: 'not-allowed' }} /></div>
+                        <div style={{ backgroundColor: 'rgba(60, 150, 255, 0.15)' }}>Z<input type="number" value={fmt4(overallSize[2])} disabled style={{ opacity: 0.5, cursor: 'not-allowed' }} /></div>
                     </div>
                 </div>
                 {!isWorkspace && (() => {
@@ -195,6 +204,56 @@ const InspectorPanel = () => {
                 )}
                 {!isWorkspace && (
                     <div style={{ marginTop: '16px' }}>
+                        <button
+                            className="primary-btn"
+                            style={{ 
+                                width: '100%', padding: '8px', fontWeight: 'bold', marginBottom: '8px',
+                                background: isGlued ? 'rgba(255, 59, 48, 0.05)' : undefined,
+                                color: isGlued ? '#ff3b30' : undefined,
+                                border: isGlued ? '1px solid rgba(255, 59, 48, 0.3)' : undefined,
+                            }}
+                            onMouseEnter={e => {
+                                if (isGlued) e.target.style.background = 'rgba(255, 59, 48, 0.15)';
+                            }}
+                            onMouseLeave={e => {
+                                if (isGlued) e.target.style.background = 'rgba(255, 59, 48, 0.05)';
+                            }}
+                            onClick={() => isGlued ? unglueAssembly(selectedGroup) : glueAssembly(selectedGroup)}
+                        >
+                            {isGlued ? 'Unglue Assembly' : 'Glue Assembly'}
+                        </button>
+                        {groups[selectedGroup].meta?.builder && (
+                            <button
+                                className="primary-btn"
+                                style={{ width: '100%', padding: '8px', fontWeight: 'bold', marginBottom: '8px' }}
+                                onClick={() => {
+                                    const meta = groups[selectedGroup].meta;
+                                    if (meta.builder === 'cabinet') {
+                                        setCabinetDialog({ ...meta.params, editGroupId: selectedGroup });
+                                    } else if (meta.builder === 'shaker-door') {
+                                        setShakerDoorDialog({ ...meta.params, editGroupId: selectedGroup });
+                                    } else if (meta.builder === 'drawerStack') {
+                                        setDrawerDialog({ ...meta.params, editGroupId: selectedGroup });
+                                    }
+                                }}
+                            >
+                                Edit Parameters
+                            </button>
+                        )}
+                        <button
+                            className="primary-btn"
+                            style={{ width: '100%', padding: '8px', fontWeight: 'bold', marginBottom: '8px' }}
+                            onClick={() => createPivotProxy(selectedGroup)}
+                        >
+                            Create Pivot Proxy
+                        </button>
+                        <button
+                            className="primary-btn"
+                            style={{ width: '100%', padding: '8px', fontWeight: 'bold', marginBottom: '16px' }}
+                            onClick={() => cloneAssembly(selectedGroup)}
+                        >
+                            Clone Assembly
+                        </button>
                         <button
                             className="nav-btn"
                             style={{ width: '100%', padding: '8px', color: '#ff3b30', border: '1px solid rgba(255, 59, 48, 0.3)', background: 'rgba(255, 59, 48, 0.05)', fontWeight: 'bold', transition: 'background 0.2s' }}
@@ -355,6 +414,9 @@ const InspectorPanel = () => {
                     <button style={{ marginTop: '8px', width: '100%' }} className="primary-btn" onClick={dropSelectionToFloor}>↓ Set on Floor</button>
                 </div>
                 {selBoards.length >= 2 && (() => {
+                    const areVertical = selBoards.every(b => b.size[1] > b.size[0] && b.size[1] > b.size[2]);
+                    if (!areVertical) return null;
+
                     // Centroid across all selected boards in X and Z
                     const cx = selBoards.reduce((s, b) => s + b.position[0], 0) / selBoards.length;
                     const cz = selBoards.reduce((s, b) => s + b.position[2], 0) / selBoards.length;
@@ -914,17 +976,17 @@ const InspectorPanel = () => {
                         </div>
                     );
                 })()}
-                {/* ── Dual Rabbet Joint Card ── */}
-                {selectedBoard.rabbetJoint && (() => {
-                    const rj = selectedBoard.rabbetJoint;
+                {/* ── Dual Edge Joint Cards ── */}
+                {selectedBoard.edgeJoints && selectedBoard.edgeJoints.map((rj) => {
                     const partner = boards.find(b => b.id.toString() === rj.partnerId);
                     const partnerName = partner?.name ?? rj.partnerId;
                     const overBoard = boards.find(b => b.id.toString() === rj.overBoardId);
                     const isOver = overBoard?.id === selectedBoard.id;
+                    const jointTypeLabel = rj.type === 'butt' ? 'Butt' : 'Dual Rabbet';
 
                     return (
-                        <div className="inspector-card">
-                            <h4>🔗 Dual Rabbet Joint</h4>
+                        <div key={rj.partnerId} className="inspector-card">
+                            <h4>🔗 {jointTypeLabel} Joint</h4>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
                                 <span style={{ fontSize: '0.75rem', color: 'var(--text-main)', flex: 1 }}>
                                     {isOver ? (
@@ -934,8 +996,8 @@ const InspectorPanel = () => {
                                     )}
                                 </span>
                                 <button
-                                    onClick={() => toggleRabbetJoint(selectedBoard.id)}
-                                    title="Flip dual rabbet joint"
+                                    onClick={() => toggleEdgeJoint(selectedBoard.id, rj.partnerId)}
+                                    title="Flip dual Edge Joint"
                                     style={{
                                         padding: '3px 10px', fontSize: '0.72rem', fontWeight: 600,
                                         background: 'rgba(100,180,255,0.12)', border: '1px solid rgba(100,180,255,0.4)',
@@ -943,8 +1005,8 @@ const InspectorPanel = () => {
                                     }}
                                 >⇄</button>
                                 <button
-                                    onClick={() => removeRabbetJoint(selectedBoard.id)}
-                                    title="Remove dual rabbet joint"
+                                    onClick={() => removeEdgeJoint(selectedBoard.id, rj.partnerId)}
+                                    title="Remove dual Edge Joint"
                                     style={{
                                         padding: '3px 8px', fontSize: '0.72rem', fontWeight: 600,
                                         background: 'none', border: 'none', color: '#ff3b30', cursor: 'pointer',
@@ -953,7 +1015,7 @@ const InspectorPanel = () => {
                             </div>
                         </div>
                     );
-                })()}
+                })}
                 <div className="inspector-card">
                     <h4>Active Constraints</h4>
                     {boardConstraints.length === 0 ? (

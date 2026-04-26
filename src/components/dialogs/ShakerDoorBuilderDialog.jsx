@@ -5,14 +5,15 @@ const ShakerDoorBuilderDialog = () => {
     const { shakerDoorDialog: dialog, setShakerDoorDialog: setDialog, buildShakerDoor } = useStore();
     if (!dialog) return null;
 
-    const W = dialog.width ?? 18;
-    const H = dialog.height ?? 30;
-    const tFrame = dialog.thicknessFrame ?? 0.75;
-    const tPanel = dialog.thicknessPanel ?? 0.25;
-    const wStileRail = dialog.widthStileRail ?? 2;
-    const grooveDepth = dialog.grooveDepth ?? 0.375;
-    const grooveWidth = dialog.grooveWidth ?? 0.25;
-    const panelClearance = dialog.panelClearance ?? 0.125;
+    const parse = (v, def) => { const n = parseFloat(v); return isNaN(n) ? def : n; };
+    const W = parse(dialog.width, 18);
+    const H = parse(dialog.height, 30);
+    const tFrame = parse(dialog.thicknessFrame, 0.75);
+    const tPanel = parse(dialog.thicknessPanel, 0.25);
+    const wStileRail = parse(dialog.widthStileRail, 2);
+    const grooveDepth = parse(dialog.grooveDepth, 0.375);
+    const grooveWidth = parse(dialog.grooveWidth, 0.25);
+    const panelClearance = parse(dialog.panelClearance, 0.125);
 
     // Derived panel sizes for the summary
     const stile = { x: wStileRail, y: H, z: tFrame };
@@ -67,13 +68,13 @@ const ShakerDoorBuilderDialog = () => {
                         <div>
                             <div style={labelStyle}>Width (X)</div>
                             <input type="number" step="0.5" min="4" value={W}
-                                onChange={e => setDialog(p => ({ ...p, width: Math.max(4, parseFloat(e.target.value) || 4) }))}
+                                onChange={e => setDialog(p => ({ ...p, width: e.target.value }))}
                                 style={inputStyle} />
                         </div>
                         <div>
                             <div style={labelStyle}>Height (Y)</div>
                             <input type="number" step="0.5" min="4" value={H}
-                                onChange={e => setDialog(p => ({ ...p, height: Math.max(4, parseFloat(e.target.value) || 4) }))}
+                                onChange={e => setDialog(p => ({ ...p, height: e.target.value }))}
                                 style={inputStyle} />
                         </div>
                     </div>
@@ -86,13 +87,13 @@ const ShakerDoorBuilderDialog = () => {
                         <div>
                             <div style={labelStyle}>Stile/Rail Width</div>
                             <input type="number" step="0.125" min="1" value={wStileRail}
-                                onChange={e => setDialog(p => ({ ...p, widthStileRail: Math.max(1, parseFloat(e.target.value) || 1) }))}
+                                onChange={e => setDialog(p => ({ ...p, widthStileRail: e.target.value }))}
                                 style={inputStyle} />
                         </div>
                         <div>
                             <div style={labelStyle}>Frame Thickness</div>
                             <input type="number" step="0.125" min="0.5" value={tFrame}
-                                onChange={e => setDialog(p => ({ ...p, thicknessFrame: Math.max(0.5, parseFloat(e.target.value) || 0.5) }))}
+                                onChange={e => setDialog(p => ({ ...p, thicknessFrame: e.target.value }))}
                                 style={inputStyle} />
                         </div>
                     </div>
@@ -105,25 +106,25 @@ const ShakerDoorBuilderDialog = () => {
                         <div>
                             <div style={labelStyle}>Groove Depth</div>
                             <input type="number" step="0.0625" min="0" value={grooveDepth}
-                                onChange={e => setDialog(p => ({ ...p, grooveDepth: Math.max(0, parseFloat(e.target.value) || 0) }))}
+                                onChange={e => setDialog(p => ({ ...p, grooveDepth: e.target.value }))}
                                 style={inputStyle} />
                         </div>
                         <div>
                             <div style={labelStyle}>Groove Width</div>
                             <input type="number" step="0.0625" min="0" value={grooveWidth}
-                                onChange={e => setDialog(p => ({ ...p, grooveWidth: Math.max(0, parseFloat(e.target.value) || 0) }))}
+                                onChange={e => setDialog(p => ({ ...p, grooveWidth: e.target.value }))}
                                 style={inputStyle} />
                         </div>
                         <div>
                             <div style={labelStyle}>Panel Thickness</div>
                             <input type="number" step="0.0625" min="0.125" value={tPanel}
-                                onChange={e => setDialog(p => ({ ...p, thicknessPanel: Math.max(0.125, parseFloat(e.target.value) || 0.125) }))}
+                                onChange={e => setDialog(p => ({ ...p, thicknessPanel: e.target.value }))}
                                 style={inputStyle} />
                         </div>
                         <div>
                             <div style={labelStyle}>Panel Clearance</div>
                             <input type="number" step="0.0625" min="0" value={panelClearance}
-                                onChange={e => setDialog(p => ({ ...p, panelClearance: Math.max(0, parseFloat(e.target.value) || 0) }))}
+                                onChange={e => setDialog(p => ({ ...p, panelClearance: e.target.value }))}
                                 style={inputStyle} />
                         </div>
                     </div>

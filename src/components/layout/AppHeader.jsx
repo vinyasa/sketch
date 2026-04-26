@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
 import useStore from '../../store/useStore';
 
@@ -7,6 +7,7 @@ const AppHeader = () => {
         fileMenuOpen, setFileMenuOpen,
         saveWorkspace, exportWorkspace, loadWorkspace, importWorkspace,
         setShowNewWorkspaceDialog,
+        setShowSavePromptDialog,
         setShowPrintDialog,
         setCabinetDialog, setShakerDoorDialog,
         recentFiles,
@@ -28,12 +29,26 @@ const AppHeader = () => {
         measureMode, setMeasureMode,
         isRightPanelOpen, setIsRightPanelOpen,
         currentFileName,
+        setHeaderBottom,
     } = useStore();
 
     const [isNavOpen, setIsNavOpen] = useState(true);
+    const headerRef = useRef(null);
+
+    useEffect(() => {
+        if (!headerRef.current) return;
+        const ro = new ResizeObserver(() => {
+            if (headerRef.current) {
+                const rect = headerRef.current.getBoundingClientRect();
+                setHeaderBottom(rect.bottom + 16); // 16px buffer
+            }
+        });
+        ro.observe(headerRef.current);
+        return () => ro.disconnect();
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
     return (
-        <div className="header-overlay">
+        <div className="header-overlay" ref={headerRef}>
             
             {/* ── CARD 1: Logo & File Menu (Fixed Left) ── */}
             <header className="header-left-card glass-panel">
@@ -56,9 +71,10 @@ const AppHeader = () => {
                                 <button className="nav-btn" style={{ textAlign: 'left', border: 'none', padding: '6px 12px', fontSize: '0.85rem' }} onClick={() => { setFileMenuOpen(false); setShowNewWorkspaceDialog(true); }}>✨ New Workspace</button>
                                 <div className="divider" style={{ width: '100%', height: '1px', margin: '4px 0' }}></div>
                                 <button className="nav-btn" style={{ textAlign: 'left', border: 'none', padding: '6px 12px', fontSize: '0.85rem' }} onClick={() => { saveWorkspace(); setFileMenuOpen(false); }}>💾 Save</button>
-                                <button className="nav-btn" style={{ textAlign: 'left', border: 'none', padding: '6px 12px', fontSize: '0.85rem' }} onClick={() => { exportWorkspace(); setFileMenuOpen(false); }}>💾 Save As...</button>
+                                <button className="nav-btn" style={{ textAlign: 'left', border: 'none', padding: '6px 12px', fontSize: '0.85rem' }} onClick={() => { setShowSavePromptDialog(true); setFileMenuOpen(false); }}>💾 Save Copy...</button>
                                 <div className="divider" style={{ width: '100%', height: '1px', margin: '4px 0' }}></div>
-                                <button className="nav-btn" style={{ textAlign: 'left', border: 'none', padding: '6px 12px', fontSize: '0.85rem' }} onClick={() => { setShowPrintDialog(true); setFileMenuOpen(false); }}>🖨️ Print / Export...</button>
+                                <button className="nav-btn" style={{ textAlign: 'left', border: 'none', padding: '6px 12px', fontSize: '0.85rem' }} onClick={() => { exportWorkspace(); setFileMenuOpen(false); }}>🖨️ Export JSON...</button>
+                                <button className="nav-btn" style={{ textAlign: 'left', border: 'none', padding: '6px 12px', fontSize: '0.85rem' }} onClick={() => { setShowPrintDialog(true); setFileMenuOpen(false); }}>🖨️ Print View...</button>
                                 <div className="divider" style={{ width: '100%', height: '1px', margin: '4px 0' }}></div>
                                 <button className="nav-btn" style={{ textAlign: 'left', border: 'none', padding: '6px 12px', fontSize: '0.85rem' }} onClick={() => { loadWorkspace(); setFileMenuOpen(false); }}>📂 Load</button>
                                 <button className="nav-btn" style={{ textAlign: 'left', border: 'none', padding: '6px 12px', fontSize: '0.85rem' }} onClick={() => { document.getElementById('project-import-input').click(); setFileMenuOpen(false); }}>📂 Open...</button>

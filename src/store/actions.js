@@ -186,6 +186,124 @@ export const createActions = (set, get) => ({
         if (entry) showToast(`"${entry.name}" removed from library.`);
     },
 
+    cloneAssembly: (selectedGroupId) => {
+        const { boards, groups, constraints, setBoards, setGroups, setConstraints, setSelectedItemIds, pushHistory, showToast } = get();
+
+        if (!groups[selectedGroupId]) return;
+        pushHistory();
+
+        const collectGroupSubTree = (rootId) => {
+            const result = {};
+            const traverse = (currentId) => {
+                if (!groups[currentId]) return;
+                result[currentId] = { ...groups[currentId] };
+                Object.keys(groups).filter(k => groups[k].parentId === currentId).forEach(traverse);
+            };
+            traverse(rootId);
+            return result;
+        };
+
+        const snapshotGroups = collectGroupSubTree(selectedGroupId);
+        const groupIdsInAssembly = new Set(Object.keys(snapshotGroups));
+
+        const snapshotBoards = boards.filter(b => {
+            let pid = b.parentId;
+            while (pid) {
+                if (groupIdsInAssembly.has(pid)) return true;
+                const pg = groups[pid];
+                pid = pg ? pg.parentId : null;
+            }
+            return false;
+        }).map(b => ({ ...b }));
+
+        const boardIdsInAssembly = new Set(snapshotBoards.map(b => b.id.toString()));
+
+        const snapshotConstraints = {};
+        Object.entries(constraints).forEach(([cId, c]) => {
+            if (boardIdsInAssembly.has(c.boardAId) && boardIdsInAssembly.has(c.boardBId)) {
+                snapshotConstraints[cId] = { ...c };
+            }
+        });
+
+        const existingGroupNames = new Set(Object.keys(groups));
+        const uniqueGroupName = (base) => {
+            // Strip any trailing digits like -2, -3 from the base before cloning
+            const cleanBase = base.replace(/-\d+$/, '');
+            let n = 2;
+            let name = `${cleanBase}-${n}`;
+            while (existingGroupNames.has(name)) {
+                n++;
+                name = `${cleanBase}-${n}`;
+            }
+            existingGroupNames.add(name);
+            return name;
+        };
+
+        const oldRootId = selectedGroupId;
+        const groupIdMap = {};
+        
+        groupIdMap[oldRootId] = uniqueGroupName(selectedGroupId);
+        Object.keys(snapshotGroups).forEach(oldId => {
+            if (oldId !== oldRootId) {
+                groupIdMap[oldId] = uniqueGroupName(oldId);
+            }
+        });
+
+        const newRootId = groupIdMap[oldRootId];
+
+        let nextBoardId = Math.max(0, ...boards.map(b => parseInt(b.id) || 0)) + 1;
+        const boardIdMap = {};
+        snapshotBoards.forEach(b => {
+            boardIdMap[b.id.toString()] = nextBoardId++;
+        });
+
+        const newGroups = {};
+        Object.entries(snapshotGroups).forEach(([oldId, g]) => {
+            const newId = groupIdMap[oldId];
+            const newParentId = oldId === oldRootId
+                ? g.parentId
+                : (groupIdMap[g.parentId] ?? g.parentId);
+            newGroups[newId] = { ...g, parentId: newParentId };
+        });
+
+        const newBoards = snapshotBoards.map(b => {
+            const edgeJoints = (b.edgeJoints || []).map(ej => ({
+                ...ej,
+                partnerId: boardIdMap[ej.partnerId]?.toString() ?? ej.partnerId
+            }));
+
+            const operations = (b.operations || []).map(op => ({
+                ...op,
+                partnerId: boardIdMap[op.partnerId]?.toString() ?? op.partnerId
+            }));
+
+            return {
+                ...b,
+                id: boardIdMap[b.id.toString()],
+                parentId: groupIdMap[b.parentId] ?? b.parentId,
+                position: [b.position[0] + 10, b.position[1], b.position[2] + 10],
+                edgeJoints,
+                operations
+            };
+        });
+
+        const newConstraints = {};
+        Object.entries(snapshotConstraints).forEach(([, c]) => {
+            const newCId = Date.now().toString() + Math.random();
+            newConstraints[newCId] = {
+                ...c,
+                boardAId: boardIdMap[c.boardAId]?.toString() ?? c.boardAId,
+                boardBId: boardIdMap[c.boardBId]?.toString() ?? c.boardBId,
+            };
+        });
+
+        setGroups(prev => ({ ...prev, ...newGroups }));
+        setBoards(prev => [...prev, ...newBoards]);
+        setConstraints(prev => ({ ...prev, ...newConstraints }));
+        setSelectedItemIds([newRootId]);
+        showToast(`Cloned "${oldRootId}"`);
+    },
+
     /**
      * Update editable metadata on an existing library entry (name, category, tags).
      * @param {string} assemblyId
@@ -277,7 +395,9 @@ export const createActions = (set, get) => ({
         const { setBoards, setGroups, setConstraints, setSelectedItemIds, setCurrentFileName, resetHistory, setMeasurements, setHardwareInstances } = get();
         
         setBoards([]);
-        setGroups({});
+        setGroups({
+            'Workspace': { isExpanded: true, parentId: null, visible: true, name: 'Workspace' }
+        });
         setConstraints({});
         setSelectedItemIds([]);
         setMeasurements([]);
@@ -286,21 +406,22 @@ export const createActions = (set, get) => ({
         if (resetHistory) resetHistory();
     },
 
-    saveWorkspace: (isNamedSave = false) => {
+    saveWorkspace: (customName = null) => {
         const { boards, groups, constraints, theme, units, gridSnap, defaultMaterial, showEdges, showDimensions, showBoundingBox, globalBounds, lighting, recentColors, autosaveInterval, cameraState, measurements, showMeasurements, recentFiles, setRecentFiles, setCurrentFileName, showToast } = get();
+        
         let name = "My Design";
-        if (recentFiles.length > 0) name = recentFiles[0].name;
-
-        if (isNamedSave) {
-            let pName = prompt("Save Project As:", name);
-            if (!pName) return false;
-            name = pName;
+        if (customName) {
+            name = customName;
+        } else if (recentFiles.length > 0) {
+            name = recentFiles[0].name;
         }
 
         const payload = { boards, groups, constraints, theme, units, gridSnap, defaultMaterial, showEdges, showDimensions, showBoundingBox, globalBounds, lighting, recentColors, autosaveInterval, cameraState, measurements, showMeasurements };
         localStorage.setItem('lucey_save_' + name, JSON.stringify(payload));
+        // Also update the active autosave buffer so manual saves survive page reloads immediately
+        localStorage.setItem('lucey_save', JSON.stringify(payload));
 
-        if (isNamedSave) {
+        if (customName) {
             let newRecents = recentFiles.filter(r => r.name !== name);
             newRecents.unshift({ name, timestamp: Date.now() });
             if (newRecents.length > 5) newRecents = newRecents.slice(0, 5);
@@ -309,7 +430,7 @@ export const createActions = (set, get) => ({
             setCurrentFileName(name);
         }
         
-        showToast(isNamedSave ? `Saved as "${name}"` : 'Workspace saved');
+        showToast(customName ? `Saved as "${name}"` : 'Workspace saved');
         return true;
     },
 
@@ -475,7 +596,19 @@ export const createActions = (set, get) => ({
                 // Snap boardA to satisfy the constraint immediately
                 const snappedPos = solveFlushSnap(boardA, constraintTargetMode.sourceFace, boardB, faceStr);
                 if (snappedPos) {
-                    setBoards(prev => prev.map(b => b.id.toString() === boardA.id.toString() ? { ...b, position: snappedPos } : b));
+                    const deltaVec = [
+                        snappedPos[0] - boardA.position[0],
+                        snappedPos[1] - boardA.position[1],
+                        snappedPos[2] - boardA.position[2]
+                    ];
+                    const moveMap = propagateMove([boardA.id.toString()], deltaVec, constraints);
+                    setBoards(prev => prev.map(b => {
+                        const d = moveMap.get(b.id.toString());
+                        if (d) {
+                            return { ...b, position: [b.position[0] + d[0], b.position[1] + d[1], b.position[2] + d[2]] };
+                        }
+                        return b;
+                    }));
                 }
 
                 const cId = Date.now().toString();
@@ -685,7 +818,7 @@ export const createActions = (set, get) => ({
      *     depth  = thicknessB / 2      (half of B's own thickness)
      *     offset = -[ B.size[thinA]/2 - thicknessA/2 ]   (using B's NEW shrunken size along thinA)
      */
-    applyRabbetJoint: (boardAId, boardBId) => {
+    applyEdgeJoint: (boardAId, boardBId, type = 'rabbet', skipHistory = false, skipToast = false, skipOverlapCheck = false) => {
         const { boards, pushHistory, setBoards, showToast } = get();
         const boardA = boards.find(b => b.id.toString() === boardAId.toString());
         const boardB = boards.find(b => b.id.toString() === boardBId.toString());
@@ -709,8 +842,8 @@ export const createActions = (set, get) => ({
         const overlapping = [0, 1, 2].every(i =>
             Math.min(ba[i].max, bb[i].max) - Math.max(ba[i].min, bb[i].min) > 0.01
         );
-        if (!overlapping) {
-            showToast('⚠ Boards must be in miter (overlapping) position first');
+        if (!overlapping && !skipOverlapCheck) {
+            if (!skipToast) showToast('⚠ Boards must be in miter (overlapping) position first');
             return;
         }
 
@@ -718,18 +851,16 @@ export const createActions = (set, get) => ({
         const thinA = thinAxisOf(boardA);
         const thinB = thinAxisOf(boardB);
         if (thinA === thinB) {
-            showToast('⚠ Boards must be perpendicular (different thin axes)');
+            if (!skipToast) showToast('⚠ Boards must be perpendicular (different thin axes)');
             return;
         }
 
         const thicknessA = boardA.size[thinA];
         const thicknessB = boardB.size[thinB];
 
-        // ── Check for existing rabbet between these two boards ────────────
-        const hasExisting = (b, pid) =>
-            (b.operations || []).some(op => op.source === 'rabbet-joint' && op.partnerId === pid.toString());
-        if (hasExisting(boardA, boardB.id) || hasExisting(boardB, boardA.id)) {
-            showToast('⚠ A rabbet joint already exists between these boards. Remove it first.');
+        // ── Check for existing edge joint between these two boards ────────────
+        if (boardA.edgeJoints?.find(j => j.partnerId === boardB.id.toString()) || boardB.edgeJoints?.find(j => j.partnerId === boardA.id.toString())) {
+            if (!skipToast) showToast('⚠ An edge joint already exists between these boards. Remove it first.');
             return;
         }
 
@@ -748,15 +879,15 @@ export const createActions = (set, get) => ({
         const faceB = FACE_LABELS[AXIS_NAMES[thinB] + (signB > 0 ? '+' : '-')];
 
         // ── Config "A over B": A keeps full size, B shrinks ───────────────
-        // Shrink B along A's thin axis by thicknessA/2
-        const shrinkAmount = thicknessA / 2;
+        // Shrink B along A's thin axis: by thicknessA/2 for rabbet, thicknessA for butt
+        const shrinkAmount = type === 'butt' ? thicknessA : thicknessA / 2;
         const newBSize = [...boardB.size];
         const newBPos = [...boardB.position];
         newBSize[thinA] -= shrinkAmount;
         // Shift B toward A by thicknessA/4
         newBPos[thinA] = boardB.position[thinA] + signA * (shrinkAmount / 2);
 
-        // ── Correct existing rabbet-joint dados on B ──────────────────────
+        // ── Correct existing edge-joint dados on B ──────────────────────
         // The center shift displaces existing dado offsets whose widthAxis == thinA.
         // Compute widthAxis from a dado's face + direction, then compensate.
         const FACE_INFO = {
@@ -768,7 +899,7 @@ export const createActions = (set, get) => ({
         const centerShift = signA * (shrinkAmount / 2);
 
         const correctedBOps = (boardB.operations || []).map(op => {
-            if (op.source !== 'rabbet-joint') return op;
+            if (op.source !== 'edge-joint') return op;
             const fi = FACE_INFO[op.face];
             if (!fi) return op;
             const dirIdx = AXIS_IDX[op.direction];
@@ -796,7 +927,7 @@ export const createActions = (set, get) => ({
             offset: offsetA,
             length: 0,
             lengthOffset: 0,
-            source: 'rabbet-joint',
+            source: 'edge-joint',
             partnerId: boardB.id.toString(),
         };
 
@@ -819,12 +950,13 @@ export const createActions = (set, get) => ({
             offset: offsetB,
             length: 0,
             lengthOffset: 0,
-            source: 'rabbet-joint',
+            source: 'edge-joint',
             partnerId: boardA.id.toString(),
         };
 
         // Joint metadata stored on both boards for toggle/remove support
         const meta = {
+            type,
             partnerId: null, // set per-board below
             overBoardId: boardA.id.toString(),
             shrinkAxis: thinA,
@@ -835,27 +967,32 @@ export const createActions = (set, get) => ({
             signB,
         };
 
-        pushHistory();
+        if (!skipHistory) pushHistory();
         setBoards(prev => prev.map(b => {
             if (b.id.toString() === boardA.id.toString()) {
+                const newOps = type === 'butt' ? b.operations : [...(b.operations || []), dadoA];
                 return {
                     ...b,
-                    operations: [...(b.operations || []), dadoA],
-                    rabbetJoint: { ...meta, partnerId: boardB.id.toString() },
+                    operations: newOps,
+                    edgeJoints: [...(b.edgeJoints || []), { ...meta, partnerId: boardB.id.toString() }],
                 };
             }
             if (b.id.toString() === boardB.id.toString()) {
+                const newOps = type === 'butt' ? correctedBOps : [...correctedBOps, dadoB];
                 return {
                     ...b,
                     size: newBSize,
                     position: newBPos,
-                    operations: [...correctedBOps, dadoB],
-                    rabbetJoint: { ...meta, partnerId: boardA.id.toString() },
+                    operations: newOps,
+                    edgeJoints: [...(b.edgeJoints || []), { ...meta, partnerId: boardA.id.toString() }],
                 };
             }
             return b;
         }));
-        showToast(`🔗 Rabbet joint applied: "${boardA.name}" over "${boardB.name}"`);
+        if (!skipToast) {
+            const jointName = type === 'butt' ? 'Butt' : 'Rabbet';
+            showToast(`🔗 ${jointName} joint applied: "${boardA.name}" over "${boardB.name}"`);
+        }
     },
 
     /**
@@ -863,15 +1000,16 @@ export const createActions = (set, get) => ({
      * The previously "over" board becomes "under" (shrinks) and vice versa.
      * Strategy: remove the current joint, then re-apply with swapped roles.
      */
-    toggleRabbetJoint: (boardId) => {
+    toggleEdgeJoint: (boardId, partnerId) => {
         const { boards, pushHistory, setBoards, showToast } = get();
         const board = boards.find(b => b.id.toString() === boardId.toString());
-        if (!board?.rabbetJoint) return;
+        const joint = board?.edgeJoints?.find(j => j.partnerId === partnerId.toString());
+        if (!joint) return;
 
-        const partner = boards.find(b => b.id.toString() === board.rabbetJoint.partnerId);
-        if (!partner?.rabbetJoint) return;
+        const partner = boards.find(b => b.id.toString() === joint.partnerId);
+        if (!partner) return;
 
-        const { overBoardId, shrinkAxis, shrinkAmount, signA } = board.rabbetJoint;
+        const { overBoardId, shrinkAxis, shrinkAmount, signA } = joint;
         const currentOver = boards.find(b => b.id.toString() === overBoardId);
         const currentUnder = currentOver.id === board.id ? partner : board;
         if (!currentOver || !currentUnder) return;
@@ -880,12 +1018,12 @@ export const createActions = (set, get) => ({
         const restoredUnderSize = [...currentUnder.size];
         const restoredUnderPos = [...currentUnder.position];
         restoredUnderSize[shrinkAxis] += shrinkAmount;
-        const underSignA = currentUnder.rabbetJoint.signA;
+        const underSignA = joint.signA; // Fix: use joint, not currentUnder.edgeJoint
         restoredUnderPos[shrinkAxis] -= underSignA * (shrinkAmount / 2);
 
         // ── 2. Remove old rabbet dados from both ──────────────────────────
         const stripRabbetDados = (ops, pid) =>
-            (ops || []).filter(op => !(op.source === 'rabbet-joint' && op.partnerId === pid));
+            (ops || []).filter(op => !(op.source === 'edge-joint' && op.partnerId === pid));
 
         // ── 3. Apply restored state (strip dados, restore sizes) ──────────
         pushHistory();
@@ -896,25 +1034,43 @@ export const createActions = (set, get) => ({
                     size: restoredUnderSize,
                     position: restoredUnderPos,
                     operations: stripRabbetDados(b.operations, currentOver.id.toString()),
+                    edgeJoints: (b.edgeJoints || []).filter(j => j.partnerId !== currentOver.id.toString()),
                 };
-                delete cleaned.rabbetJoint;
                 return cleaned;
             }
             if (b.id.toString() === currentOver.id.toString()) {
                 const cleaned = {
                     ...b,
                     operations: stripRabbetDados(b.operations, currentUnder.id.toString()),
+                    edgeJoints: (b.edgeJoints || []).filter(j => j.partnerId !== currentUnder.id.toString()),
                 };
-                delete cleaned.rabbetJoint;
                 return cleaned;
             }
             return b;
         }));
 
         // ── 4. Re-apply with swapped roles (former under is now over) ─────
-        // Use setTimeout to let state update, then call applyRabbetJoint
+        // Use setTimeout to let state update, then call applyEdgeJoint
         setTimeout(() => {
-            get().applyRabbetJoint(currentUnder.id, currentOver.id);
+            get().applyEdgeJoint(currentUnder.id, currentOver.id, joint.type || 'rabbet');
+        }, 0);
+    },
+
+    /**
+     * Switch an existing edge joint to a different type (e.g., rabbet to butt).
+     */
+    switchEdgeJointType: (boardId, partnerId, newType) => {
+        const { boards, removeEdgeJoint, applyEdgeJoint } = get();
+        const board = boards.find(b => b.id.toString() === boardId.toString());
+        const joint = board?.edgeJoints?.find(j => j.partnerId === partnerId.toString());
+        if (!joint) return;
+        
+        const overBoardId = joint.overBoardId;
+        const underBoardId = overBoardId === board.id.toString() ? joint.partnerId : board.id.toString();
+
+        removeEdgeJoint(boardId, partnerId, true, true);
+        setTimeout(() => {
+            get().applyEdgeJoint(overBoardId, underBoardId, newType);
         }, 0);
     },
 
@@ -922,33 +1078,34 @@ export const createActions = (set, get) => ({
      * Remove a rabbet joint — restore the under board's size and remove
      * rabbet-tagged dados from both boards.
      */
-    removeRabbetJoint: (boardId) => {
+    removeEdgeJoint: (boardId, partnerId, skipHistory = false, skipToast = false) => {
         const { boards, pushHistory, setBoards, showToast } = get();
         const board = boards.find(b => b.id.toString() === boardId.toString());
-        if (!board?.rabbetJoint) return;
+        const joint = board?.edgeJoints?.find(j => j.partnerId === partnerId.toString());
+        if (!joint) return;
 
-        const partner = boards.find(b => b.id.toString() === board.rabbetJoint.partnerId);
+        const partner = boards.find(b => b.id.toString() === joint.partnerId);
         if (!partner) return;
 
-        const { overBoardId, shrinkAxis, shrinkAmount, signA } = board.rabbetJoint;
+        const { overBoardId, shrinkAxis, shrinkAmount, signA } = joint;
         const underBoard = boards.find(b => b.id.toString() !== overBoardId &&
             (b.id.toString() === board.id.toString() || b.id.toString() === partner.id.toString()));
 
         const stripRabbetDados = (ops, pid) =>
-            (ops || []).filter(op => !(op.source === 'rabbet-joint' && op.partnerId === pid));
+            (ops || []).filter(op => !(op.source === 'edge-joint' && op.partnerId === pid));
 
-        pushHistory();
+        if (!skipHistory) pushHistory();
         setBoards(prev => prev.map(b => {
             const isBoard = b.id.toString() === board.id.toString();
             const isPartner = b.id.toString() === partner.id.toString();
             if (!isBoard && !isPartner) return b;
 
-            const partnerId = isBoard ? partner.id.toString() : board.id.toString();
+            const pid = isBoard ? partner.id.toString() : board.id.toString();
             const cleaned = {
                 ...b,
-                operations: stripRabbetDados(b.operations, partnerId),
+                operations: stripRabbetDados(b.operations, pid),
+                edgeJoints: (b.edgeJoints || []).filter(j => j.partnerId !== pid),
             };
-            delete cleaned.rabbetJoint;
 
             // Restore under board's size
             if (underBoard && b.id.toString() === underBoard.id.toString()) {
@@ -960,7 +1117,116 @@ export const createActions = (set, get) => ({
 
             return cleaned;
         }));
-        showToast(`🔗 Rabbet joint removed between "${board.name}" and "${partner.name}"`);
+        if (!skipToast) showToast(`🔗 Edge joint removed between "${board.name}" and "${partner.name}"`);
+    },
+
+    /**
+     * Apply edge joints to all overlapping pairs among the selected boards.
+     */
+    applyBulkEdgeJoints: (boardIds, type = 'rabbet', sideOverTop = true) => {
+        const { removeBulkEdgeJoints, pushHistory } = get();
+        
+        // Push a single history state for the entire bulk operation
+        pushHistory();
+        
+        // 1. Remove existing edge joints among these boards silently
+        removeBulkEdgeJoints(boardIds, true, true);
+        
+        // Use a slight timeout so the removes can flush through state
+        setTimeout(() => {
+            const { boards: latestBoards } = get();
+            const selBoards = boardIds.map(id => latestBoards.find(b => b.id.toString() === id.toString())).filter(Boolean);
+            
+            // Helpers
+            const bbOf = (b) => [0, 1, 2].map(i => ({
+                min: b.position[i] - b.size[i] / 2,
+                max: b.position[i] + b.size[i] / 2,
+            }));
+            const overlaps = (ba, bb) => [0, 1, 2].every(i => Math.min(ba[i].max, bb[i].max) - Math.max(ba[i].min, bb[i].min) > 0.01);
+            const thinAxisOf = (b) => b.size.indexOf(Math.min(...b.size));
+
+            let jointCount = 0;
+            
+            // Find pairs
+            for (let i = 0; i < selBoards.length; i++) {
+                for (let j = i + 1; j < selBoards.length; j++) {
+                    const bA = selBoards[i];
+                    const bB = selBoards[j];
+                    const thinA = thinAxisOf(bA);
+                    const thinB = thinAxisOf(bB);
+                    
+                    if (thinA === thinB) continue; // must be perpendicular
+                    if (!overlaps(bbOf(bA), bbOf(bB))) continue; // must overlap
+                    
+                    let overBoardId = bA.id;
+                    let underBoardId = bB.id;
+                    
+                    const isSideA = thinA === 0 || thinA === 2; // X or Z
+                    const isTopB = thinB === 1; // Y
+                    const isSideB = thinB === 0 || thinB === 2;
+                    const isTopA = thinA === 1;
+                    
+                    if (sideOverTop) {
+                        if (isSideA && isTopB) { overBoardId = bA.id; underBoardId = bB.id; }
+                        else if (isSideB && isTopA) { overBoardId = bB.id; underBoardId = bA.id; }
+                    } else {
+                        if (isTopA && isSideB) { overBoardId = bA.id; underBoardId = bB.id; }
+                        else if (isTopB && isSideA) { overBoardId = bB.id; underBoardId = bA.id; }
+                    }
+                    
+                    // Delay each slightly to avoid state contention
+                    setTimeout(() => {
+                        get().applyEdgeJoint(overBoardId, underBoardId, type, true, true, true);
+                    }, jointCount * 10);
+                    jointCount++;
+                }
+            }
+            
+            if (jointCount > 0) {
+                setTimeout(() => {
+                    const jointName = type === 'butt' ? 'Butt' : 'Rabbet';
+                    get().showToast(`🔗 Applied ${jointCount} ${jointName} joints to selection`);
+                }, jointCount * 10 + 50);
+            }
+        }, 10);
+    },
+
+    /**
+     * Remove all edge joints between overlapping pairs in the selection.
+     */
+    removeBulkEdgeJoints: (boardIds, skipHistory = false, skipToast = false) => {
+        const { removeEdgeJoint, pushHistory } = get();
+        if (!skipHistory) pushHistory();
+        
+        let removedCount = 0;
+        // Collect edges to remove (pairs of IDs)
+        const toRemovePairs = new Set();
+        
+        boardIds.forEach(id => {
+            const b = get().boards.find(b => b.id.toString() === id.toString());
+            if (b?.edgeJoints) {
+                b.edgeJoints.forEach(j => {
+                    if (boardIds.includes(j.partnerId)) {
+                        // Create a stable pair key like "minId_maxId" to avoid double removing
+                        const pId = j.partnerId;
+                        const pairKey = [id.toString(), pId.toString()].sort().join('_');
+                        toRemovePairs.add(pairKey);
+                    }
+                });
+            }
+        });
+        
+        toRemovePairs.forEach(pairKey => {
+            const [idA, idB] = pairKey.split('_');
+            removeEdgeJoint(idA, idB, true, true);
+            removedCount++;
+        });
+        
+        if (removedCount > 0 && !skipToast) {
+            get().showToast(`🔗 Removed ${removedCount} edge joints from selection`);
+        }
+        
+        return removedCount;
     },
 
     toggleBoardVisibility: (id) => {
@@ -2309,104 +2575,222 @@ export const createActions = (set, get) => ({
     //   • Front / Back: full width × height, flush-attached (no overlap), add to total depth
     //   • Back-bottom-left corner at world origin (0,0,0)
     buildCabinet: (cfg) => {
-        const { pushHistory, setBoards, setGroups, setSelectedItemIds, defaultMaterial } = get();
+        const { pushHistory, boards, groups, setBoards, setGroups, setSelectedItemIds } = get();
         pushHistory();
 
-        const W      = cfg.width ?? 24;
-        const H      = cfg.height ?? 30;
-        const D      = cfg.depth ?? 14;
-        const tTB    = cfg.thicknessTB ?? 0.5;
-        const tSide  = cfg.thicknessSide ?? 0.5;
-        const tFront = cfg.thicknessFront ?? 0.5;
-        const tBack  = cfg.thicknessBack ?? 0.25;
+        const parseNum = (val, def) => {
+            if (val === undefined || val === null || val === '') return def;
+            const n = parseFloat(val);
+            return isNaN(n) ? def : n;
+        };
 
-        // Core depth = depth between front and back panels
-        const coreD = D - tFront - tBack;
+        const W      = parseNum(cfg.width, 24);
+        const H      = parseNum(cfg.height, 30);
+        const D      = parseNum(cfg.depth, 14);
+        const tTB    = parseNum(cfg.thicknessTB, 0.75);
+        const tSide  = parseNum(cfg.thicknessSide, 0.75);
+        const tFront = parseNum(cfg.thicknessFront, 0.75);
+        const tBack  = parseNum(cfg.thicknessBack, 0.25);
+        const jointType = cfg.jointType ?? 'rabbet';
+        const backStyle = cfg.backStyle ?? 'flat';
 
-        // Create assembly group
-        const groupId = 'Cabinet ' + Math.floor(Math.random() * 1000);
-        setGroups(prev => ({
-            ...prev,
-            [groupId]: { parentId: 'Workspace', isExpanded: true, visible: true }
-        }));
+        const coreD = backStyle === 'flat' ? D - tBack : D;
 
-        // Panel definitions — position is CENTER of each board
-        // Coordinate system: X = left/right, Y = up/down, Z = front/back
-        // Origin at back-bottom-left → cabinet extends (+X, +Y, +Z)
-        //   Back face at Z = 0..tBack
-        //   Core from Z = tBack..tBack+coreD
-        //   Front face at Z = tBack+coreD..D
-        const coreMidZ = tBack + coreD / 2;
+        const isEditing = !!cfg.editGroupId;
+        const groupId = isEditing ? cfg.editGroupId : 'Cabinet ' + Math.floor(Math.random() * 1000);
+        
+        // Strip out editGroupId before saving params
+        const { editGroupId, ...savedParams } = cfg;
+
+        let offset = [0, 0, 0];
+        const oldIdMap = {};
+        
+        if (isEditing) {
+            const childBoards = collectChildBoards(groupId, boards, groups);
+            if (childBoards.length > 0) {
+                const aabb = computeWorldAABB(childBoards);
+                offset = [aabb.minX, aabb.minY, aabb.minZ];
+            }
+            childBoards.forEach(b => {
+                oldIdMap[b.name] = b.id;
+            });
+            
+            setGroups(prev => ({
+                ...prev,
+                [groupId]: { ...prev[groupId], meta: { builder: 'cabinet', params: savedParams } }
+            }));
+        } else {
+            setGroups(prev => ({
+                ...prev,
+                [groupId]: { parentId: 'Workspace', isExpanded: true, visible: true, name: 'Cabinet', meta: { builder: 'cabinet', params: savedParams } }
+            }));
+        }
+
+        const coreMidZ = backStyle === 'flat' ? tBack + coreD / 2 : coreD / 2;
+        
+        let backSize, backPos;
+        if (backStyle === 'flat') {
+            backSize = [W, H, tBack];
+            backPos = [W / 2, H / 2, tBack / 2];
+        } else {
+            backSize = [W - tSide, H - tTB, tBack];
+            backPos = [W / 2, H / 2, tBack / 2];
+        }
 
         const panelDefs = [
-            // Bottom: full width, sits at bottom of core
             { name: 'Bottom',     size: [W, tTB, coreD],      position: [W / 2, tTB / 2, coreMidZ] },
-            // Top: full width, sits at top of core
             { name: 'Top',        size: [W, tTB, coreD],      position: [W / 2, H - tTB / 2, coreMidZ] },
-            // Left side: full height, inset between top/bottom width (overlap at corners for dado)
             { name: 'Left Side',  size: [tSide, H, coreD],    position: [tSide / 2, H / 2, coreMidZ] },
-            // Right side: full height, inset (same overlap logic)
             { name: 'Right Side', size: [tSide, H, coreD],    position: [W - tSide / 2, H / 2, coreMidZ] },
-            // Back: full width × height, flush at Z = 0
-            { name: 'Back',       size: [W, H, tBack],        position: [W / 2, H / 2, tBack / 2] },
-            // Front: full width × height, flush at Z = D
+            { name: 'Back',       size: backSize,             position: backPos },
             { name: 'Front',      size: [W, H, tFront],       position: [W / 2, H / 2, D - tFront / 2] },
         ];
 
         const baseId = Date.now();
-        const newBoards = panelDefs.map((pd, i) => ({
-            id: baseId + i,
-            name: pd.name,
-            parentId: groupId,
-            size: pd.size,
-            position: pd.position,
-            material: defaultMaterial,
-            joint: 'None',
-            shape: 'box',
-            operations: [],
-        }));
+        const newBoards = panelDefs.map((pd, i) => {
+            const assignedId = oldIdMap[pd.name] || (baseId + i);
+            const b = {
+                id: assignedId,
+                name: pd.name,
+                parentId: groupId,
+                size: pd.size,
+                position: [pd.position[0] + offset[0], pd.position[1] + offset[1], pd.position[2] + offset[2]],
+                material: 'Plywood',
+                joint: 'None',
+                shape: 'box',
+                operations: [],
+                edgeJoints: [] // Reset edge joints
+            };
+            
+            if (backStyle === 'inset') {
+                const backId = oldIdMap['Back'] || (baseId + 4);
+                const rOp = {
+                    type: 'dado', direction: b.name.includes('Side') ? 'y' : 'x',
+                    width: tBack, depth: b.name.includes('Side') ? tSide / 2 : tTB / 2,
+                    offset: -coreD / 2 + tBack / 2, length: 0, lengthOffset: 0,
+                    source: 'edge-joint', partnerId: backId.toString()
+                };
+                
+                if (b.name === 'Left Side') {
+                    b.operations.push({ ...rOp, id: Date.now() + Math.random(), face: 'right' });
+                } else if (b.name === 'Right Side') {
+                    b.operations.push({ ...rOp, id: Date.now() + Math.random(), face: 'left' });
+                } else if (b.name === 'Bottom') {
+                    b.operations.push({ ...rOp, id: Date.now() + Math.random(), face: 'top' });
+                } else if (b.name === 'Top') {
+                    b.operations.push({ ...rOp, id: Date.now() + Math.random(), face: 'bottom' });
+                }
+            }
+            return b;
+        });
 
-        setBoards(prev => [...prev, ...newBoards]);
+        // Atomic update to replace old boards matching these IDs, insert new ones, and delete orphans
+        setBoards(prev => {
+            const newBoardIds = new Set(newBoards.map(nb => nb.id));
+            const filtered = prev.filter(b => !newBoardIds.has(b.id) && b.parentId !== groupId);
+            return [...filtered, ...newBoards];
+        });
         setSelectedItemIds([groupId]);
+
+        setTimeout(() => {
+            const { applyEdgeJoint, setBoards } = get();
+            const bottomId = newBoards[0].id;
+            const topId = newBoards[1].id;
+            const leftId = newBoards[2].id;
+            const rightId = newBoards[3].id;
+            const backId = newBoards[4].id;
+
+            applyEdgeJoint(leftId, topId, jointType, true, true);
+            applyEdgeJoint(rightId, topId, jointType, true, true);
+            
+            applyEdgeJoint(leftId, bottomId, jointType, true, true);
+            applyEdgeJoint(rightId, bottomId, jointType, true, true);
+            
+            if (backStyle === 'inset') {
+                setTimeout(() => {
+                    const backIdStr = backId.toString();
+                    setBoards(prev => prev.map(b => {
+                        if (['Bottom', 'Top', 'Left Side', 'Right Side'].includes(b.name) && b.parentId === groupId) {
+                            const joint = {
+                                type: 'rabbet', partnerId: backIdStr, overBoardId: b.id.toString(), shrinkAxis: 2,
+                                shrinkAmount: b.name.includes('Side') ? tSide / 2 : tTB / 2,
+                                thicknessA: b.name.includes('Side') ? tSide : tTB, thicknessB: tBack,
+                                signA: -1, signB: 1
+                            };
+                            return { ...b, edgeJoints: [...(b.edgeJoints || []), joint] };
+                        }
+                        if (b.name === 'Back' && b.parentId === groupId) {
+                            const sideIds = [bottomId, topId, leftId, rightId].map(String);
+                            const newJoints = sideIds.map((id, idx) => ({
+                                type: 'rabbet', partnerId: id, overBoardId: id, shrinkAxis: 2,
+                                shrinkAmount: idx < 2 ? tTB / 2 : tSide / 2,
+                                thicknessA: idx < 2 ? tTB : tSide, thicknessB: tBack,
+                                signA: -1, signB: 1
+                            }));
+                            return { ...b, edgeJoints: [...(b.edgeJoints || []), ...newJoints] };
+                        }
+                        return b;
+                    }));
+                }, 10);
+            }
+        }, 10);
     },
 
     buildShakerDoor: (cfg) => {
-        const { pushHistory, setBoards, setGroups, setSelectedItemIds, defaultMaterial } = get();
+        const { pushHistory, boards, groups, setBoards, setGroups, setSelectedItemIds, defaultMaterial } = get();
         pushHistory();
 
-        const W      = cfg.width ?? 18;
-        const H      = cfg.height ?? 30;
-        const tFrame = cfg.thicknessFrame ?? 0.75;
-        const tPanel = cfg.thicknessPanel ?? 0.25;
-        const wStile = cfg.widthStileRail ?? 2;
-        const grooveD= cfg.grooveDepth ?? 0.375;
-        const grooveW= cfg.grooveWidth ?? 0.25;
-        const clear  = cfg.panelClearance ?? 0.125;
+        const parseNum = (val, def) => {
+            if (val === undefined || val === null || val === '') return def;
+            const n = parseFloat(val);
+            return isNaN(n) ? def : n;
+        };
 
-        // Create assembly group
-        const groupId = 'Shaker Door ' + Math.floor(Math.random() * 1000);
-        setGroups(prev => ({
-            ...prev,
-            [groupId]: { parentId: 'Workspace', isExpanded: true, visible: true }
-        }));
+        const W      = parseNum(cfg.width, 18);
+        const H      = parseNum(cfg.height, 30);
+        const tFrame = parseNum(cfg.thicknessFrame, 0.75);
+        const tPanel = parseNum(cfg.thicknessPanel, 0.25);
+        const wStile = parseNum(cfg.widthStileRail, 2);
+        const grooveD= parseNum(cfg.grooveDepth, 0.375);
+        const grooveW= parseNum(cfg.grooveWidth, 0.25);
+        const clear  = parseNum(cfg.panelClearance, 0.125);
 
-        // Coordinate system: Origin at back-bottom-left of the door.
-        // X = left/right, Y = up/down, Z = front/back (thickness).
-        // Door is flat, so its thickness spans Z = 0 to tFrame.
-        // We'll place the panel centered in the thickness.
+        const isEditing = !!cfg.editGroupId;
+        const groupId = isEditing ? cfg.editGroupId : 'Shaker Door ' + Math.floor(Math.random() * 1000);
+        
+        const { editGroupId, ...savedParams } = cfg;
+
+        let offset = [0, 0, 0];
+        const oldIdMap = {};
+
+        if (isEditing) {
+            const childBoards = collectChildBoards(groupId, boards, groups);
+            if (childBoards.length > 0) {
+                const aabb = computeWorldAABB(childBoards);
+                offset = [aabb.minX, aabb.minY, aabb.minZ];
+            }
+            childBoards.forEach(b => {
+                oldIdMap[b.name] = b.id;
+            });
+
+            setGroups(prev => ({
+                ...prev,
+                [groupId]: { ...prev[groupId], meta: { builder: 'shaker-door', params: savedParams } }
+            }));
+        } else {
+            setGroups(prev => ({
+                ...prev,
+                [groupId]: { parentId: 'Workspace', isExpanded: true, visible: true, name: 'Shaker Door', meta: { builder: 'shaker-door', params: savedParams } }
+            }));
+        }
 
         const panelW = W - (2 * wStile) + (2 * grooveD) - clear;
         const panelH = H - (2 * wStile) + (2 * grooveD) - clear;
         
-        // The rails extend into the stiles by grooveD on each side
         const railTotalW = W - (2 * wStile) + (2 * grooveD);
-
-        // Center Z of the frame
         const midZ = tFrame / 2;
-        
         const baseId = Date.now();
         
-        // Tenon cut parameters for the rails
         const tenonCutDepth = (tFrame - grooveW) / 2;
         const tenonOffsetLeft = -(railTotalW / 2) + (grooveD / 2);
         const tenonOffsetRight = (railTotalW / 2) - (grooveD / 2);
@@ -2419,17 +2803,14 @@ export const createActions = (set, get) => ({
         ];
 
         const panelDefs = [
-            // Left Stile
             { 
                 name: 'Left Stile', size: [wStile, H, tFrame], position: [wStile / 2, H / 2, midZ],
                 operations: [ { id: baseId + 10, type: 'dado', face: 'right', direction: 'y', width: grooveW, depth: grooveD, offset: 0, length: 0, lengthOffset: 0, source: 'shaker' } ]
             },
-            // Right Stile
             { 
                 name: 'Right Stile', size: [wStile, H, tFrame], position: [W - wStile / 2, H / 2, midZ],
                 operations: [ { id: baseId + 20, type: 'dado', face: 'left', direction: 'y', width: grooveW, depth: grooveD, offset: 0, length: 0, lengthOffset: 0, source: 'shaker' } ]
             },
-            // Top Rail (groove on bottom)
             { 
                 name: 'Top Rail', size: [railTotalW, wStile, tFrame], position: [W / 2, H - wStile / 2, midZ],
                 operations: [ 
@@ -2437,7 +2818,6 @@ export const createActions = (set, get) => ({
                     ...makeTenons(baseId + 30)
                 ]
             },
-            // Bottom Rail (groove on top)
             { 
                 name: 'Bottom Rail', size: [railTotalW, wStile, tFrame], position: [W / 2, wStile / 2, midZ],
                 operations: [ 
@@ -2445,27 +2825,279 @@ export const createActions = (set, get) => ({
                     ...makeTenons(baseId + 40)
                 ]
             },
-            // Center Panel
             { 
                 name: 'Panel', size: [panelW, panelH, tPanel], position: [W / 2, H / 2, midZ],
                 operations: []
             },
         ];
 
-        const newBoards = panelDefs.map((pd, i) => ({
-            id: baseId + 100 + i,
-            name: pd.name,
-            parentId: groupId,
-            size: pd.size,
-            position: pd.position,
-            material: defaultMaterial,
-            joint: 'None',
-            shape: 'box',
-            operations: pd.operations,
-        }));
+        const newBoards = panelDefs.map((pd, i) => {
+            const assignedId = oldIdMap[pd.name] || (baseId + 100 + i);
+            return {
+                id: assignedId,
+                name: pd.name,
+                parentId: groupId,
+                size: pd.size,
+                position: [pd.position[0] + offset[0], pd.position[1] + offset[1], pd.position[2] + offset[2]],
+                material: defaultMaterial,
+                joint: 'None',
+                shape: 'box',
+                operations: pd.operations,
+                edgeJoints: []
+            };
+        });
 
-        setBoards(prev => [...prev, ...newBoards]);
+        setBoards(prev => {
+            const newBoardIds = new Set(newBoards.map(nb => nb.id));
+            const filtered = prev.filter(b => !newBoardIds.has(b.id) && b.parentId !== groupId);
+            return [...filtered, ...newBoards];
+        });
         setSelectedItemIds([groupId]);
+    },
+
+    buildDrawers: (cfg) => {
+        const { pushHistory, boards, groups, setBoards, setGroups, setSelectedItemIds, defaultMaterial } = get();
+        pushHistory();
+
+        const parseNum = (val, def) => {
+            if (val === undefined || val === null || val === '') return def;
+            const n = parseFloat(val);
+            return isNaN(n) ? def : n;
+        };
+
+        const W = parseNum(cfg.width, 24);
+        const H = parseNum(cfg.height, 30);
+        const Dval = parseNum(cfg.depth, 20);
+        const count = parseInt(cfg.count ?? 3, 10);
+        const slideWidth = parseNum(cfg.slideWidth, 0.5);
+        const verticalGap = parseNum(cfg.verticalGap, 0.125);
+        const topClearance = parseNum(cfg.topClearance, 1.0);
+        
+        const tBox = parseNum(cfg.thicknessBox, 0.5);
+        const tBot = parseNum(cfg.thicknessBottom, 0.25);
+        const tFace = parseNum(cfg.thicknessFace, 0.75);
+        
+        const faceStyle = cfg.faceStyle ?? 'inset';
+        const overlayAmount = parseNum(cfg.overlayAmount, 0.5);
+        const jointType = cfg.jointType ?? 'butt';
+
+        const isEditing = !!cfg.editGroupId;
+        const rootGroupId = isEditing ? cfg.editGroupId : 'Drawer Stack ' + Math.floor(Math.random() * 1000);
+        
+        const { editGroupId, ...savedParams } = cfg;
+
+        let offset = [0, 0, 0];
+        let rootParent = 'Workspace';
+
+        if (isEditing) {
+            const childBoards = collectChildBoards(rootGroupId, boards, groups);
+            if (childBoards.length > 0) {
+                const aabb = computeWorldAABB(childBoards);
+                offset = [aabb.minX, aabb.minY, aabb.minZ];
+            }
+            rootParent = groups[rootGroupId]?.parentId || 'Workspace';
+        }
+
+        const newBoards = [];
+        const newGroups = {};
+        
+        if (!isEditing) {
+            newGroups[rootGroupId] = { parentId: rootParent, isExpanded: true, visible: true, meta: { builder: 'drawerStack', params: savedParams } };
+        } else {
+            newGroups[rootGroupId] = { ...groups[rootGroupId], meta: { builder: 'drawerStack', params: savedParams } };
+        }
+
+        const slotH = (H - (count - 1) * verticalGap) / count;
+        
+        let boxD = Dval;
+        let faceW = W;
+        let faceX = W / 2;
+        let faceZ = Dval;
+
+        if (faceStyle === 'inset') {
+            boxD = Dval - tFace;
+            faceZ = Dval - tFace / 2; 
+        } else {
+            faceW = W + 2 * overlayAmount;
+            faceX = W / 2;
+            faceZ = Dval + tFace / 2;
+        }
+
+        const boxW = W - 2 * slideWidth;
+        const boxH = slotH - topClearance;
+        
+        let baseId = Date.now();
+
+        for (let i = 0; i < count; i++) {
+            const drawerGroupId = rootGroupId + ' Drawer ' + i;
+            newGroups[drawerGroupId] = { parentId: rootGroupId, isExpanded: false, visible: true };
+
+            const currentY = i * (slotH + verticalGap);
+            const boxCenterY = currentY + boxH / 2;
+            const faceCenterY = currentY + slotH / 2;
+            
+            let fW = boxW;
+            if (jointType === 'butt') {
+                fW = boxW - 2 * tBox;
+            } else if (jointType === 'rabbet') {
+                // Drawer Lock Joint: front is shorter so sides overlap it.
+                fW = boxW - tBox; 
+            }
+
+            const bLeft = {
+                id: baseId++, name: `Box Left`, parentId: drawerGroupId,
+                size: [tBox, boxH, boxD], position: [slideWidth + tBox / 2, boxCenterY, boxD / 2],
+            };
+            const bRight = {
+                id: baseId++, name: `Box Right`, parentId: drawerGroupId,
+                size: [tBox, boxH, boxD], position: [W - slideWidth - tBox / 2, boxCenterY, boxD / 2],
+            };
+            const bFront = {
+                id: baseId++, name: `Box Front`, parentId: drawerGroupId,
+                size: [fW, boxH, tBox], position: [W / 2, boxCenterY, boxD - tBox / 2],
+            };
+            const bBack = {
+                id: baseId++, name: `Box Back`, parentId: drawerGroupId,
+                size: [fW, boxH, tBox], position: [W / 2, boxCenterY, tBox / 2],
+            };
+            const bBot = {
+                id: baseId++, name: `Box Bottom`, parentId: drawerGroupId,
+                size: [boxW - tBox, tBot, boxD - tBox], position: [W / 2, currentY + 0.5 + tBot / 2, boxD / 2],
+            };
+            
+            let specificFaceH = slotH + verticalGap;
+            let specificFaceY = faceCenterY;
+            if (faceStyle === 'overlay') {
+                if (count === 1) {
+                    specificFaceH = slotH + 2 * overlayAmount;
+                } else if (i === 0) {
+                    specificFaceH = slotH + overlayAmount + verticalGap/2;
+                    specificFaceY = currentY + slotH / 2 - overlayAmount/2 + verticalGap/4;
+                } else if (i === count - 1) {
+                    specificFaceH = slotH + overlayAmount + verticalGap/2;
+                    specificFaceY = currentY + slotH / 2 + overlayAmount/2 - verticalGap/4;
+                }
+            } else {
+                specificFaceH = slotH;
+            }
+            
+            const bFace = {
+                id: baseId++, name: `Face`, parentId: drawerGroupId,
+                size: [faceW, specificFaceH, tFace], position: [faceX, specificFaceY, faceZ],
+            };
+
+            // Corner Joints
+            if (jointType === 'rabbet') {
+                const cornerDepth = tBox / 2;
+                const cornerWidth = tBox / 2;
+                const fOffset = fW / 2 - tBox / 4;
+                const sOffset = boxD / 2 - tBox / 4;
+
+                // Front board gets rabbets on the inside (back face)
+                const fRabL = { type: 'dado', width: cornerWidth, depth: cornerDepth, offset: -fOffset, length: 0, lengthOffset: 0, source: 'edge-joint', partnerId: bLeft.id.toString(), face: 'back', direction: 'y' };
+                const fRabR = { type: 'dado', width: cornerWidth, depth: cornerDepth, offset: fOffset, length: 0, lengthOffset: 0, source: 'edge-joint', partnerId: bRight.id.toString(), face: 'back', direction: 'y' };
+                bFront.operations = [
+                    { ...fRabL, id: Date.now() + Math.random() },
+                    { ...fRabR, id: Date.now() + Math.random() }
+                ];
+
+                // Back board gets rabbets on the inside (front face)
+                const bRabL = { type: 'dado', width: cornerWidth, depth: cornerDepth, offset: -fOffset, length: 0, lengthOffset: 0, source: 'edge-joint', partnerId: bLeft.id.toString(), face: 'front', direction: 'y' };
+                const bRabR = { type: 'dado', width: cornerWidth, depth: cornerDepth, offset: fOffset, length: 0, lengthOffset: 0, source: 'edge-joint', partnerId: bRight.id.toString(), face: 'front', direction: 'y' };
+                bBack.operations = [
+                    { ...bRabL, id: Date.now() + Math.random() },
+                    { ...bRabR, id: Date.now() + Math.random() }
+                ];
+
+                // Left board gets rabbets on the inside (right face)
+                const lRabF = { type: 'dado', width: cornerWidth, depth: cornerDepth, offset: sOffset, length: 0, lengthOffset: 0, source: 'edge-joint', partnerId: bFront.id.toString(), face: 'right', direction: 'y' };
+                const lRabB = { type: 'dado', width: cornerWidth, depth: cornerDepth, offset: -sOffset, length: 0, lengthOffset: 0, source: 'edge-joint', partnerId: bBack.id.toString(), face: 'right', direction: 'y' };
+                bLeft.operations = [
+                    { ...lRabF, id: Date.now() + Math.random() },
+                    { ...lRabB, id: Date.now() + Math.random() }
+                ];
+
+                // Right board gets rabbets on the inside (left face)
+                const rRabF = { type: 'dado', width: cornerWidth, depth: cornerDepth, offset: sOffset, length: 0, lengthOffset: 0, source: 'edge-joint', partnerId: bFront.id.toString(), face: 'left', direction: 'y' };
+                const rRabB = { type: 'dado', width: cornerWidth, depth: cornerDepth, offset: -sOffset, length: 0, lengthOffset: 0, source: 'edge-joint', partnerId: bBack.id.toString(), face: 'left', direction: 'y' };
+                bRight.operations = [
+                    { ...rRabF, id: Date.now() + Math.random() },
+                    { ...rRabB, id: Date.now() + Math.random() }
+                ];
+            }
+
+            const drawerBoards = [bLeft, bRight, bFront, bBack, bBot, bFace].map(b => ({
+                ...b,
+                position: [b.position[0] + offset[0], b.position[1] + offset[1], b.position[2] + offset[2]],
+                material: defaultMaterial,
+                joint: 'None',
+                shape: 'box',
+                operations: b.operations || [],
+                edgeJoints: b.edgeJoints || []
+            }));
+
+            // Dado the bottom
+            const dL = drawerBoards[0];
+            const dR = drawerBoards[1];
+            const dF = drawerBoards[2];
+            const dB = drawerBoards[3];
+            const dBot = drawerBoards[4];
+            
+            // Dado depth is usually half the thickness of the box side
+            const dadoDepth = tBox / 2;
+            const dadoOffset = 0.5 + tBot / 2 - boxH / 2; // Y offset from center of side board
+            
+            const dadoOp = {
+                type: 'dado', width: tBot, depth: dadoDepth,
+                offset: dadoOffset, length: 0, lengthOffset: 0,
+                source: 'edge-joint', partnerId: dBot.id.toString()
+            };
+
+            dL.operations.push({ ...dadoOp, id: Date.now() + Math.random(), face: 'right', direction: 'z' });
+            dR.operations.push({ ...dadoOp, id: Date.now() + Math.random(), face: 'left', direction: 'z' });
+            dF.operations.push({ ...dadoOp, id: Date.now() + Math.random(), face: 'back', direction: 'x' });
+            dB.operations.push({ ...dadoOp, id: Date.now() + Math.random(), face: 'front', direction: 'x' });
+            
+            [dL, dR, dF, dB].forEach(side => {
+                side.edgeJoints = [{ partnerId: dBot.id.toString(), type: 'dado', overBoardId: side.id.toString() }];
+                dBot.edgeJoints = dBot.edgeJoints || [];
+                dBot.edgeJoints.push({ partnerId: side.id.toString(), type: 'dado', overBoardId: side.id.toString() });
+            });
+
+            newBoards.push(...drawerBoards);
+        }
+
+        setGroups(prev => {
+            const next = { ...prev };
+            if (isEditing) {
+                Object.keys(next).forEach(k => {
+                    let pid = next[k].parentId;
+                    while (pid) {
+                        if (pid === rootGroupId) {
+                            delete next[k];
+                            break;
+                        }
+                        pid = next[pid]?.parentId;
+                    }
+                });
+            }
+            return { ...next, ...newGroups };
+        });
+
+        setBoards(prev => {
+            const filtered = prev.filter(b => {
+                if (!isEditing) return true;
+                let pid = b.parentId;
+                while (pid) {
+                    if (pid === rootGroupId) return false;
+                    pid = groups[pid]?.parentId;
+                }
+                return true;
+            });
+            return [...filtered, ...newBoards];
+        });
+        
+        setSelectedItemIds([rootGroupId]);
     },
 
 
@@ -2524,6 +3156,143 @@ export const createActions = (set, get) => ({
         }]);
         setSelectedItemIds([newId.toString()]);
         setNewBoardDialog(null);
+    },
+
+    // ─── Assembly Gluing ──────────────────────────────────────────────────────────
+
+    glueAssembly: (groupId) => {
+        const { pushHistory, groups, boards, constraints, setConstraints, showToast } = get();
+        
+        // Find all boards within the group subtree
+        const childBoards = boards.filter(b => {
+            let pid = b.parentId;
+            while (pid) {
+                if (pid === groupId) return true;
+                const pg = groups[pid];
+                pid = pg ? pg.parentId : null;
+            }
+            return false;
+        });
+
+        if (childBoards.length < 2) {
+            showToast('Assembly must contain at least 2 boards to glue.');
+            return;
+        }
+
+        pushHistory();
+
+        // Implement Star Topology spanning tree:
+        // Root is the first board. We create N-1 glue constraints 
+        // linking every other board to the root board.
+        const rootBoard = childBoards[0];
+        const newConstraints = {};
+        
+        let addedCount = 0;
+        for (let i = 1; i < childBoards.length; i++) {
+            const targetBoard = childBoards[i];
+            
+            // Offset from root to target
+            const offset = [
+                targetBoard.position[0] - rootBoard.position[0],
+                targetBoard.position[1] - rootBoard.position[1],
+                targetBoard.position[2] - rootBoard.position[2]
+            ];
+            
+            const constraintId = `glue_auto_${Date.now()}_${i}`;
+            newConstraints[constraintId] = {
+                type: 'Glue',
+                boardAId: rootBoard.id.toString(),
+                boardBId: targetBoard.id.toString(),
+                offset,
+                enabled: true
+            };
+            addedCount++;
+        }
+
+        setConstraints(prev => ({ ...prev, ...newConstraints }));
+        showToast(`Glued assembly: ${addedCount} rigid links created.`);
+    },
+
+    unglueAssembly: (groupId) => {
+        const { pushHistory, groups, boards, constraints, setConstraints, showToast } = get();
+        
+        // Find all boards within the group subtree
+        const childBoards = boards.filter(b => {
+            let pid = b.parentId;
+            while (pid) {
+                if (pid === groupId) return true;
+                const pg = groups[pid];
+                pid = pg ? pg.parentId : null;
+            }
+            return false;
+        });
+
+        if (childBoards.length < 2) return;
+
+        pushHistory();
+
+        const childIds = new Set(childBoards.map(b => b.id.toString()));
+        let removedCount = 0;
+        
+        const nextConstraints = { ...constraints };
+        Object.keys(nextConstraints).forEach(cid => {
+            const c = nextConstraints[cid];
+            if (c.type === 'Glue' && childIds.has(c.boardAId) && childIds.has(c.boardBId)) {
+                delete nextConstraints[cid];
+                removedCount++;
+            }
+        });
+
+        setConstraints(nextConstraints);
+        showToast(`Unglued assembly: ${removedCount} links removed.`);
+    },
+
+    createPivotProxy: (groupId) => {
+        const { pushHistory, groups, boards, setGroups, setBoards, setSelectedItemIds, showToast } = get();
+        
+        const childBoards = collectChildBoards(groupId, boards, groups);
+        if (childBoards.length === 0) {
+            showToast('Assembly is empty.');
+            return;
+        }
+
+        pushHistory();
+
+        // 1. Calculate bounding box
+        const aabb = computeWorldAABB(childBoards);
+        const w = aabb.maxX - aabb.minX;
+        const h = aabb.maxY - aabb.minY;
+        const d = aabb.maxZ - aabb.minZ;
+        const cx = aabb.minX + w / 2;
+        const cy = aabb.minY + h / 2;
+        const cz = aabb.minZ + d / 2;
+
+        // 2. Hide the original assembly group
+        setGroups(prev => ({
+            ...prev,
+            [groupId]: { ...prev[groupId], visible: false }
+        }));
+
+        // 3. Spawn proxy board
+        const proxyIdNum = Date.now();
+        const groupName = groups[groupId]?.name || 'Assembly';
+        const proxyBoard = {
+            id: proxyIdNum,
+            parentId: groups[groupId]?.parentId || 'Workspace',
+            name: `Proxy: ${groupName}`,
+            size: [w, h, d],
+            position: [cx, cy, cz],
+            orientation: [0, 0, 0],
+            pivot: [0, 0, 0], // Center pivot by default
+            material: 'ghost', // We can use a special string or just default wood, but we'll try to visually distinguish it
+            joint: 'None',
+            operations: [],
+            meta: { isProxy: true, targetGroupId: groupId }
+        };
+
+        setBoards(prev => [...prev, proxyBoard]);
+        setSelectedItemIds([proxyIdNum.toString()]);
+        showToast('Pivot Proxy created. Assembly hidden.');
     },
 
     // ─── Measurement Actions ────────────────────────────────────────────────────────────

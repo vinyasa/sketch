@@ -16,6 +16,13 @@ const ASSEMBLIES = [
         description: 'Five-piece door with frame and central panel',
         color: '#a07850',
     },
+    {
+        id: 'drawerStack',
+        label: 'Drawer Stack',
+        icon: '🗃️',
+        description: 'Stack of drawer boxes with optional faces',
+        color: '#8d6d53',
+    },
 ];
 
 const AssemblyCard = ({ item, onSelect }) => {
@@ -67,17 +74,19 @@ const AssemblyCard = ({ item, onSelect }) => {
 };
 
 const AssembliesPanel = () => {
-    const { setCabinetDialog, setShakerDoorDialog } = useStore();
+    const { setCabinetDialog, setShakerDoorDialog, setDrawerDialog } = useStore();
 
     const handleSelect = (item) => {
         if (item.id === 'cabinet') {
             setCabinetDialog({
                 width: 24, height: 30, depth: 14,
-                thicknessTB: 0.5, thicknessSide: 0.5,
-                thicknessFront: 0.5, thicknessBack: 0.25,
+                thicknessTB: 0.75, thicknessSide: 0.75,
+                thicknessFront: 0.75, thicknessBack: 0.25,
             });
         } else if (item.id === 'shakerDoor') {
             setShakerDoorDialog({});
+        } else if (item.id === 'drawerStack') {
+            setDrawerDialog({});
         }
     };
 

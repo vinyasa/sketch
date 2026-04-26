@@ -29,10 +29,25 @@ const loadState = (key, def) => {
                             position: Array.isArray(b.position) && b.position.length === 3 ? b.position : [0, 0.5, 0],
                             operations: Array.isArray(b.operations) ? b.operations : [],
                             shape: b.shape || 'box',
+                            parentId: b.parentId || 'Workspace',
                             ...(rotation && !b.orientation ? { orientation: rotation } : {}),
                         };
                     });
                 }
+                
+                // Ensure 'Workspace' root group exists so new assemblies aren't orphaned
+                if (key === 'groups' && p[key] && typeof p[key] === 'object') {
+                    if (!p[key]['Workspace']) {
+                        p[key]['Workspace'] = { parentId: null, visible: true, isExpanded: true, name: 'Workspace' };
+                    }
+                    // Migrate any groups that had null parentId (except Workspace itself)
+                    Object.keys(p[key]).forEach(k => {
+                        if (k !== 'Workspace' && !p[key][k].parentId) {
+                            p[key][k].parentId = 'Workspace';
+                        }
+                    });
+                }
+                
                 return p[key];
             }
         }
@@ -54,6 +69,9 @@ const _initialLibrary = loadLibrarySync();
 const useStore = create((set, get) => ({
 
     // ── 2A: UI Toggle State ──────────────────────────────────────────────────
+    headerBottom: 140,
+    setHeaderBottom: (val) => set({ headerBottom: val }),
+
     showCutlistPanel: false,
     setShowCutlistPanel: (v) => set({ showCutlistPanel: typeof v === 'function' ? v(get().showCutlistPanel) : v }),
 
@@ -191,10 +209,18 @@ const useStore = create((set, get) => ({
     showNewWorkspaceDialog: false,
     setShowNewWorkspaceDialog: (v) => set({ showNewWorkspaceDialog: typeof v === 'function' ? v(get().showNewWorkspaceDialog) : v }),
 
+    showSavePromptDialog: false,
+    setShowSavePromptDialog: (v) => set({ showSavePromptDialog: typeof v === 'function' ? v(get().showSavePromptDialog) : v }),
+
+    savePromptCallback: null,
+    setSavePromptCallback: (v) => set({ savePromptCallback: typeof v === 'function' ? v(get().savePromptCallback) : v }),
+
     cabinetDialog: null,
     setCabinetDialog: (v) => set({ cabinetDialog: typeof v === 'function' ? v(get().cabinetDialog) : v }),
     shakerDoorDialog: null,
     setShakerDoorDialog: (v) => set({ shakerDoorDialog: typeof v === 'function' ? v(get().shakerDoorDialog) : v }),
+    drawerDialog: null,
+    setDrawerDialog: (v) => set({ drawerDialog: typeof v === 'function' ? v(get().drawerDialog) : v }),
 
     recentFiles: loadRecentFiles(),
     setRecentFiles: (v) => set({ recentFiles: typeof v === 'function' ? v(get().recentFiles) : v }),

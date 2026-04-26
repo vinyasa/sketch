@@ -1,12 +1,17 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { registerPanel, updatePanel, unregisterPanel } from '../../utils/panelLayout';
 
-const DraggablePanel = ({ title, defaultPosition, onFocusCapture, onClose, children, defaultSize = { width: 250 } }) => {
+const DraggablePanel = ({ title, defaultPosition, onFocusCapture, onClose, children, defaultSize = { width: 250 }, topMargin = 100 }) => {
     const [pos, setPos] = useState(defaultPosition);
+    const posRef = useRef(pos);
     const [isDragging, setIsDragging] = useState(false);
     const dragRef = useRef(null);
     const panelRef = useRef(null);
     const registryId = useRef(null);
+
+    useEffect(() => {
+        posRef.current = pos;
+    }, [pos]);
 
     // Register on mount, unregister on unmount
     useEffect(() => {
@@ -39,8 +44,9 @@ const DraggablePanel = ({ title, defaultPosition, onFocusCapture, onClose, child
                 if (newX + rect.width > window.innerWidth)  newX = window.innerWidth  - rect.width;
                 if (newX < 0) newX = 0;
 
+                const TOP_MARGIN = topMargin;
                 if (newY + rect.height > window.innerHeight) newY = window.innerHeight - rect.height;
-                if (newY < 0) newY = 0;
+                if (newY < TOP_MARGIN) newY = TOP_MARGIN;
 
                 if (newX !== currentPos.x || newY !== currentPos.y) return { x: newX, y: newY };
                 return currentPos;
@@ -56,7 +62,7 @@ const DraggablePanel = ({ title, defaultPosition, onFocusCapture, onClose, child
             // Update registry when panel resizes
             if (registryId.current !== null && panelRef.current) {
                 const rect = panelRef.current.getBoundingClientRect();
-                updatePanel(registryId.current, pos.x, pos.y, rect.width, rect.height);
+                updatePanel(registryId.current, posRef.current.x, posRef.current.y, rect.width, rect.height);
             }
         });
         if (panelRef.current) ro.observe(panelRef.current);
@@ -91,8 +97,9 @@ const DraggablePanel = ({ title, defaultPosition, onFocusCapture, onClose, child
         
         if (newX + rect.width > window.innerWidth) newX = window.innerWidth - rect.width;
         if (newX < 0) newX = 0;
+        const TOP_MARGIN = topMargin;
         if (newY + rect.height > window.innerHeight) newY = window.innerHeight - rect.height;
-        if (newY < 0) newY = 0;
+        if (newY < TOP_MARGIN) newY = TOP_MARGIN;
         
         setPos({ x: newX, y: newY });
     };
