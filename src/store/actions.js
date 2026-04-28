@@ -186,6 +186,41 @@ export const createActions = (set, get) => ({
         if (entry) showToast(`"${entry.name}" removed from library.`);
     },
 
+    setCustomPivot: (boardId, localOffset) => {
+        const { boards, setBoards, pushHistory } = get();
+        const b = boards.find(b => b.id.toString() === boardId.toString());
+        if (!b) return;
+
+        pushHistory();
+        const oldPiv = b.pivot || [0, 0, 0];
+        const dx = localOffset[0] - oldPiv[0];
+        const dy = localOffset[1] - oldPiv[1];
+        const dz = localOffset[2] - oldPiv[2];
+
+        // Apply orientation to find world-space delta
+        let wx = dx, wy = dy, wz = dz;
+        const [rx, ry, rz] = b.orientation || [0, 0, 0];
+        if (rx !== 0 || ry !== 0 || rz !== 0) {
+            const ca = Math.cos(rx), sb = Math.sin(rx);
+            const cc = Math.cos(ry), sd = Math.sin(ry);
+            const ce = Math.cos(rz), sf = Math.sin(rz);
+            wx = (cc*ce+sd*sf*sb)*dx + (sd*sb*ce-cc*sf)*dy + (ca*sd)*dz;
+            wy = (ca*sf)*dx + (ca*ce)*dy + (-sb)*dz;
+            wz = (cc*sf*sb-sd*ce)*dx + (sd*sf+cc*ce*sb)*dy + (ca*cc)*dz;
+        }
+
+        setBoards(prev => prev.map(board => {
+            if (board.id.toString() === boardId.toString()) {
+                return {
+                    ...board,
+                    pivot: [...localOffset],
+                    position: [board.position[0] + wx, board.position[1] + wy, board.position[2] + wz]
+                };
+            }
+            return board;
+        }));
+    },
+
     cloneAssembly: (selectedGroupId) => {
         const { boards, groups, constraints, setBoards, setGroups, setConstraints, setSelectedItemIds, pushHistory, showToast } = get();
 
@@ -497,8 +532,10 @@ export const createActions = (set, get) => ({
                 dlNode.click();
                 showToast("Successfully saved to disk");
             }
+            return true;
         } catch (err) {
             if (err.name !== 'AbortError') showToast("Failed to save file.");
+            return false;
         }
     },
 
@@ -738,20 +775,6 @@ export const createActions = (set, get) => ({
         const cutterBoard = boards.find(b => b.id.toString() === cutterBoardId.toString());
         if (!targetBoard || !cutterBoard) return;
 
-        // ── Validate overlap ──────────────────────────────────────────────
-        const bbOf = (b) => [0, 1, 2].map(i => ({
-            min: b.position[i] - b.size[i] / 2,
-            max: b.position[i] + b.size[i] / 2,
-        }));
-        const ba = bbOf(targetBoard), bb = bbOf(cutterBoard);
-        const overlapping = [0, 1, 2].every(i =>
-            Math.min(ba[i].max, bb[i].max) - Math.max(ba[i].min, bb[i].min) > 0.01
-        );
-        if (!overlapping) {
-            showToast('⚠ Boards must overlap to apply a boolean subtraction');
-            return;
-        }
-
         // ── Compute relative transform (cutter in target's local space) ───
         const targetEuler = new THREE.Euler(...(targetBoard.orientation || [0, 0, 0]), 'YXZ');
         const targetMatrix = new THREE.Matrix4().compose(
@@ -766,6 +789,15 @@ export const createActions = (set, get) => ({
             new THREE.Quaternion().setFromEuler(cutterEuler),
             new THREE.Vector3(1, 1, 1)
         );
+
+        // ── Validate overlap (using oriented bounding boxes) ──────────────
+        const boxA = new THREE.Box3().setFromCenterAndSize(new THREE.Vector3(0,0,0), new THREE.Vector3(...targetBoard.size)).applyMatrix4(targetMatrix);
+        const boxB = new THREE.Box3().setFromCenterAndSize(new THREE.Vector3(0,0,0), new THREE.Vector3(...cutterBoard.size)).applyMatrix4(cutterMatrix);
+        
+        if (!boxA.intersectsBox(boxB)) {
+            showToast('⚠ Boards must overlap to apply a boolean subtraction');
+            return;
+        }
 
         const relativeMatrix = targetMatrix.clone().invert().multiply(cutterMatrix);
 
@@ -818,7 +850,7 @@ export const createActions = (set, get) => ({
      *     depth  = thicknessB / 2      (half of B's own thickness)
      *     offset = -[ B.size[thinA]/2 - thicknessA/2 ]   (using B's NEW shrunken size along thinA)
      */
-    applyEdgeJoint: (boardAId, boardBId, type = 'rabbet', skipHistory = false, skipToast = false, skipOverlapCheck = false) => {
+    applyEdgeJoint: (boardAId, boardBId, type = 'rabbet', skipHistory = false, skipToast = false, skipOverlapCheck = false, isAutomated = false) => {
         const { boards, pushHistory, setBoards, showToast } = get();
         const boardA = boards.find(b => b.id.toString() === boardAId.toString());
         const boardB = boards.find(b => b.id.toString() === boardBId.toString());
@@ -837,14 +869,68 @@ export const createActions = (set, get) => ({
         };
         const AXIS_NAMES = ['x', 'y', 'z'];
 
-        // ── Validate overlap (miter) ──────────────────────────────────────
-        const ba = bbOf(boardA), bb = bbOf(boardB);
-        const overlapping = [0, 1, 2].every(i =>
-            Math.min(ba[i].max, bb[i].max) - Math.max(ba[i].min, bb[i].min) > 0.01
-        );
-        if (!overlapping && !skipOverlapCheck) {
-            if (!skipToast) showToast('⚠ Boards must be in miter (overlapping) position first');
-            return;
+        // ── 3-way Corner Conflict Detection ───────────────────────────────
+        if (!isAutomated && (type === 'butt' || type === 'rabbet' || type === 'miter')) {
+            const thinA = thinAxisOf(boardA);
+            const thinB = thinAxisOf(boardB);
+            
+            let tbBoard = null;
+            let sideBoard = null;
+            let tbId = null;
+            let sideId = null;
+            
+            if (thinA === 1 && (thinB === 0 || thinB === 2)) {
+                tbBoard = boardA; sideBoard = boardB; tbId = boardAId; sideId = boardBId;
+            } else if (thinB === 1 && (thinA === 0 || thinA === 2)) {
+                tbBoard = boardB; sideBoard = boardA; tbId = boardBId; sideId = boardAId;
+            }
+            
+            if (tbBoard && sideBoard) {
+                // Find other side boards in the same group that touch the tbBoard
+                const otherSides = boards.filter(b => 
+                    b.parentId === tbBoard.parentId && 
+                    b.id !== sideBoard.id && 
+                    b.id !== tbBoard.id &&
+                    (thinAxisOf(b) === 0 || thinAxisOf(b) === 2) &&
+                    [0, 1, 2].every(i => Math.min(bbOf(b)[i].max, bbOf(tbBoard)[i].max) - Math.max(bbOf(b)[i].min, bbOf(tbBoard)[i].min) > -0.05)
+                );
+                
+                if (otherSides.length > 0) {
+                    const { setConfirmDialog } = get();
+                    setConfirmDialog({
+                        title: 'Joint Cascade',
+                        message: `You are changing the joint between ${tbBoard.name} and ${sideBoard.name}. Do you want to apply this same joint to the other ${otherSides.length} touching side(s)?`,
+                        confirmText: 'Yes, cascade',
+                        confirmColor: '#34c759',
+                        confirmBg: 'rgba(52, 199, 89, 0.15)',
+                        confirmBorder: 'rgba(52, 199, 89, 0.3)',
+                        titleColor: '#64b4ff',
+                        onConfirm: () => {
+                            setConfirmDialog(null);
+                            // Apply to current pair
+                            get().applyEdgeJoint(boardAId, boardBId, type, skipHistory, skipToast, skipOverlapCheck, true);
+                            
+                            // Apply to others, maintaining the same A-over-B relationship
+                            otherSides.forEach((otherSide, idx) => {
+                                setTimeout(() => {
+                                    if (tbBoard.id === boardA.id) {
+                                        get().applyEdgeJoint(tbBoard.id, otherSide.id, type, true, true, skipOverlapCheck, true);
+                                    } else {
+                                        get().applyEdgeJoint(otherSide.id, tbBoard.id, type, true, true, skipOverlapCheck, true);
+                                    }
+                                }, (idx + 1) * 20);
+                            });
+                        },
+                        onCancel: () => {
+                            setConfirmDialog(null);
+                            // Just apply to the current pair
+                            get().applyEdgeJoint(boardAId, boardBId, type, skipHistory, skipToast, skipOverlapCheck, true);
+                        }
+                    });
+                    
+                    return; // Stop execution, wait for user confirmation
+                }
+            }
         }
 
         // ── Validate perpendicular ────────────────────────────────────────
@@ -873,30 +959,66 @@ export const createActions = (set, get) => ({
         // signB: direction from B toward A along B's thin axis
         const signB = boardA.position[thinB] > boardB.position[thinB] ? 1 : -1;
 
+        // ── Base State Resolution (Geometric Butt) ────────────────────────
+        // A is the OVER board. It should span to B's outer face in B's thin axis.
+        // B is the UNDER board. It should be trimmed to A's inner face in A's thin axis.
+
+        let A_inner_in_B = boardA.position[thinB] - signB * (boardA.size[thinB] / 2);
+        let A_outer_in_B = boardA.position[thinB] + signB * (boardA.size[thinB] / 2);
+        const B_outer_in_B = boardB.position[thinB] - signB * (thicknessB / 2);
+        
+        // Extend A's outer face to cover B if A is currently short.
+        if (signB === 1) {
+            if (B_outer_in_B < A_inner_in_B) A_inner_in_B = B_outer_in_B;
+        } else {
+            if (B_outer_in_B > A_inner_in_B) A_inner_in_B = B_outer_in_B;
+        }
+        
+        const baseASize = [...boardA.size];
+        const baseAPos = [...boardA.position];
+        baseASize[thinB] = Math.max(0.1, Math.abs(A_outer_in_B - A_inner_in_B));
+        baseAPos[thinB] = (A_outer_in_B + A_inner_in_B) / 2;
+
+        const A_inner_in_A = boardA.position[thinA] + signA * (thicknessA / 2);
+        const B_outer_in_A = boardB.position[thinA] + signA * (boardB.size[thinA] / 2);
+        
+        // Trim/extend B to precisely touch A's inner face.
+        const baseBSize = [...boardB.size];
+        const baseBPos = [...boardB.position];
+        baseBSize[thinA] = Math.max(0.1, Math.abs(A_inner_in_A - B_outer_in_A));
+        baseBPos[thinA] = (A_inner_in_A + B_outer_in_A) / 2;
+
+
+
         // A's dado face: on A's thin axis, facing toward B
         const faceA = FACE_LABELS[AXIS_NAMES[thinA] + (signA > 0 ? '+' : '-')];
         // B's dado face: on B's thin axis, facing toward A
         const faceB = FACE_LABELS[AXIS_NAMES[thinB] + (signB > 0 ? '+' : '-')];
 
-        // ── Config "A over B": A keeps full size, B shrinks ───────────────
-        // Shrink B along A's thin axis: by thicknessA/2 for rabbet, thicknessA for butt
-        const shrinkAmount = type === 'butt' ? thicknessA : thicknessA / 2;
-        const newBSize = [...boardB.size];
-        const newBPos = [...boardB.position];
-        newBSize[thinA] -= shrinkAmount;
-        // Shift B toward A by thicknessA/4
-        newBPos[thinA] = boardB.position[thinA] + signA * (shrinkAmount / 2);
+        // ── Apply Joint Extension from Base State ─────────────────────────
+        let extension = 0;
+        if (type === 'rabbet' || type === 'single-rabbet') extension = thicknessA / 2;
+        if (type === 'miter') extension = thicknessA;
+
+        const newBSize = [...baseBSize];
+        const newBPos = [...baseBPos];
+
+        newBSize[thinA] += extension;
+        newBPos[thinA] -= signA * (extension / 2);
+        
+        // We store the negative extension so that removeEdgeJoint mathematically shrinks B back to base state.
+        const shrinkAmount = -extension;
 
         // ── Correct existing edge-joint dados on B ──────────────────────
-        // The center shift displaces existing dado offsets whose widthAxis == thinA.
-        // Compute widthAxis from a dado's face + direction, then compensate.
+        // The total shift of B's center includes both the base state resolution AND the extension shift.
+        const totalCenterShiftB = newBPos[thinA] - boardB.position[thinA];
+
         const FACE_INFO = {
             top:    { faceAxes: [0, 2] }, bottom: { faceAxes: [0, 2] },
             front:  { faceAxes: [0, 1] }, back:   { faceAxes: [0, 1] },
             right:  { faceAxes: [1, 2] }, left:   { faceAxes: [1, 2] },
         };
         const AXIS_IDX = { x: 0, y: 1, z: 2 };
-        const centerShift = signA * (shrinkAmount / 2);
 
         const correctedBOps = (boardB.operations || []).map(op => {
             if (op.source !== 'edge-joint') return op;
@@ -905,17 +1027,18 @@ export const createActions = (set, get) => ({
             const dirIdx = AXIS_IDX[op.direction];
             const widthAxis = fi.faceAxes[0] === dirIdx ? fi.faceAxes[1] : fi.faceAxes[0];
             if (widthAxis !== thinA) return op;
-            return { ...op, offset: op.offset - centerShift };
+            return { ...op, offset: op.offset - totalCenterShiftB };
         });
 
         // ── A's dado (over board) ─────────────────────────────────────────
         // Face: faceA (on A's thin-axis face toward B)
-        // Width:  thicknessB / 2
-        // Depth:  thicknessA / 2
-        // Offset: -[ A.size[thinB]/2 - thicknessB/4 ]
-        const dadoAWidth = thicknessB / 2;
+        const isSingleRabbet = type === 'single-rabbet';
+        
+        const dadoAWidth = isSingleRabbet ? thicknessB : thicknessB / 2;
         const dadoADepth = thicknessA / 2;
-        const offsetA = -signB * (boardA.size[thinB] / 2 - thicknessB / 4);
+        const offsetA = isSingleRabbet 
+            ? -signB * (baseASize[thinB] / 2 - thicknessB / 2)
+            : -signB * (baseASize[thinB] / 2 - thicknessB / 4);
 
         const dadoA = {
             id: Date.now(),
@@ -954,6 +1077,36 @@ export const createActions = (set, get) => ({
             partnerId: boardA.id.toString(),
         };
 
+        let opA = null, opB = null;
+        if (type === 'miter') {
+            opA = {
+                id: Date.now(),
+                type: 'miter',
+                face: AXIS_NAMES[thinB] + (signB > 0 ? '-' : '+'),
+                fenceEdge: AXIS_NAMES[sharedAxis] + '-',
+                angle: 0,
+                bevel: signA > 0 ? 45 : -45,
+                source: 'edge-joint',
+                partnerId: boardB.id.toString(),
+            };
+            opB = {
+                id: Date.now() + 1,
+                type: 'miter',
+                face: AXIS_NAMES[thinA] + (signA > 0 ? '-' : '+'),
+                fenceEdge: AXIS_NAMES[sharedAxis] + '-',
+                angle: 0,
+                bevel: signB > 0 ? 45 : -45,
+                source: 'edge-joint',
+                partnerId: boardA.id.toString(),
+            };
+        } else if (type === 'single-rabbet') {
+            opA = dadoA;
+            opB = null;
+        } else {
+            opA = dadoA;
+            opB = dadoB;
+        }
+
         // Joint metadata stored on both boards for toggle/remove support
         const meta = {
             type,
@@ -967,18 +1120,31 @@ export const createActions = (set, get) => ({
             signB,
         };
 
+        const centerShiftA = baseAPos[thinB] - boardA.position[thinB];
+        const correctedAOps = (boardA.operations || []).map(op => {
+            if (op.source !== 'edge-joint') return op;
+            const fi = FACE_INFO[op.face];
+            if (!fi) return op;
+            const dirIdx = AXIS_IDX[op.direction];
+            const widthAxis = fi.faceAxes[0] === dirIdx ? fi.faceAxes[1] : fi.faceAxes[0];
+            if (widthAxis !== thinB) return op;
+            return { ...op, offset: op.offset - centerShiftA };
+        });
+
         if (!skipHistory) pushHistory();
         setBoards(prev => prev.map(b => {
             if (b.id.toString() === boardA.id.toString()) {
-                const newOps = type === 'butt' ? b.operations : [...(b.operations || []), dadoA];
+                const newOps = (type === 'butt' || !opA) ? correctedAOps : [...correctedAOps, opA];
                 return {
                     ...b,
+                    size: baseASize,
+                    position: baseAPos,
                     operations: newOps,
                     edgeJoints: [...(b.edgeJoints || []), { ...meta, partnerId: boardB.id.toString() }],
                 };
             }
             if (b.id.toString() === boardB.id.toString()) {
-                const newOps = type === 'butt' ? correctedBOps : [...correctedBOps, dadoB];
+                const newOps = (type === 'butt' || !opB) ? correctedBOps : [...correctedBOps, opB];
                 return {
                     ...b,
                     size: newBSize,
@@ -1142,7 +1308,7 @@ export const createActions = (set, get) => ({
                 min: b.position[i] - b.size[i] / 2,
                 max: b.position[i] + b.size[i] / 2,
             }));
-            const overlaps = (ba, bb) => [0, 1, 2].every(i => Math.min(ba[i].max, bb[i].max) - Math.max(ba[i].min, bb[i].min) > 0.01);
+            const touches = (ba, bb) => [0, 1, 2].every(i => Math.min(ba[i].max, bb[i].max) - Math.max(ba[i].min, bb[i].min) > -0.05);
             const thinAxisOf = (b) => b.size.indexOf(Math.min(...b.size));
 
             let jointCount = 0;
@@ -1156,7 +1322,7 @@ export const createActions = (set, get) => ({
                     const thinB = thinAxisOf(bB);
                     
                     if (thinA === thinB) continue; // must be perpendicular
-                    if (!overlaps(bbOf(bA), bbOf(bB))) continue; // must overlap
+                    if (!touches(bbOf(bA), bbOf(bB))) continue; // must touch
                     
                     let overBoardId = bA.id;
                     let underBoardId = bB.id;
@@ -1184,11 +1350,162 @@ export const createActions = (set, get) => ({
             
             if (jointCount > 0) {
                 setTimeout(() => {
-                    const jointName = type === 'butt' ? 'Butt' : 'Rabbet';
+                    const jointName = type === 'butt' ? 'Butt' : type === 'miter' ? 'Miter' : 'Rabbet';
                     get().showToast(`🔗 Applied ${jointCount} ${jointName} joints to selection`);
                 }, jointCount * 10 + 50);
             }
         }, 10);
+    },
+
+    /**
+     * Apply a specialized box panel joint (sit-on, full-inset, or rabbeted-inset)
+     * between a top/bottom board and 4 sides.
+     */
+    applyBoxPanelJoint: (topBottomId, sidesIds, type) => {
+        const { applyEdgeJoint, pushHistory } = get();
+        pushHistory();
+        
+        // Use a slight timeout to allow history push to settle
+        setTimeout(() => {
+            if (type === 'sit-on') {
+                // Top/bottom sits fully on sides: Top/bottom is over (full size), sides are under (shrink)
+                sidesIds.forEach((sideId, idx) => {
+                    setTimeout(() => { applyEdgeJoint(topBottomId, sideId, 'butt', true, true, true); }, idx * 15);
+                });
+            } else if (type === 'full-inset') {
+                // Sandwiched: Sides are over (full size), top/bottom is under (shrink)
+                sidesIds.forEach((sideId, idx) => {
+                    setTimeout(() => { applyEdgeJoint(sideId, topBottomId, 'butt', true, true, true); }, idx * 15);
+                });
+            } else if (type === 'rabbeted-inset') {
+                // Sides are over (full size), top/bottom is under (shrink). Both get dado/rabbet cuts
+                sidesIds.forEach((sideId, idx) => {
+                    setTimeout(() => { applyEdgeJoint(sideId, topBottomId, 'rabbet', true, true, true); }, idx * 15);
+                });
+            }
+            
+            setTimeout(() => {
+                get().showToast(`🔗 Applied ${type} joints to box panel`);
+            }, sidesIds.length * 15 + 50);
+        }, 10);
+    },
+
+    /**
+     * Toggles a geometric butt joint between two touching boards.
+     * It detects which one is trimmed against the other, extends the trimmed one, and trims the full-length one.
+     */
+    toggleGeometricJoint: (idA, idB) => {
+        const { boards, setBoards, pushHistory } = get();
+        const bA = boards.find(b => b.id.toString() === idA.toString());
+        const bB = boards.find(b => b.id.toString() === idB.toString());
+        if (!bA || !bB) return;
+
+        const bbOf = (b) => [0, 1, 2].map(i => ({
+            min: b.position[i] - b.size[i] / 2,
+            max: b.position[i] + b.size[i] / 2,
+        }));
+        const thinAxis = (b) => b.size.indexOf(Math.min(...b.size));
+
+        const ba = bbOf(bA);
+        const bb = bbOf(bB);
+        
+        const axisA = thinAxis(bA);
+        const axisB = thinAxis(bB);
+        
+        if (axisA === axisB) return; // Must be perpendicular
+
+        // Determine who is trimmed against who.
+        // If A is trimmed against B, A's extent along B's thin axis will touch B's inner face.
+        let aTrimmedAgainstB = false;
+        let aTrimDir = 0; // 1 if A touches B's min, -1 if A touches B's max
+        if (Math.abs(ba[axisB].max - bb[axisB].min) < 0.06) { aTrimmedAgainstB = true; aTrimDir = 1; }
+        else if (Math.abs(ba[axisB].min - bb[axisB].max) < 0.06) { aTrimmedAgainstB = true; aTrimDir = -1; }
+
+        let bTrimmedAgainstA = false;
+        let bTrimDir = 0;
+        if (Math.abs(bb[axisA].max - ba[axisA].min) < 0.06) { bTrimmedAgainstA = true; bTrimDir = 1; }
+        else if (Math.abs(bb[axisA].min - ba[axisA].max) < 0.06) { bTrimmedAgainstA = true; bTrimDir = -1; }
+
+        if (!aTrimmedAgainstB && !bTrimmedAgainstA) {
+            // They might be fully overlapping (Miter)
+            const overlaps = [0, 1, 2].every(i => Math.min(ba[i].max, bb[i].max) - Math.max(ba[i].min, bb[i].min) > 0.01);
+            if (overlaps) {
+                // Force A to be trimmed against B as a starting point
+                aTrimmedAgainstB = true;
+                // Since they overlap, ba[axisB] overlaps bb[axisB].
+                // We'll trim A so it touches B's nearest inner face.
+                const distToMin = Math.abs(ba[axisB].max - bb[axisB].min);
+                const distToMax = Math.abs(ba[axisB].min - bb[axisB].max);
+                aTrimDir = distToMin < distToMax ? 1 : -1;
+                // Wait, if they overlap, we don't extend A, we just trim A.
+                // But the logic below assumes we extend the trimmed one and trim the full one.
+                // If it's a miter, let's just trim A.
+                pushHistory();
+                let newA = { ...bA, size: [...bA.size], position: [...bA.position] };
+                if (aTrimDir === 1) {
+                    const nMax = bb[axisB].min;
+                    newA.size[axisB] = Math.max(0.1, nMax - ba[axisB].min);
+                    newA.position[axisB] = (ba[axisB].min + nMax) / 2;
+                } else {
+                    const nMin = bb[axisB].max;
+                    newA.size[axisB] = Math.max(0.1, ba[axisB].max - nMin);
+                    newA.position[axisB] = (nMin + ba[axisB].max) / 2;
+                }
+                setBoards(prev => prev.map(b => b.id === newA.id ? newA : b));
+                return;
+            }
+            return; // Neither is trimmed, and they don't overlap, do nothing.
+        }
+
+        pushHistory();
+        let newA = { ...bA, size: [...bA.size], position: [...bA.position] };
+        let newB = { ...bB, size: [...bB.size], position: [...bB.position] };
+
+        if (aTrimmedAgainstB) {
+            // A is trimmed against B.
+            // 1. Extend A to run full length (add B's thickness to A)
+            const thiccB = bB.size[axisB];
+            newA.size[axisB] += thiccB;
+            newA.position[axisB] += (aTrimDir === 1 ? thiccB / 2 : -thiccB / 2);
+
+            // 2. Trim B against A (subtract A's thickness from B)
+            // Where should B be trimmed? It should touch A's inner face.
+            const newBa = bbOf(newA);
+            const thiccA = newA.size[axisA];
+            // Find which face of A B touches (min or max along axisA)
+            if (bb[axisA].min < newBa[axisA].min) {
+                // B is on the 'min' side of A
+                const nMax = newBa[axisA].min;
+                newB.size[axisA] = Math.max(0.1, nMax - bb[axisA].min);
+                newB.position[axisA] = (bb[axisA].min + nMax) / 2;
+            } else {
+                // B is on the 'max' side of A
+                const nMin = newBa[axisA].max;
+                newB.size[axisA] = Math.max(0.1, bb[axisA].max - nMin);
+                newB.position[axisA] = (nMin + bb[axisA].max) / 2;
+            }
+        } else {
+            // B is trimmed against A.
+            // 1. Extend B
+            const thiccA = bA.size[axisA];
+            newB.size[axisA] += thiccA;
+            newB.position[axisA] += (bTrimDir === 1 ? thiccA / 2 : -thiccA / 2);
+
+            // 2. Trim A against B
+            const newBb = bbOf(newB);
+            const thiccB = newB.size[axisB];
+            if (ba[axisB].min < newBb[axisB].min) {
+                const nMax = newBb[axisB].min;
+                newA.size[axisB] = Math.max(0.1, nMax - ba[axisB].min);
+                newA.position[axisB] = (ba[axisB].min + nMax) / 2;
+            } else {
+                const nMin = newBb[axisB].max;
+                newA.size[axisB] = Math.max(0.1, ba[axisB].max - nMin);
+                newA.position[axisB] = (nMin + ba[axisB].max) / 2;
+            }
+        }
+
+        setBoards(prev => prev.map(b => b.id === newA.id ? newA : (b.id === newB.id ? newB : b)));
     },
 
     /**
@@ -2591,7 +2908,6 @@ export const createActions = (set, get) => ({
         const tSide  = parseNum(cfg.thicknessSide, 0.75);
         const tFront = parseNum(cfg.thicknessFront, 0.75);
         const tBack  = parseNum(cfg.thicknessBack, 0.25);
-        const jointType = cfg.jointType ?? 'rabbet';
         const backStyle = cfg.backStyle ?? 'flat';
 
         const coreD = backStyle === 'flat' ? D - tBack : D;
@@ -2637,9 +2953,9 @@ export const createActions = (set, get) => ({
             backPos = [W / 2, H / 2, tBack / 2];
         }
 
-        const panelDefs = [
-            { name: 'Bottom',     size: [W, tTB, coreD],      position: [W / 2, tTB / 2, coreMidZ] },
-            { name: 'Top',        size: [W, tTB, coreD],      position: [W / 2, H - tTB / 2, coreMidZ] },
+        let panelDefs = [
+            { name: 'Bottom',     size: [W - 2 * tSide, tTB, coreD], position: [W / 2, tTB / 2, coreMidZ] },
+            { name: 'Top',        size: [W - 2 * tSide, tTB, coreD], position: [W / 2, H - tTB / 2, coreMidZ] },
             { name: 'Left Side',  size: [tSide, H, coreD],    position: [tSide / 2, H / 2, coreMidZ] },
             { name: 'Right Side', size: [tSide, H, coreD],    position: [W - tSide / 2, H / 2, coreMidZ] },
             { name: 'Back',       size: backSize,             position: backPos },
@@ -2700,11 +3016,7 @@ export const createActions = (set, get) => ({
             const rightId = newBoards[3].id;
             const backId = newBoards[4].id;
 
-            applyEdgeJoint(leftId, topId, jointType, true, true);
-            applyEdgeJoint(rightId, topId, jointType, true, true);
-            
-            applyEdgeJoint(leftId, bottomId, jointType, true, true);
-            applyEdgeJoint(rightId, bottomId, jointType, true, true);
+            // Natively geometric butt joints, no applyEdgeJoint needed.
             
             if (backStyle === 'inset') {
                 setTimeout(() => {
@@ -2734,6 +3046,93 @@ export const createActions = (set, get) => ({
                 }, 10);
             }
         }, 10);
+    },
+
+    buildBox: (cfg) => {
+        const { pushHistory, boards, groups, setBoards, setGroups, setSelectedItemIds } = get();
+        pushHistory();
+
+        const parseNum = (val, def) => {
+            if (val === undefined || val === null || val === '') return def;
+            const n = parseFloat(val);
+            return isNaN(n) ? def : n;
+        };
+
+        const W      = parseNum(cfg.width, 18);
+        const H      = parseNum(cfg.height, 12);
+        const D      = parseNum(cfg.depth, 12);
+        const tTB    = parseNum(cfg.thicknessTB, 0.5);
+        const tSide  = parseNum(cfg.thicknessSide, 0.5);
+        const tFront = parseNum(cfg.thicknessFront, 0.5);
+        const tBack  = parseNum(cfg.thicknessBack, 0.5);
+
+        const isEditing = !!cfg.editGroupId;
+        const groupId = isEditing ? cfg.editGroupId : 'Box ' + Math.floor(Math.random() * 1000);
+        
+        // Strip out editGroupId before saving params
+        const { editGroupId, ...savedParams } = cfg;
+
+        let offset = [0, 0, 0];
+        const oldIdMap = {};
+        
+        if (isEditing) {
+            const childBoards = collectChildBoards(groupId, boards, groups);
+            if (childBoards.length > 0) {
+                const aabb = computeWorldAABB(childBoards);
+                offset = [aabb.minX, aabb.minY, aabb.minZ];
+            }
+            childBoards.forEach(b => {
+                oldIdMap[b.name] = b.id;
+            });
+            
+            setGroups(prev => ({
+                ...prev,
+                [groupId]: { ...prev[groupId], meta: { builder: 'box', params: savedParams } }
+            }));
+        } else {
+            setGroups(prev => ({
+                ...prev,
+                [groupId]: { parentId: 'Workspace', isExpanded: true, visible: true, name: 'Box', meta: { builder: 'box', params: savedParams } }
+            }));
+        }
+
+        const coreH = H - (2 * tTB);
+        const coreD = D - tFront - tBack;
+        
+        let panelDefs = [
+            { name: 'Bottom',     size: [W, tTB, D],          position: [W / 2, tTB / 2, D / 2] },
+            { name: 'Top',        size: [W, tTB, D],          position: [W / 2, H - tTB / 2, D / 2] },
+            { name: 'Left Side',  size: [tSide, coreH, coreD], position: [tSide / 2, H / 2, D / 2] },
+            { name: 'Right Side', size: [tSide, coreH, coreD], position: [W - tSide / 2, H / 2, D / 2] },
+            { name: 'Back',       size: [W, coreH, tBack],    position: [W / 2, H / 2, tBack / 2] },
+            { name: 'Front',      size: [W, coreH, tFront],   position: [W / 2, H / 2, D - tFront / 2] },
+        ];
+
+        const baseId = Date.now();
+        const newBoards = panelDefs.map((pd, i) => {
+            const assignedId = oldIdMap[pd.name] || (baseId + i);
+            const b = {
+                id: assignedId,
+                name: pd.name,
+                parentId: groupId,
+                size: pd.size,
+                position: [pd.position[0] + offset[0], pd.position[1] + offset[1], pd.position[2] + offset[2]],
+                material: 'Plywood',
+                joint: 'None',
+                shape: 'box',
+                operations: [],
+                edgeJoints: [] // Reset edge joints
+            };
+            return b;
+        });
+
+        // Atomic update to replace old boards matching these IDs, insert new ones, and delete orphans
+        setBoards(prev => {
+            const newBoardIds = new Set(newBoards.map(nb => nb.id));
+            const filtered = prev.filter(b => !newBoardIds.has(b.id) && b.parentId !== groupId);
+            return [...filtered, ...newBoards];
+        });
+        setSelectedItemIds([groupId]);
     },
 
     buildShakerDoor: (cfg) => {
@@ -2882,7 +3281,7 @@ export const createActions = (set, get) => ({
         const jointType = cfg.jointType ?? 'butt';
 
         const isEditing = !!cfg.editGroupId;
-        const rootGroupId = isEditing ? cfg.editGroupId : 'Drawer Stack ' + Math.floor(Math.random() * 1000);
+        const rootGroupId = isEditing ? cfg.editGroupId : 'Drawers ' + Math.floor(Math.random() * 1000);
         
         const { editGroupId, ...savedParams } = cfg;
 
@@ -2929,7 +3328,7 @@ export const createActions = (set, get) => ({
         let baseId = Date.now();
 
         for (let i = 0; i < count; i++) {
-            const drawerGroupId = rootGroupId + ' Drawer ' + i;
+            const drawerGroupId = rootGroupId + ' Drawer ' + (i + 1);
             newGroups[drawerGroupId] = { parentId: rootGroupId, isExpanded: false, visible: true };
 
             const currentY = i * (slotH + verticalGap);

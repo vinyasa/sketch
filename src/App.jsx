@@ -19,6 +19,7 @@ import AssembliesPanel from './components/panels/AssembliesPanel';
 import AnimationPanel from './components/panels/AnimationPanel';
 import NewBoardDialog from './components/dialogs/NewBoardDialog';
 import CabinetBuilderDialog from './components/dialogs/CabinetBuilderDialog';
+import BoxBuilderDialog from './components/dialogs/BoxBuilderDialog';
 import ShakerDoorBuilderDialog from './components/dialogs/ShakerDoorBuilderDialog';
 import DrawerBuilderDialog from './components/dialogs/DrawerBuilderDialog';
 import AiHelpDialog from './components/dialogs/AiHelpDialog';
@@ -97,11 +98,13 @@ export default function App() {
                 <AppHeader />
 
                 <main className="main-workspace">
+                    {/* Temporarily disabled AI Assistant
                     {isRightPanelOpen && (
                         <DraggablePanel title="AI Assistant" defaultPosition={getSmartPosition(350, 600, 'left', headerBottom)} defaultSize={{ width: 350 }} topMargin={headerBottom} onClose={() => setIsRightPanelOpen(false)}>
                             <AIChatPanel />
                         </DraggablePanel>
                     )}
+                    */}
 
                     {showSettingsPanel && (
                         <DraggablePanel title="Settings" defaultPosition={getSmartPosition(500, 500, 'center', headerBottom)} defaultSize={{ width: 500 }} topMargin={headerBottom} onClose={() => setShowSettingsPanel(false)}>
@@ -196,11 +199,11 @@ export default function App() {
                 {confirmDialog && (
                     <div className="app-overlay" style={{ background: 'rgba(0,0,0,0.6)', zIndex: 10001, display: 'flex', justifyContent: 'center', alignItems: 'center', position: 'fixed', inset: 0 }} onClick={() => setConfirmDialog(null)}>
                         <div className="glass-panel" style={{ padding: '24px', width: '380px', borderRadius: '12px', display: 'flex', flexDirection: 'column', gap: '16px' }} onClick={e => e.stopPropagation()}>
-                            <h3 style={{ margin: 0, color: '#ff3b30' }}>⚠ Confirm Deletion</h3>
+                            <h3 style={{ margin: 0, color: confirmDialog.titleColor || '#ff3b30' }}>{confirmDialog.title || '⚠ Confirm Deletion'}</h3>
                             <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--text-main)', lineHeight: 1.5 }}>{confirmDialog.message}</p>
                             <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '8px' }}>
-                                <button className="nav-btn" style={{ padding: '8px 20px', border: '1px solid var(--border-color)' }} onClick={() => setConfirmDialog(null)}>Cancel</button>
-                                <button className="nav-btn" style={{ padding: '8px 20px', background: 'rgba(255, 59, 48, 0.15)', color: '#ff3b30', border: '1px solid rgba(255, 59, 48, 0.3)', fontWeight: 'bold' }} onClick={confirmDialog.onConfirm}>Delete</button>
+                                <button className="nav-btn" style={{ padding: '8px 20px', border: '1px solid var(--border-color)' }} onClick={() => { if (confirmDialog.onCancel) confirmDialog.onCancel(); else setConfirmDialog(null); }}>Cancel</button>
+                                <button className="nav-btn" style={{ padding: '8px 20px', background: confirmDialog.confirmBg || 'rgba(255, 59, 48, 0.15)', color: confirmDialog.confirmColor || '#ff3b30', border: `1px solid ${confirmDialog.confirmBorder || 'rgba(255, 59, 48, 0.3)'}`, fontWeight: 'bold' }} onClick={confirmDialog.onConfirm}>{confirmDialog.confirmText || 'Delete'}</button>
                             </div>
                         </div>
                     </div>
@@ -208,8 +211,8 @@ export default function App() {
 
                 {showNewWorkspaceDialog && (
                     <div className="app-overlay" style={{ background: 'rgba(0,0,0,0.6)', zIndex: 10001, display: 'flex', justifyContent: 'center', alignItems: 'center', position: 'fixed', inset: 0 }} onClick={() => setShowNewWorkspaceDialog(false)}>
-                        <div className="glass-panel" style={{ padding: '28px', width: '420px', borderRadius: '12px', display: 'flex', flexDirection: 'column', gap: '20px' }} onClick={e => e.stopPropagation()}>
-                            <h3 style={{ margin: 0, color: 'var(--text-main)' }}>✨ New Workspace</h3>
+                        <div className="glass-panel" style={{ padding: '28px', width: '500px', borderRadius: '12px', display: 'flex', flexDirection: 'column', gap: '20px' }} onClick={e => e.stopPropagation()}>
+                            <h3 style={{ margin: 0, color: 'var(--text-main)' }}>✨ New Project</h3>
                             <p style={{ margin: 0, fontSize: '0.95rem', color: 'var(--text-main)', lineHeight: 1.5 }}>
                                 Do you want to save the current project before starting a new one?
                             </p>
@@ -218,7 +221,7 @@ export default function App() {
                                 <button className="nav-btn" style={{ padding: '8px 16px', background: 'rgba(255, 59, 48, 0.15)', color: '#ff3b30', border: '1px solid rgba(255, 59, 48, 0.3)', fontWeight: 'bold' }} onClick={() => {
                                     newWorkspace();
                                     setShowNewWorkspaceDialog(false);
-                                }}>Clear Without Saving</button>
+                                }}>Discard (Clear Workspace)</button>
                                 <button className="nav-btn primary" style={{ padding: '8px 16px', background: 'var(--accent-color)', color: '#fff', border: 'none', fontWeight: 'bold' }} onClick={() => {
                                     if (currentFileName) {
                                         saveWorkspace(currentFileName);
@@ -231,7 +234,14 @@ export default function App() {
                                         setShowSavePromptDialog(true);
                                         setShowNewWorkspaceDialog(false);
                                     }
-                                }}>Save & Clear</button>
+                                }}>Save Local & Clear</button>
+                                <button className="nav-btn primary" style={{ padding: '8px 16px', background: 'var(--accent-color)', color: '#fff', border: 'none', fontWeight: 'bold' }} onClick={async () => {
+                                    const success = await useStore.getState().exportWorkspace();
+                                    if (success) {
+                                        newWorkspace();
+                                        setShowNewWorkspaceDialog(false);
+                                    }
+                                }}>Save to Disk & Clear</button>
                             </div>
                         </div>
                     </div>
@@ -239,6 +249,7 @@ export default function App() {
 
                 <NewBoardDialog />
                 <CabinetBuilderDialog />
+                <BoxBuilderDialog />
                 <ShakerDoorBuilderDialog />
                 <DrawerBuilderDialog />
                 <AiHelpDialog />

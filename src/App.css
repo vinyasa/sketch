@@ -85,7 +85,7 @@
 }
 
 .nav-drawer {
-  padding: 10px 16px;
+  padding: 8px 12px;
   border-radius: 12px;
   transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.5s cubic-bezier(0.4, 0, 0.2, 1);
   transform-origin: right center;
@@ -101,8 +101,9 @@
 
 .top-nav {
   display: grid;
-  grid-template-columns: repeat(7, minmax(90px, auto));
   grid-template-rows: repeat(3, auto);
+  grid-template-columns: repeat(5, minmax(90px, auto));
+  grid-auto-flow: column;
   gap: 4px;
   justify-items: stretch;
   align-items: center;
@@ -111,7 +112,7 @@
 /* Smaller buttons specifically in the header top-nav */
 .top-nav .nav-btn {
   font-size: 0.71rem;
-  padding: 6px 8px;
+  padding: 4px 6px;
   border-radius: 5px;
   text-align: center;
   height: 100%;

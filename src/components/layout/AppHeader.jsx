@@ -68,21 +68,15 @@ const AppHeader = () => {
                                 zIndex: 1000, boxShadow: '0 4px 12px rgba(0,0,0,0.2)', border: '1px solid var(--border-color)',
                                 borderRadius: '8px', background: 'var(--menu-bg)'
                             }}>
-                                <button className="nav-btn" style={{ textAlign: 'left', border: 'none', padding: '6px 12px', fontSize: '0.85rem' }} onClick={() => { setFileMenuOpen(false); setShowNewWorkspaceDialog(true); }}>✨ New Workspace</button>
+                                <button className="nav-btn" style={{ textAlign: 'left', border: 'none', padding: '6px 12px', fontSize: '0.85rem' }} onClick={() => { setFileMenuOpen(false); setShowNewWorkspaceDialog(true); }}>✨ New Project</button>
                                 <div className="divider" style={{ width: '100%', height: '1px', margin: '4px 0' }}></div>
+                                <div style={{ padding: '4px 12px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>Local</div>
                                 <button className="nav-btn" style={{ textAlign: 'left', border: 'none', padding: '6px 12px', fontSize: '0.85rem' }} onClick={() => { saveWorkspace(); setFileMenuOpen(false); }}>💾 Save</button>
-                                <button className="nav-btn" style={{ textAlign: 'left', border: 'none', padding: '6px 12px', fontSize: '0.85rem' }} onClick={() => { setShowSavePromptDialog(true); setFileMenuOpen(false); }}>💾 Save Copy...</button>
-                                <div className="divider" style={{ width: '100%', height: '1px', margin: '4px 0' }}></div>
-                                <button className="nav-btn" style={{ textAlign: 'left', border: 'none', padding: '6px 12px', fontSize: '0.85rem' }} onClick={() => { exportWorkspace(); setFileMenuOpen(false); }}>🖨️ Export JSON...</button>
-                                <button className="nav-btn" style={{ textAlign: 'left', border: 'none', padding: '6px 12px', fontSize: '0.85rem' }} onClick={() => { setShowPrintDialog(true); setFileMenuOpen(false); }}>🖨️ Print View...</button>
-                                <div className="divider" style={{ width: '100%', height: '1px', margin: '4px 0' }}></div>
-                                <button className="nav-btn" style={{ textAlign: 'left', border: 'none', padding: '6px 12px', fontSize: '0.85rem' }} onClick={() => { loadWorkspace(); setFileMenuOpen(false); }}>📂 Load</button>
-                                <button className="nav-btn" style={{ textAlign: 'left', border: 'none', padding: '6px 12px', fontSize: '0.85rem' }} onClick={() => { document.getElementById('project-import-input').click(); setFileMenuOpen(false); }}>📂 Open...</button>
+                                <button className="nav-btn" style={{ textAlign: 'left', border: 'none', padding: '6px 12px', fontSize: '0.85rem' }} onClick={() => { setShowSavePromptDialog(true); setFileMenuOpen(false); }}>💾 New...</button>
 
                                 {recentFiles.length > 0 && (
                                     <>
-                                        <div className="divider" style={{ width: '100%', height: '1px', margin: '4px 0' }}></div>
-                                        <div style={{ padding: '4px 12px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>Open Recent</div>
+                                        <div style={{ padding: '4px 12px', fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '4px' }}>Open</div>
                                         {recentFiles.map(r => (
                                             <button key={r.name} className="nav-btn" style={{ textAlign: 'left', border: 'none', padding: '6px 12px', fontSize: '0.85rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} onClick={() => { loadWorkspace(r.name); setFileMenuOpen(false); }}>
                                                 ⏱ {r.name}
@@ -90,6 +84,13 @@ const AppHeader = () => {
                                         ))}
                                     </>
                                 )}
+
+                                <div className="divider" style={{ width: '100%', height: '1px', margin: '4px 0' }}></div>
+                                <div style={{ padding: '4px 12px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>Disk</div>
+                                <button className="nav-btn" style={{ textAlign: 'left', border: 'none', padding: '6px 12px', fontSize: '0.85rem' }} onClick={() => { exportWorkspace(); setFileMenuOpen(false); }}>🖨️ Save...</button>
+                                <button className="nav-btn" style={{ textAlign: 'left', border: 'none', padding: '6px 12px', fontSize: '0.85rem' }} onClick={() => { document.getElementById('project-import-input').click(); setFileMenuOpen(false); }}>📂 Open...</button>
+                                <div className="divider" style={{ width: '100%', height: '1px', margin: '4px 0' }}></div>
+                                <button className="nav-btn" style={{ textAlign: 'left', border: 'none', padding: '6px 12px', fontSize: '0.85rem' }} onClick={() => { setShowPrintDialog(true); setFileMenuOpen(false); }}>🖨️ Print View...</button>
                             </div>
                         )}
                     </div>
@@ -107,30 +108,32 @@ const AppHeader = () => {
                 <div className={`nav-drawer glass-panel ${isNavOpen ? 'open' : 'collapsed'}`}>
                     <nav className="top-nav">
                         
-                        {/* ── ROW 1 ── */}
+                        {/* Col 1 */}
                         <button className={`nav-btn ${showAddComponentPanel ? 'active' : ''}`} onClick={() => setShowAddComponentPanel(!showAddComponentPanel)} title="Add shapes">🔷 Components</button>
                         <button className={`nav-btn ${showAssembliesPanel ? 'active' : ''}`} onClick={() => setShowAssembliesPanel(!showAssembliesPanel)} title="Parametric builders">🧱 Builders</button>
+                        <button className={`nav-btn ${showToolsPanel ? 'active' : ''}`} onClick={() => setShowToolsPanel(!showToolsPanel)} title="CSG modifiers">🛠 Tools</button>
+
+                        {/* Col 2 */}
                         <button className={`nav-btn ${showAssemblyLibrary ? 'active' : ''}`} onClick={() => setShowAssemblyLibrary(!showAssemblyLibrary)}>📦 Library</button>
                         <button className={`nav-btn ${showMaterialsPanel ? 'active' : ''}`} onClick={() => setShowMaterialsPanel(!showMaterialsPanel)}>🎨 Materials</button>
-                        <button className={`nav-btn ${showOutlinerPanel ? 'active' : ''}`} onClick={() => setShowOutlinerPanel(!showOutlinerPanel)} title="Toggle Outliner">🗂️ Outliner</button>
-                        <button className={`nav-btn ${isRightPanelOpen ? 'active' : ''}`} onClick={() => setIsRightPanelOpen(!isRightPanelOpen)}>🤖 AI Assistant</button>
-                        <button className={`nav-btn ${showCutlistPanel ? 'active' : ''}`} onClick={() => setShowCutlistPanel(!showCutlistPanel)}>📋 Cut List</button>
-
-                        {/* ── ROW 2 ── */}
-                        <button className={`nav-btn ${showToolsPanel ? 'active' : ''}`} onClick={() => setShowToolsPanel(!showToolsPanel)} title="CSG modifiers">🛠 Tools</button>
-                        <button className={`nav-btn ${showHardwarePanel ? 'active' : ''}`} onClick={() => setShowHardwarePanel(!showHardwarePanel)} title="Attach hardware">🔩 Hardware</button>
-                        <button className={`nav-btn ${showSettingsPanel ? 'active' : ''}`} onClick={() => setShowSettingsPanel(!showSettingsPanel)}>⚙️ Settings</button>
                         <button className={`nav-btn ${showLightingPanel ? 'active' : ''}`} onClick={() => setShowLightingPanel(!showLightingPanel)}>💡 Lighting</button>
-                        <button className={`nav-btn ${isOrtho ? 'active' : ''}`} onClick={() => setIsOrtho(!isOrtho)} title="Camera Mode">
-                            {isOrtho ? '📐 Parallel' : '📷 Perspective'}
-                        </button>
-                        <button className={`nav-btn ${showAnimationPanel ? 'active' : ''}`} onClick={() => setShowAnimationPanel(!showAnimationPanel)} title="Animate">🎬 Animate</button>
+
+                        {/* Col 3 */}
                         <button className={`nav-btn ${measureMode?.active ? 'active' : ''}`} onClick={() => {
                             if (measureMode?.active) setMeasureMode(null);
                             else setMeasureMode({ active: true, firstPoint: null });
                         }} title="Measure distances">📏 Measure</button>
+                        <button className={`nav-btn ${showAnimationPanel ? 'active' : ''}`} onClick={() => setShowAnimationPanel(!showAnimationPanel)} title="Animate">🎬 Animate</button>
+                        <button className={`nav-btn ${isOrtho ? 'active' : ''}`} onClick={() => setIsOrtho(!isOrtho)} title="Camera Mode">
+                            {isOrtho ? '📐 Parallel' : '📷 Perspective'}
+                        </button>
 
-                        {/* ── ROW 3 ── */}
+                        {/* Col 4 */}
+                        <button className={`nav-btn ${showOutlinerPanel ? 'active' : ''}`} onClick={() => setShowOutlinerPanel(!showOutlinerPanel)} title="Toggle Outliner">🗂️ Outliner</button>
+                        <button className={`nav-btn ${showCutlistPanel ? 'active' : ''}`} onClick={() => setShowCutlistPanel(!showCutlistPanel)}>📋 Cut List</button>
+                        <button className={`nav-btn ${showSettingsPanel ? 'active' : ''}`} onClick={() => setShowSettingsPanel(!showSettingsPanel)}>⚙️ Settings</button>
+
+                        {/* Col 5 */}
                         <label className="nav-btn" style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', fontSize: '0.71rem', userSelect: 'none', margin: 0, padding: '3px 8px' }}>
                             <input type="checkbox" checked={showGrid} onChange={e => setShowGrid(e.target.checked)} style={{ accentColor: 'var(--accent-color)', width: '12px', height: '12px', cursor: 'pointer' }} />
                             Grid
@@ -139,11 +142,12 @@ const AppHeader = () => {
                             <input type="checkbox" checked={showMeasurements} onChange={e => setShowMeasurements(e.target.checked)} style={{ accentColor: 'var(--accent-color)', width: '12px', height: '12px', cursor: 'pointer' }} />
                             Dims
                         </label>
-                        <div /> {/* Empty col 3 */}
-                        <div /> {/* Empty col 4 */}
-                        <div /> {/* Empty col 5 */}
-                        <div /> {/* Empty col 6 */}
-                        <div /> {/* Empty col 7 */}
+                        <div /> {/* Empty slot for Col 5 Row 3 */}
+                        
+                        {/* Hidden/Disabled Buttons
+                        <button className={`nav-btn ${isRightPanelOpen ? 'active' : ''}`} onClick={() => setIsRightPanelOpen(!isRightPanelOpen)}>🤖 AI Assistant</button>
+                        <button className={`nav-btn ${showHardwarePanel ? 'active' : ''}`} onClick={() => setShowHardwarePanel(!showHardwarePanel)} title="Attach hardware">🔩 Hardware</button> 
+                        */}
 
                     </nav>
                 </div>

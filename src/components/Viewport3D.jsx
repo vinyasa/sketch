@@ -625,6 +625,18 @@ const findNearestSnap = (worldPoint, board) => {
   return best;
 };
 
+// ── Custom Pivot Snapping Preview ───────────────────────────────────────────
+function PivotSnapPreview() {
+  const pivotHoverSnap = useStore(s => s.pivotHoverSnap);
+  if (!pivotHoverSnap) return null;
+  return (
+    <mesh position={pivotHoverSnap} raycast={() => null}>
+      <sphereGeometry args={[0.3, 16, 16]} />
+      <meshBasicMaterial color="#ff00ff" depthTest={false} transparent opacity={0.6} />
+    </mesh>
+  );
+}
+
 // ── Unified Measurement Overlay ──────────────────────────────────────────────
 // Renders ephemeral auto-dims for selected boards (muted gray) and persistent
 // custom measurements (orange). Uses drei <Text> for WebGL-native labels
@@ -1203,53 +1215,67 @@ const _buildMiterTool = (size, op) => {
   const bevelDeg = op.bevel ?? 0;
   const bevelRad = (bevelDeg * Math.PI) / 180;
 
-  const faceAxis = face[0] === 'x' ? 0 : 2;
+  const faceAxis = face[0] === 'x' ? 0 : face[0] === 'y' ? 1 : 2;
   const faceSign = face[1] === '+' ? 1 : -1;
-  const fenceAxis = fence[0] === 'x' ? 0 : 2;
+  const fenceAxis = fence[0] === 'x' ? 0 : fence[0] === 'y' ? 1 : 2;
   const fenceSign = fence[1] === '+' ? 1 : -1;
 
   const cutterSize = Math.max(size[0], size[1], size[2]) * 4;
   const geo = new THREE.BoxGeometry(cutterSize, cutterSize, cutterSize);
 
-  // 1. Position cutter so its cutting face is at the origin,
-  //    body extending away from the board along the face axis
+  // 1. Position cutter so its cutting face is at the origin
   const shift = [0, 0, 0];
   shift[faceAxis] = faceSign * cutterSize / 2;
-  const shiftToOrigin = new THREE.Matrix4().makeTranslation(shift[0], 0, shift[2]);
+  const shiftToOrigin = new THREE.Matrix4().makeTranslation(shift[0], shift[1], shift[2]);
 
-  // 2. Bevel rotation — tilts the blade from vertical.
-  //    For X-face cuts the tilt axis is Z; for Z-face cuts it's X.
-  //    Positive bevel: blade enters from the bottom face (pivot at y = -h/2).
-  //    Negative bevel: blade enters from the top face  (pivot at y = +h/2).
+  // 2. Bevel rotation
   let bevelMatrix = new THREE.Matrix4();
+  const thicknessAxis = [0, 1, 2].find(i => i !== faceAxis && i !== fenceAxis);
+  
   if (Math.abs(bevelRad) > 0.001) {
-    const bevelSign = faceSign;
-    // Pivot at the board surface the blade enters from
-    const pivotY = bevelDeg > 0 ? -size[1] / 2 : size[1] / 2;
-    const toOrigin   = new THREE.Matrix4().makeTranslation(0, -pivotY, 0);
-    const fromOrigin = new THREE.Matrix4().makeTranslation(0,  pivotY, 0);
+    const pivotVal = bevelDeg > 0 ? -size[thicknessAxis] / 2 : size[thicknessAxis] / 2;
+    
+    const tv = [0, 0, 0];
+    tv[thicknessAxis] = -pivotVal;
+    const toOrigin = new THREE.Matrix4().makeTranslation(tv[0], tv[1], tv[2]);
+    tv[thicknessAxis] = pivotVal;
+    const fromOrigin = new THREE.Matrix4().makeTranslation(tv[0], tv[1], tv[2]);
+    
     let rot = new THREE.Matrix4();
-    if (faceAxis === 0) {
-      rot.makeRotationZ(bevelSign * bevelRad);
-    } else {
-      rot.makeRotationX(-bevelSign * bevelRad);
-    }
+    
+    // The rotation angle must tilt the face normal towards the thickness axis.
+    // Based on right-hand rule rotations in Three.js (X->Y->Z->X cycle):
+    // "Forward" face axis in cycle uses positive sin, "Backward" face axis uses negative sin.
+    const isForward = 
+      (fenceAxis === 0 && faceAxis === 1) || 
+      (fenceAxis === 1 && faceAxis === 2) || 
+      (fenceAxis === 2 && faceAxis === 0);
+      
+    const rotAngle = (isForward ? 1 : -1) * faceSign * bevelRad;
+    
+    if (fenceAxis === 0) rot.makeRotationX(rotAngle);
+    else if (fenceAxis === 1) rot.makeRotationY(rotAngle);
+    else rot.makeRotationZ(rotAngle);
+    
     bevelMatrix.multiply(fromOrigin).multiply(rot).multiply(toOrigin);
   }
 
-  // 3. Miter rotation around Y — general formula derived from which edge the cut
-  //    must swing INTO the board at (the non-fence edge):
-  //    rotAngle = (faceAxis===0 ? 1 : -1) * faceSign * fenceSign * θ
-  const rotAngle = (faceAxis === 0 ? 1 : -1) * faceSign * fenceSign * angleRad;
-  const miterMatrix = new THREE.Matrix4().makeRotationY(rotAngle);
+  // 3. Miter rotation
+  let miterMatrix = new THREE.Matrix4();
+  if (Math.abs(angleRad) > 0.001) {
+    const rotAngle = faceSign * fenceSign * angleRad;
+    if (thicknessAxis === 0) miterMatrix.makeRotationX((faceAxis === 1 ? -1 : 1) * rotAngle);
+    else if (thicknessAxis === 1) miterMatrix.makeRotationY((faceAxis === 2 ? -1 : 1) * rotAngle);
+    else miterMatrix.makeRotationZ((faceAxis === 0 ? -1 : 1) * rotAngle);
+  }
 
-  // 4. Translate to pivot = intersection of end face and fence edge
+  // 4. Translate to pivot
   const pivot = [0, 0, 0];
   pivot[faceAxis] = faceSign * size[faceAxis] / 2;
   pivot[fenceAxis] = fenceSign * size[fenceAxis] / 2;
-  const shiftToPivot = new THREE.Matrix4().makeTranslation(pivot[0], 0, pivot[2]);
+  const shiftToPivot = new THREE.Matrix4().makeTranslation(pivot[0], pivot[1], pivot[2]);
 
-  // Transform chain (right-to-left): place cutter → tilt (bevel) → swing (miter) → move to pivot
+  // Transform chain (right-to-left)
   const m = new THREE.Matrix4();
   m.multiply(shiftToPivot).multiply(miterMatrix).multiply(bevelMatrix).multiply(shiftToOrigin);
   geo.applyMatrix4(m);
@@ -1614,6 +1640,26 @@ const BoardMesh = ({ b, selectedItemIds, toggleSelection, textures, showEdges, c
         onClick={(e) => {
           e.stopPropagation();
 
+          // ── Pivot Mode ──
+          const { pivotMode, setPivotMode, gridSnap, setCustomPivot, setPivotHoverSnap } = useStore.getState();
+          if (pivotMode?.active && pivotMode.boardId === b.id.toString()) {
+            const gridStep = gridSnap === '1/8 in' ? 0.125 : gridSnap === '1/4 in' ? 0.25 : gridSnap === '1/2 in' ? 0.5 : gridSnap === '1 in' ? 1.0 : 0.125;
+            const pt = e.point.clone();
+            const euler = new THREE.Euler(...(b.orientation || [0, 0, 0]), 'YXZ');
+            pt.sub(new THREE.Vector3(...b.position));
+            pt.applyEuler(new THREE.Euler(-euler.x, -euler.y, -euler.z, 'ZXY'));
+
+            const snx = Math.round(pt.x / gridStep) * gridStep;
+            const sny = Math.round(pt.y / gridStep) * gridStep;
+            const snz = Math.round(pt.z / gridStep) * gridStep;
+
+            setCustomPivot(b.id, [snx, sny, snz]);
+            setPivotMode(null);
+            setPivotHoverSnap(null);
+            useStore.getState().showToast('Pivot point set successfully.');
+            return;
+          }
+
           // ── Measure Mode: first point only ──
           const { measureMode, setMeasureMode } = useStore.getState();
           if (measureMode?.active) {
@@ -1705,6 +1751,28 @@ const BoardMesh = ({ b, selectedItemIds, toggleSelection, textures, showEdges, c
           }
         }}
         onPointerMove={(e) => {
+          // ── Pivot Mode hover snap tracking ──
+          const { pivotMode, setPivotHoverSnap, gridSnap } = useStore.getState();
+          if (pivotMode?.active && pivotMode.boardId === b.id.toString()) {
+            e.stopPropagation();
+            const gridStep = gridSnap === '1/8 in' ? 0.125 : gridSnap === '1/4 in' ? 0.25 : gridSnap === '1/2 in' ? 0.5 : gridSnap === '1 in' ? 1.0 : 0.125;
+            const pt = e.point.clone();
+            const euler = new THREE.Euler(...(b.orientation || [0, 0, 0]), 'YXZ');
+            pt.sub(new THREE.Vector3(...b.position));
+            pt.applyEuler(new THREE.Euler(-euler.x, -euler.y, -euler.z, 'ZXY'));
+
+            const snx = Math.round(pt.x / gridStep) * gridStep;
+            const sny = Math.round(pt.y / gridStep) * gridStep;
+            const snz = Math.round(pt.z / gridStep) * gridStep;
+
+            const worldPt = new THREE.Vector3(snx, sny, snz);
+            worldPt.applyEuler(euler);
+            worldPt.add(new THREE.Vector3(...b.position));
+
+            setPivotHoverSnap([worldPt.x, worldPt.y, worldPt.z]);
+            return;
+          }
+
           // ── Hover snap tracking for measure mode ──
           const { measureMode: mm, setMeasureHoverSnap, measureHoverSnap } = useStore.getState();
           if (mm?.active && !mm.dragging) {
@@ -1735,9 +1803,10 @@ const BoardMesh = ({ b, selectedItemIds, toggleSelection, textures, showEdges, c
           }
         }}
         onPointerOut={(e) => {
-          // Clear measure hover snap when leaving this board
-          const { measureMode: mm, setMeasureHoverSnap } = useStore.getState();
+          // Clear measure and pivot hover snap when leaving this board
+          const { measureMode: mm, setMeasureHoverSnap, pivotMode, setPivotHoverSnap } = useStore.getState();
           if (mm?.active) setMeasureHoverSnap(null);
+          if (pivotMode?.active) setPivotHoverSnap(null);
           if (hoveredFaceData && hoveredFaceData.id === b.id.toString()) {
             setHoveredFaceData(null);
           }
@@ -2004,6 +2073,7 @@ function WoodJoint({ boards, groups, selectedItemIds, toggleSelection, showEdges
       <BoundingBoxVisualizer boards={boards} groups={groups} selectedItemIds={selectedItemIds} showBoundingBox={showBoundingBox} theme={theme} />
       <MeasurementOverlay boards={boards} selectedItemIds={selectedItemIds} showMeasurements={showMeasurements} measurements={measurements} units={units} theme={theme} />
       <MeasureSnapPreview boards={boards} measureMode={measureMode} />
+      <PivotSnapPreview />
     </group>
   );
 }
@@ -2048,18 +2118,25 @@ export default function Viewport3D() {
   const majorColor = isDark ? 0x666666 : 0x999999;
   const minorColor = isDark ? 0x242424 : 0xd2d2d2;
 
-  const gridRadius = 120;
-  let minorDivs = 0, majorDivs = 20;
+  const workspaceSize = useStore(s => s.workspaceSize) || 120;
+  const gridRadius = workspaceSize;
+  let minorDivs = 0, majorDivs = Math.ceil(workspaceSize / 6);
 
-  if (gridSnap === '1/8 in') {
-    minorDivs = 240;
-    majorDivs = 40;
+  if (gridSnap === '1/16 in') {
+    minorDivs = workspaceSize * 4;
+    majorDivs = Math.ceil(workspaceSize / 1.5);
+  } else if (gridSnap === '1/8 in') {
+    minorDivs = workspaceSize * 2;
+    majorDivs = Math.ceil(workspaceSize / 3);
+  } else if (gridSnap === '1/4 in') {
+    minorDivs = workspaceSize;
+    majorDivs = Math.ceil(workspaceSize / 6);
   } else if (gridSnap === '1/2 in' || gridSnap === '1 in') {
-    minorDivs = 120;
-    majorDivs = 20;
+    minorDivs = workspaceSize;
+    majorDivs = Math.ceil(workspaceSize / 6);
   } else if (gridSnap === 'off') {
     minorDivs = 0;
-    majorDivs = 20;
+    majorDivs = Math.ceil(workspaceSize / 6);
   }
 
   return (
@@ -2089,7 +2166,18 @@ export default function Viewport3D() {
           <gridHelper key={`min_${minorDivs}_${theme}`} args={[gridRadius, minorDivs, minorColor, minorColor]} position={[0, -0.02, 0]} />
         )}
         {showGrid && !printCapture && <gridHelper key={`maj_${majorDivs}_${theme}`} args={[gridRadius, majorDivs, majorColor, majorColor]} position={[0, 0.02, 0]} />}
-        {showGrid && !printCapture && <axesHelper args={[40]} position={[0, 0.03, 0]} />}
+        {showGrid && !printCapture && (
+          <axesHelper 
+            args={[workspaceSize / 2]} 
+            position={[0, 0.03, 0]} 
+            onUpdate={(self) => {
+              const xColor = isDark ? '#ff5555' : '#aa0000';
+              const yColor = isDark ? '#55ff55' : '#00aa00';
+              const zColor = isDark ? '#5555ff' : '#0000aa';
+              self.setColors(xColor, yColor, zColor);
+            }}
+          />
+        )}
         {showGrid && !printCapture && <FloorFrontLabel />}
 
         {globalBounds?.enabled && !printCapture && (

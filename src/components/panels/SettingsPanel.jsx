@@ -32,11 +32,22 @@ const SettingsPanel = () => {
                 <label style={{ fontWeight: '600', opacity: 0.85, display: 'block', marginBottom: '8px' }}>Global Grid Snapping</label>
                 <select className="nav-btn" value={gridSnap} onChange={(e) => setGridSnap(e.target.value)} style={{ width: '100%', outline: 'none' }}>
                     <option value="off">Off (Free floating)</option>
-                    <option value="1/8 in">1/8 Inch (Precision)</option>
-                    <option value="1/2 in">1/2 Inch (Standard)</option>
-                    <option value="1 in">1 Inch (Rough)</option>
+                    <option value="1/16 in">1/16 Inch (Extreme)</option>
+                    <option value="1/8 in">1/8 Inch (Fine)</option>
+                    <option value="1/4 in">1/4 Inch (Standard)</option>
+                    <option value="1/2 in">1/2 Inch (Rough)</option>
+                    <option value="1 in">1 Inch (Very Rough)</option>
                 </select>
                 <p className="hint" style={{ marginTop: '4px' }}>Controls the bounding lock when nudging components via the AI or inspector.</p>
+            </div>
+
+            <div className="inspector-card">
+                <label style={{ fontWeight: '600', opacity: 0.85, display: 'block', marginBottom: '8px' }}>Workspace Scale (Grid Size)</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <input type="number" step="1" min="1" max="100" className="nav-btn" style={{ flex: 1, padding: '4px 8px' }} value={(useStore(s => s.workspaceSize) || 120) / 12} onChange={(e) => useStore.getState().setWorkspaceSize((parseFloat(e.target.value) || 10) * 12)} />
+                    <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>feet</span>
+                </div>
+                <p className="hint" style={{ marginTop: '4px' }}>Defines the total length/width of the 3D grid plane in feet. Grid snapping will automatically scale based on this size.</p>
             </div>
 
             <div className="inspector-card">

@@ -1,29 +1,32 @@
 import React from 'react';
 import useStore from '../../store/useStore';
 
-const CabinetBuilderDialog = () => {
-    const { cabinetDialog: dialog, setCabinetDialog: setDialog, buildCabinet } = useStore();
+const BoxBuilderDialog = () => {
+    const { boxDialog: dialog, setBoxDialog: setDialog, buildBox } = useStore();
     if (!dialog) return null;
 
     const parse = (v, def) => { const n = parseFloat(v); return isNaN(n) ? def : n; };
-    const W = parse(dialog.width, 24);
-    const H = parse(dialog.height, 30);
-    const D = parse(dialog.depth, 14);
-    const tTB = parse(dialog.thicknessTB, 0.75);
-    const tSide = parse(dialog.thicknessSide, 0.75);
-    const tFront = parse(dialog.thicknessFront, 0.75);
-    const tBack = parse(dialog.thicknessBack, 0.25);
-    const jointType = 'butt'; // Hardcoded as per design decision
-    const backStyle = dialog.backStyle ?? 'flat';
+    const W = parse(dialog.width, 18);
+    const H = parse(dialog.height, 12);
+    const D = parse(dialog.depth, 12);
+    const tTB = parse(dialog.thicknessTB, 0.5);
+    const tSide = parse(dialog.thicknessSide, 0.5);
+    const tFront = parse(dialog.thicknessFront, 0.5);
+    const tBack = parse(dialog.thicknessBack, 0.5);
 
-    // Derived panel sizes for the summary (assuming butt joint: sides full height, top/bottom between)
+    // Derived panel sizes for the summary
+    // Top and Bottom are full width and depth.
+    // Sides are sandwiched between Top and Bottom.
+    // Front and Back are full width (W).
+    // Left and Right are sandwiched between Front and Back.
+    const coreHeight = H - (2 * tTB);
     const coreDepth = D - tFront - tBack;
-    const topBottom = { x: W - 2 * tSide, y: tTB, z: coreDepth };
-    const sides = { x: tSide, y: H, z: coreDepth };
-    const front = { x: W, y: H, z: tFront };
-    const back = { x: W, y: H, z: tBack };
+    
+    const topBottom = { x: W, y: tTB, z: D };
+    const frontBack = { x: W, y: coreHeight, z: tFront }; // (assuming tFront == tBack for summary)
+    const sides = { x: tSide, y: coreHeight, z: coreDepth };
 
-    const valid = coreDepth > 0 && W > 2 * tSide && H > 2 * tTB;
+    const valid = coreDepth > 0 && coreHeight > 0 && W > 2 * tSide;
 
     const inputStyle = {
         width: '100%', padding: '5px 8px',
@@ -40,7 +43,7 @@ const CabinetBuilderDialog = () => {
 
     const handleBuild = () => {
         if (!valid) return;
-        buildCabinet(dialog);
+        if (buildBox) buildBox(dialog);
         setDialog(null);
     };
 
@@ -57,7 +60,7 @@ const CabinetBuilderDialog = () => {
             }} onClick={e => e.stopPropagation()}>
 
                 <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ fontSize: '1.2rem' }}>🗄</span> Cabinet Builder
+                    <span style={{ fontSize: '1.2rem' }}>📦</span> Box Builder
                 </h2>
 
                 {/* Overall Dimensions */}
@@ -91,24 +94,13 @@ const CabinetBuilderDialog = () => {
                 {/* Construction */}
                 <div className="inspector-card" style={{ margin: 0 }}>
                     <h4>Construction</h4>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '8px' }}>
                         <div>
                             <div style={labelStyle}>Corner Joints</div>
                             <div style={{ fontSize: '0.75rem', color: 'var(--text-main)', padding: '6px 0', lineHeight: 1.4 }}>
                                 Built natively as <strong>Butt Joints</strong>.<br/>
-                                <span style={{ color: 'var(--text-muted)' }}>Use the Tools panel later to change to Rabbet or Miter.</span>
+                                <span style={{ color: 'var(--text-muted)' }}>Top and Bottom sit flush on the sides. Front and Back are full width.</span>
                             </div>
-                        </div>
-                        <div>
-                            <div style={labelStyle}>Back Style</div>
-                            <select
-                                value={backStyle}
-                                onChange={e => setDialog(p => ({ ...p, backStyle: e.target.value }))}
-                                style={{ ...inputStyle, cursor: 'pointer' }}
-                            >
-                                <option value="flat">Flat (Nailed on)</option>
-                                <option value="inset">Inset (Rabbeted)</option>
-                            </select>
                         </div>
                     </div>
                 </div>
@@ -142,11 +134,6 @@ const CabinetBuilderDialog = () => {
                                 style={inputStyle} />
                         </div>
                     </div>
-                    <p className="hint" style={{ marginTop: '6px' }}>
-                        {backStyle === 'inset' 
-                            ? "Back is inset into sides/top/bottom via rabbets. Overall cabinet depth equals the side depth."
-                            : "Back attaches flush to the rear. Overall cabinet depth equals side depth plus back thickness."}
-                    </p>
                 </div>
 
                 {/* Panel Summary */}
@@ -154,12 +141,11 @@ const CabinetBuilderDialog = () => {
                     <h4 style={{ color: valid ? '#34c759' : '#ff3b30' }}>{valid ? '✓ Panel Summary' : '⚠ Invalid Dimensions'}</h4>
                     {valid ? (
                         <div style={{ fontSize: '0.78rem', color: 'var(--text-main)', lineHeight: 1.6 }}>
-                            <div><strong>Top / Bottom:</strong> {fmt(topBottom.x)}" × {fmt(topBottom.y)}" × {fmt(topBottom.z)}" <span style={{ color: 'var(--text-muted)' }}>(fits between sides)</span></div>
-                            <div><strong>Left / Right:</strong> {fmt(sides.x)}" × {fmt(sides.y)}" × {fmt(sides.z)}" <span style={{ color: 'var(--text-muted)' }}>(full height)</span></div>
-                            <div><strong>Front:</strong> {fmt(front.x)}" × {fmt(front.y)}" × {fmt(front.z)}" <span style={{ color: 'var(--text-muted)' }}>(flush, no overlap)</span></div>
-                            <div><strong>Back:</strong> {fmt(back.x)}" × {fmt(back.y)}" × {fmt(back.z)}" <span style={{ color: 'var(--text-muted)' }}>(flush, no overlap)</span></div>
+                            <div><strong>Top / Bottom:</strong> {fmt(topBottom.x)}" × {fmt(topBottom.y)}" × {fmt(topBottom.z)}" <span style={{ color: 'var(--text-muted)' }}>(flush, no overlap)</span></div>
+                            <div><strong>Front / Back:</strong> {fmt(frontBack.x)}" × {fmt(frontBack.y)}" × {fmt(frontBack.z)}" <span style={{ color: 'var(--text-muted)' }}>(between top/bottom)</span></div>
+                            <div><strong>Left / Right:</strong> {fmt(sides.x)}" × {fmt(sides.y)}" × {fmt(sides.z)}" <span style={{ color: 'var(--text-muted)' }}>(between front/back)</span></div>
                             <div style={{ marginTop: '4px', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                                Core depth (between front/back): {fmt(coreDepth)}" · Back-bottom-left at origin
+                                Box centered at origin.
                             </div>
                         </div>
                     ) : (
@@ -182,7 +168,7 @@ const CabinetBuilderDialog = () => {
                     }}
                         disabled={!valid}
                         onClick={handleBuild}>
-                        🗄 Build Cabinet
+                        📦 Build Box
                     </button>
                 </div>
             </div>
@@ -190,4 +176,4 @@ const CabinetBuilderDialog = () => {
     );
 };
 
-export default CabinetBuilderDialog;
+export default BoxBuilderDialog;

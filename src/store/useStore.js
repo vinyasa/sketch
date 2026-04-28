@@ -217,6 +217,8 @@ const useStore = create((set, get) => ({
 
     cabinetDialog: null,
     setCabinetDialog: (v) => set({ cabinetDialog: typeof v === 'function' ? v(get().cabinetDialog) : v }),
+    boxDialog: null,
+    setBoxDialog: (v) => set({ boxDialog: typeof v === 'function' ? v(get().boxDialog) : v }),
     shakerDoorDialog: null,
     setShakerDoorDialog: (v) => set({ shakerDoorDialog: typeof v === 'function' ? v(get().shakerDoorDialog) : v }),
     drawerDialog: null,
@@ -286,6 +288,26 @@ const useStore = create((set, get) => ({
     gridSnap: loadState('gridSnap', '1/8 in'),
     setGridSnap: (v) => set({ gridSnap: typeof v === 'function' ? v(get().gridSnap) : v }),
 
+    workspaceSize: loadState('workspaceSize', 120),
+    setWorkspaceSize: (v) => {
+        const next = typeof v === 'function' ? v(get().workspaceSize) : v;
+        
+        let newSnap = get().gridSnap;
+        if (next <= 120) newSnap = '1/8 in';
+        else if (next <= 240) newSnap = '1/4 in';
+        else if (next <= 360) newSnap = '1/2 in';
+        else newSnap = '1 in';
+
+        set({ workspaceSize: next, gridSnap: newSnap });
+        try {
+            const s = localStorage.getItem('lucey_save');
+            const p = s ? JSON.parse(s) : {};
+            p.workspaceSize = next;
+            p.gridSnap = newSnap;
+            localStorage.setItem('lucey_save', JSON.stringify(p));
+        } catch(e) {}
+    },
+
     defaultMaterial: loadState('defaultMaterial', 'pine'),
     setDefaultMaterial: (v) => set({ defaultMaterial: typeof v === 'function' ? v(get().defaultMaterial) : v }),
 
@@ -305,6 +327,14 @@ const useStore = create((set, get) => ({
     // { active: true, firstPoint: { localOffset, boardId, snapType } } = waiting for second
     measureMode: null,
     setMeasureMode: (v) => set({ measureMode: typeof v === 'function' ? v(get().measureMode) : v }),
+
+    // Custom Pivot mode interaction state
+    // { active: true, boardId: '123' }
+    pivotMode: null,
+    setPivotMode: (v) => set({ pivotMode: typeof v === 'function' ? v(get().pivotMode) : v }),
+
+    pivotHoverSnap: null,
+    setPivotHoverSnap: (v) => set({ pivotHoverSnap: v }),
 
     // Persisted custom measurements
     measurements: loadState('measurements', []),

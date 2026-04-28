@@ -10,6 +10,13 @@ const ASSEMBLIES = [
         color: '#b08855',
     },
     {
+        id: 'box',
+        label: 'Box',
+        icon: '📦',
+        description: '6-sided box with top and bottom sitting flush on sides',
+        color: '#908070',
+    },
+    {
         id: 'shakerDoor',
         label: 'Shaker Door',
         icon: '🚪',
@@ -18,7 +25,7 @@ const ASSEMBLIES = [
     },
     {
         id: 'drawerStack',
-        label: 'Drawer Stack',
+        label: 'Drawers',
         icon: '🗃️',
         description: 'Stack of drawer boxes with optional faces',
         color: '#8d6d53',
@@ -74,7 +81,7 @@ const AssemblyCard = ({ item, onSelect }) => {
 };
 
 const AssembliesPanel = () => {
-    const { setCabinetDialog, setShakerDoorDialog, setDrawerDialog } = useStore();
+    const { setCabinetDialog, setBoxDialog, setShakerDoorDialog, setDrawerDialog } = useStore();
 
     const handleSelect = (item) => {
         if (item.id === 'cabinet') {
@@ -82,6 +89,12 @@ const AssembliesPanel = () => {
                 width: 24, height: 30, depth: 14,
                 thicknessTB: 0.75, thicknessSide: 0.75,
                 thicknessFront: 0.75, thicknessBack: 0.25,
+            });
+        } else if (item.id === 'box') {
+            setBoxDialog({
+                width: 18, height: 12, depth: 12,
+                thicknessTB: 0.5, thicknessSide: 0.5,
+                thicknessFront: 0.5, thicknessBack: 0.5,
             });
         } else if (item.id === 'shakerDoor') {
             setShakerDoorDialog({});

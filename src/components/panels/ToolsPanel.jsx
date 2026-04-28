@@ -28,8 +28,29 @@ const ToolsPanel = () => {
     const selectedBoards = selectedItemIds.length >= 2
         ? selectedItemIds.map(id => boards.find(b => b.id.toString() === id)).filter(Boolean)
         : [];
-    const canShowedgeJoint = selectedBoards.length >= 2;
-    const canShowSubtraction = selectedBoards.length === 2;
+        
+    const bbOf = (b) => [0, 1, 2].map(i => ({
+        min: b.position[i] - b.size[i] / 2,
+        max: b.position[i] + b.size[i] / 2,
+    }));
+
+    const touches = selectedBoards.length >= 2 && selectedBoards.every((b1, i1) => 
+        selectedBoards.every((b2, i2) => {
+            if (i1 >= i2) return true;
+            const b1b = bbOf(b1), b2b = bbOf(b2);
+            return [0, 1, 2].every(i => Math.min(b1b[i].max, b2b[i].max) - Math.max(b1b[i].min, b2b[i].min) > -0.05);
+        })
+    );
+    
+    const overlaps = selectedBoards.length === 2 && [0, 1, 2].every(i => {
+        const b1b = bbOf(selectedBoards[0]), b2b = bbOf(selectedBoards[1]);
+        return Math.min(b1b[i].max, b2b[i].max) - Math.max(b1b[i].min, b2b[i].min) > 0.05;
+    });
+    
+    const isMiterJoint = selectedBoards.length === 2 && selectedBoards[0].edgeJoints?.some(j => j.partnerId === selectedBoards[1].id.toString() && j.type === 'miter');
+
+    const canShowedgeJoint = touches;
+    const canShowSubtraction = overlaps && !isMiterJoint;
 
     // Clear staged modifier edits when the selected board changes
     const selectedBoardId = selectedItemIds?.[0];
@@ -82,17 +103,84 @@ const ToolsPanel = () => {
                 const actualJointCount = existingJoints / 2;
                 
                 // If there are existing joints, maybe show their type as active
-                const activeType = actualJointCount > 0 ? (firstJointType || 'rabbet') : bulkJointType;
+                const activeType = actualJointCount > 0 ? (firstJointType || 'rabbet') : 'butt';
 
                 const handleTypeClick = (type) => {
                     setBulkJointType(type);
                     applyBulkEdgeJoints(boardIds, type, bulkSideOverTop);
                 };
                 
+                let overBoardName = 'Sides';
+                let underBoardName = 'T/B';
+                
+                if (selectedBoards.length === 2) {
+                    const [bA, bB] = selectedBoards;
+                    if (actualJointCount > 0 && bA.edgeJoints) {
+                        const joint = bA.edgeJoints.find(j => j.partnerId === bB.id.toString());
+                        if (joint) {
+                            const overId = joint.overBoardId;
+                            if (bA.id.toString() === overId) {
+                                overBoardName = bA.name; underBoardName = bB.name;
+                            } else {
+                                overBoardName = bB.name; underBoardName = bA.name;
+                            }
+                        }
+                    } else {
+                        // Guess based on geometric extension
+                        const thinA = bA.size.indexOf(Math.min(...bA.size));
+                        const thinB = bB.size.indexOf(Math.min(...bB.size));
+                        
+                        // A is over B if A spans across B's thin axis.
+                        const A_bounds_in_B = [bA.position[thinB] - bA.size[thinB]/2, bA.position[thinB] + bA.size[thinB]/2];
+                        const B_pos_in_B = bB.position[thinB];
+                        
+                        if (B_pos_in_B >= A_bounds_in_B[0] - 0.1 && B_pos_in_B <= A_bounds_in_B[1] + 0.1) {
+                            overBoardName = bA.name; underBoardName = bB.name;
+                        } else {
+                            overBoardName = bB.name; underBoardName = bA.name;
+                        }
+                    }
+                }
+
                 const handleFlip = () => {
-                    const newSideOverTop = !bulkSideOverTop;
-                    setBulkSideOverTop(newSideOverTop);
-                    applyBulkEdgeJoints(boardIds, activeType, newSideOverTop);
+                    if (selectedBoards.length === 2) {
+                        const [bA, bB] = selectedBoards;
+                        let currentOverId = overBoardName === bA.name ? bA.id.toString() : bB.id.toString();
+                        let currentUnderId = currentOverId === bA.id.toString() ? bB.id.toString() : bA.id.toString();
+                        
+                        const { removeEdgeJoint, applyEdgeJoint } = useStore.getState();
+                        removeEdgeJoint(bA.id.toString(), bB.id.toString(), true, true);
+                        setTimeout(() => {
+                            applyEdgeJoint(currentUnderId, currentOverId, activeType, false, false, true);
+                        }, 10);
+                    } else {
+                        const newSideOverTop = !bulkSideOverTop;
+                        setBulkSideOverTop(newSideOverTop);
+                        applyBulkEdgeJoints(boardIds, activeType, newSideOverTop);
+                    }
+                };
+
+                let isBoxSelection = false;
+                let topBottomBoard = null;
+                let sideBoards = [];
+                if (selectedBoards.length === 5) {
+                    const thinAxes = selectedBoards.map(b => b.size.indexOf(Math.min(...b.size)));
+                    const yCount = thinAxes.filter(a => a === 1).length;
+                    const xzCount = thinAxes.filter(a => a === 0 || a === 2).length;
+                    if (yCount === 1 && xzCount === 4) {
+                        isBoxSelection = true;
+                        topBottomBoard = selectedBoards[thinAxes.indexOf(1)];
+                        sideBoards = selectedBoards.filter(b => b.id !== topBottomBoard.id);
+                    }
+                }
+
+                const handleBoxPanelClick = (type) => {
+                    if (isBoxSelection) {
+                        const { applyBoxPanelJoint } = useStore.getState();
+                        if (applyBoxPanelJoint) {
+                            applyBoxPanelJoint(topBottomBoard.id.toString(), sideBoards.map(b => b.id.toString()), type);
+                        }
+                    }
                 };
 
                 return (
@@ -113,55 +201,94 @@ const ToolsPanel = () => {
 
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                             {/* Row 1: Type Selection */}
-                            <div style={{ display: 'flex', gap: '6px' }}>
+                            <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
                                 <button
                                     onClick={() => handleTypeClick('butt')}
                                     style={{
-                                        flex: 1, padding: '7px', fontSize: '0.75rem', fontWeight: 600,
+                                        flex: '1 1 calc(50% - 4px)', padding: '6px', fontSize: '0.72rem', fontWeight: 600,
                                         background: activeType === 'butt' ? 'rgba(100, 180, 255, 0.2)' : 'rgba(100, 180, 255, 0.05)',
                                         border: `1px solid rgba(100, 180, 255, ${activeType === 'butt' ? '0.6' : '0.2'})`,
                                         borderRadius: '6px', color: activeType === 'butt' ? '#64b4ff' : 'var(--text-muted)',
-                                        cursor: 'pointer', transition: 'all 0.15s',
+                                        cursor: 'pointer', transition: 'all 0.15s', whiteSpace: 'nowrap',
                                     }}
                                 >Butt</button>
                                 <button
+                                    onClick={() => handleTypeClick('single-rabbet')}
+                                    style={{
+                                        flex: '1 1 calc(50% - 4px)', padding: '6px', fontSize: '0.72rem', fontWeight: 600,
+                                        background: activeType === 'single-rabbet' ? 'rgba(100, 180, 255, 0.2)' : 'rgba(100, 180, 255, 0.05)',
+                                        border: `1px solid rgba(100, 180, 255, ${activeType === 'single-rabbet' ? '0.6' : '0.2'})`,
+                                        borderRadius: '6px', color: activeType === 'single-rabbet' ? '#64b4ff' : 'var(--text-muted)',
+                                        cursor: 'pointer', transition: 'all 0.15s', whiteSpace: 'nowrap',
+                                    }}
+                                >Single Rabbet</button>
+                                <button
                                     onClick={() => handleTypeClick('rabbet')}
                                     style={{
-                                        flex: 1, padding: '7px', fontSize: '0.75rem', fontWeight: 600,
+                                        flex: '1 1 calc(50% - 4px)', padding: '6px', fontSize: '0.72rem', fontWeight: 600,
                                         background: activeType === 'rabbet' ? 'rgba(100, 180, 255, 0.2)' : 'rgba(100, 180, 255, 0.05)',
                                         border: `1px solid rgba(100, 180, 255, ${activeType === 'rabbet' ? '0.6' : '0.2'})`,
                                         borderRadius: '6px', color: activeType === 'rabbet' ? '#64b4ff' : 'var(--text-muted)',
-                                        cursor: 'pointer', transition: 'all 0.15s',
+                                        cursor: 'pointer', transition: 'all 0.15s', whiteSpace: 'nowrap',
                                     }}
-                                >Rabbet</button>
-                            </div>
-
-                            {/* Row 2: Orientation */}
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(0,0,0,0.1)', padding: '6px 10px', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
-                                <div style={{ fontSize: '0.75rem', color: 'var(--text-main)', fontWeight: 500 }}>
-                                    {bulkSideOverTop ? 'Sides over T/B' : 'T/B over Sides'}
-                                </div>
+                                >Dual Rabbet</button>
                                 <button
-                                    onClick={handleFlip}
+                                    onClick={() => handleTypeClick('miter')}
                                     style={{
-                                        padding: '4px 10px', fontSize: '0.72rem', fontWeight: 600,
-                                        background: 'rgba(100, 180, 255, 0.12)', border: '1px solid rgba(100, 180, 255, 0.4)',
-                                        borderRadius: '4px', color: '#64b4ff', cursor: 'pointer', transition: 'all 0.15s',
+                                        flex: '1 1 calc(50% - 4px)', padding: '6px', fontSize: '0.72rem', fontWeight: 600,
+                                        background: activeType === 'miter' ? 'rgba(100, 180, 255, 0.2)' : 'rgba(100, 180, 255, 0.05)',
+                                        border: `1px solid rgba(100, 180, 255, ${activeType === 'miter' ? '0.6' : '0.2'})`,
+                                        borderRadius: '6px', color: activeType === 'miter' ? '#64b4ff' : 'var(--text-muted)',
+                                        cursor: 'pointer', transition: 'all 0.15s', whiteSpace: 'nowrap',
                                     }}
-                                >⇄ Flip</button>
+                                >Miter / Bevel</button>
                             </div>
 
-                            {/* Row 3: Remove */}
-                            <button
-                                onClick={() => removeBulkEdgeJoints(boardIds)}
-                                style={{
-                                    width: '100%', padding: '7px', fontSize: '0.75rem', fontWeight: 600,
-                                    background: 'rgba(255,59,48,0.08)', border: '1px solid rgba(255,59,48,0.3)',
-                                    borderRadius: '6px', color: '#ff3b30', cursor: 'pointer', transition: 'all 0.15s',
-                                    opacity: actualJointCount > 0 ? 1 : 0.5,
-                                    pointerEvents: actualJointCount > 0 ? 'auto' : 'none',
-                                }}
-                            >✕ Remove</button>
+                            {isBoxSelection ? (
+                                <>
+                                    <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64b4ff', marginTop: '4px' }}>Panel Inset Options</div>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                        <button
+                                            onClick={() => handleBoxPanelClick('sit-on')}
+                                            style={{
+                                                width: '100%', padding: '7px', fontSize: '0.75rem', fontWeight: 600,
+                                                background: 'rgba(100, 180, 255, 0.12)', border: '1px solid rgba(100, 180, 255, 0.4)',
+                                                borderRadius: '6px', color: '#64b4ff', cursor: 'pointer', transition: 'all 0.15s',
+                                            }}
+                                        >Sit On (Butt)</button>
+                                        <button
+                                            onClick={() => handleBoxPanelClick('rabbeted-inset')}
+                                            style={{
+                                                width: '100%', padding: '7px', fontSize: '0.75rem', fontWeight: 600,
+                                                background: 'rgba(100, 180, 255, 0.12)', border: '1px solid rgba(100, 180, 255, 0.4)',
+                                                borderRadius: '6px', color: '#64b4ff', cursor: 'pointer', transition: 'all 0.15s',
+                                            }}
+                                        >Rabbeted Inset</button>
+                                        <button
+                                            onClick={() => handleBoxPanelClick('full-inset')}
+                                            style={{
+                                                width: '100%', padding: '7px', fontSize: '0.75rem', fontWeight: 600,
+                                                background: 'rgba(100, 180, 255, 0.12)', border: '1px solid rgba(100, 180, 255, 0.4)',
+                                                borderRadius: '6px', color: '#64b4ff', cursor: 'pointer', transition: 'all 0.15s',
+                                            }}
+                                        >Full Inset</button>
+                                    </div>
+                                </>
+                            ) : (
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(0,0,0,0.1)', padding: '6px 10px', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
+                                    <div style={{ fontSize: '0.75rem', color: 'var(--text-main)', fontWeight: 500 }}>
+                                        {selectedBoards.length === 2 ? `${overBoardName} over ${underBoardName}` : (bulkSideOverTop ? 'Sides over T/B' : 'T/B over Sides')}
+                                    </div>
+                                    <button
+                                        onClick={handleFlip}
+                                        style={{
+                                            padding: '4px 10px', fontSize: '0.72rem', fontWeight: 600,
+                                            background: 'rgba(100, 180, 255, 0.12)', border: '1px solid rgba(100, 180, 255, 0.4)',
+                                            borderRadius: '4px', color: '#64b4ff', cursor: 'pointer', transition: 'all 0.15s',
+                                        }}
+                                    >⇄ Flip</button>
+                                </div>
+                            )}
                         </div>
                     </div>
                 );
@@ -576,6 +703,7 @@ const ToolsPanel = () => {
                             const currentAngle = displayOp.angle ?? 45;
                             const faceLabels = {
                                 'x+': 'Right End', 'x-': 'Left End',
+                                'y+': 'Top End', 'y-': 'Bottom End',
                                 'z+': 'Front End', 'z-': 'Back End',
                             };
                             const curFace = displayOp.face || 'x+';
@@ -585,11 +713,11 @@ const ToolsPanel = () => {
                                     {/* Cut End Toggle */}
                                     <div style={{ gridColumn: '1 / -1' }}>
                                         <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '2px' }}>Cut End</div>
-                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px' }}>
-                                            {['x+', 'x-', 'z-', 'z+'].map(f => {
+                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '4px' }}>
+                                            {['x+', 'x-', 'y+', 'y-', 'z-', 'z+'].map(f => {
                                                 const active = curFace === f;
                                                 // Default fence selection to maintain standard behavior
-                                                const defaultFence = f.startsWith('x') ? 'z-' : 'x-';
+                                                const defaultFence = f.startsWith('x') ? 'z-' : (f.startsWith('y') ? 'z-' : 'x-');
                                                 
                                                 return (
                                                     <button key={f} onClick={() => upd({ face: f, fenceEdge: defaultFence })} style={{

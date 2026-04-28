@@ -31,6 +31,7 @@ const fmt4 = (v) => parseFloat(v.toFixed(4));
 
 const InspectorPanel = () => {
     const [cloneOffset, setCloneOffset] = useState(0.75);
+    const [cloneMode, setCloneMode] = useState('local');
     const [bulkAngleZ, setBulkAngleZ] = useState(2);
     const [bulkAngleX, setBulkAngleX] = useState(2);
     const [rotationStep, setRotationStep] = useState(5);
@@ -504,15 +505,39 @@ const InspectorPanel = () => {
 
         const handleClone = () => {
             if (!selectedBoard) return;
-            // Clone along the thinnest axis direction
-            const minSize = Math.min(...selectedBoard.size);
-            const thickAxis = selectedBoard.size.indexOf(minSize);
+            
+            const newPos = [...selectedBoard.position];
+
+            if (cloneMode === 'local') {
+                const minSize = Math.min(...selectedBoard.size);
+                const thickAxis = selectedBoard.size.indexOf(minSize);
+                
+                const dx = thickAxis === 0 ? cloneOffset : 0;
+                const dy = thickAxis === 1 ? cloneOffset : 0;
+                const dz = thickAxis === 2 ? cloneOffset : 0;
+
+                const [rx, ry, rz] = selectedBoard.orientation || [0, 0, 0];
+                let wx = dx, wy = dy, wz = dz;
+                if (rx !== 0 || ry !== 0 || rz !== 0) {
+                    const a = Math.cos(rx), sb = Math.sin(rx);
+                    const c = Math.cos(ry), d = Math.sin(ry);
+                    const ce = Math.cos(rz), f = Math.sin(rz);
+                    const cce = c*ce, ccf = c*f, de = d*ce, df = d*f;
+                    wx = (cce+df*sb)*dx + (de*sb-ccf)*dy + (a*d)*dz;
+                    wy = (a*f)*dx + (a*ce)*dy + (-sb)*dz;
+                    wz = (ccf*sb-de)*dx + (df+cce*sb)*dy + (a*c)*dz;
+                }
+
+                newPos[0] += wx;
+                newPos[1] += wy;
+                newPos[2] += wz;
+            } else {
+                const axisIndex = cloneMode === 'worldX' ? 0 : cloneMode === 'worldY' ? 1 : 2;
+                newPos[axisIndex] += cloneOffset;
+            }
 
             const maxId = Math.max(...boards.map(b => parseInt(b.id) || 0), 0);
             const newId = maxId + 1;
-
-            const newPos = [...selectedBoard.position];
-            newPos[thickAxis] += cloneOffset;
 
             const newBoard = {
                 ...selectedBoard,
@@ -521,20 +546,19 @@ const InspectorPanel = () => {
                 constraints: []
             };
 
-            const match = selectedBoard.name.match(/^(.*?)(\sCopy\s\d+|\sCopy)?$/);
-            const baseName = match ? match[1] : selectedBoard.name;
-            let maxCopyIdx = 0;
+            const match = selectedBoard.name.match(/^(.*?)(?:\s\d+)?$/);
+            const baseName = match ? match[1].trim() : selectedBoard.name.trim();
+            let maxIdx = 0;
             boards.forEach(b => {
-                const m = b.name.match(new RegExp(`^${baseName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} Copy (\\d+)$`));
-                if (m) maxCopyIdx = Math.max(maxCopyIdx, parseInt(m[1]));
-                else if (b.name === `${baseName} Copy`) maxCopyIdx = Math.max(maxCopyIdx, 1);
+                if (b.name === baseName) {
+                    maxIdx = Math.max(maxIdx, 1);
+                } else {
+                    const m = b.name.match(new RegExp(`^${baseName.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')}\\s(\\d+)$`));
+                    if (m) maxIdx = Math.max(maxIdx, parseInt(m[1]));
+                }
             });
 
-            if (maxCopyIdx > 0) {
-                newBoard.name = `${baseName} Copy ${maxCopyIdx + 1}`;
-            } else {
-                newBoard.name = `${baseName} Copy`;
-            }
+            newBoard.name = `${baseName} ${maxIdx > 0 ? maxIdx + 1 : 2}`;
 
             pushHistory();
             setBoards([...boards, newBoard]);
@@ -544,6 +568,18 @@ const InspectorPanel = () => {
         return (
             <>
                 {ConstraintBanner}
+                <div className="inspector-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
+                    <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Board:</span>
+                    <input
+                        type="text"
+                        value={selectedBoard.name || ''}
+                        onChange={(e) => {
+                            const newName = e.target.value;
+                            setBoards(boards.map(b => b.id === selectedBoard.id ? { ...b, name: newName } : b));
+                        }}
+                        style={{ flex: 1, width: '100%', background: 'rgba(128,128,128,0.15)', padding: '6px 12px', borderRadius: '6px', border: '1px solid var(--border-color)', color: 'var(--accent-color)', fontSize: 'inherit', fontWeight: 'inherit', outline: 'none' }}
+                    />
+                </div>
                 <div className="inspector-card">
                     <h4>Size (in)</h4>
                     <div className="vec3-inputs">
@@ -695,19 +731,47 @@ const InspectorPanel = () => {
                                         ))}
                                     </optgroup>
                                 </select>
-                                {hasPivot && (
+                                <div style={{ display: 'flex', gap: '4px', marginTop: '6px' }}>
+                                    <div style={{ flex: 1, backgroundColor: 'rgba(255, 60, 60, 0.15)', display: 'flex', alignItems: 'center', padding: '0 4px', borderRadius: '4px', fontSize: '0.75rem', border: '1px solid rgba(255, 60, 60, 0.3)' }}>
+                                        X<input type="number" step="0.125" value={fmt4(pivot[0])} onChange={e => { const v = parseFloat(e.target.value); if (!isNaN(v)) useStore.getState().setCustomPivot(selectedBoard.id, [v, pivot[1], pivot[2]]); }} style={{ width: '100%', background: 'transparent', border: 'none', color: 'inherit', textAlign: 'right', outline: 'none' }} />
+                                    </div>
+                                    <div style={{ flex: 1, backgroundColor: 'rgba(60, 200, 90, 0.15)', display: 'flex', alignItems: 'center', padding: '0 4px', borderRadius: '4px', fontSize: '0.75rem', border: '1px solid rgba(60, 200, 90, 0.3)' }}>
+                                        Y<input type="number" step="0.125" value={fmt4(pivot[1])} onChange={e => { const v = parseFloat(e.target.value); if (!isNaN(v)) useStore.getState().setCustomPivot(selectedBoard.id, [pivot[0], v, pivot[2]]); }} style={{ width: '100%', background: 'transparent', border: 'none', color: 'inherit', textAlign: 'right', outline: 'none' }} />
+                                    </div>
+                                    <div style={{ flex: 1, backgroundColor: 'rgba(60, 150, 255, 0.15)', display: 'flex', alignItems: 'center', padding: '0 4px', borderRadius: '4px', fontSize: '0.75rem', border: '1px solid rgba(60, 150, 255, 0.3)' }}>
+                                        Z<input type="number" step="0.125" value={fmt4(pivot[2])} onChange={e => { const v = parseFloat(e.target.value); if (!isNaN(v)) useStore.getState().setCustomPivot(selectedBoard.id, [pivot[0], pivot[1], v]); }} style={{ width: '100%', background: 'transparent', border: 'none', color: 'inherit', textAlign: 'right', outline: 'none' }} />
+                                    </div>
+                                </div>
+                                <div style={{ display: 'flex', gap: '6px', marginTop: '6px' }}>
                                     <button
-                                        className="nav-btn"
-                                        style={{ marginTop: '6px', width: '100%', padding: '4px', fontSize: '0.72rem', border: '1px solid var(--border-color)' }}
-                                        onClick={handleReset}
+                                        className="primary-btn"
+                                        style={{ flex: 2, padding: '4px', fontSize: '0.72rem' }}
+                                        onClick={() => {
+                                            const pm = useStore.getState().pivotMode;
+                                            if (pm?.active) {
+                                                useStore.getState().setPivotMode(null);
+                                            } else {
+                                                useStore.getState().setPivotMode({ active: true, boardId: selectedBoard.id.toString() });
+                                                useStore.getState().setToast('Click anywhere on the highlighted board to set pivot point. Snap to grid enabled.');
+                                            }
+                                        }}
                                     >
-                                        Reset to Center
+                                        {useStore.getState().pivotMode?.active ? 'Cancel Pick Point' : '🎯 Pick Point on Board'}
                                     </button>
-                                )}
+                                    {hasPivot && (
+                                        <button
+                                            className="nav-btn"
+                                            style={{ flex: 1, padding: '4px', fontSize: '0.72rem', border: '1px solid var(--border-color)' }}
+                                            onClick={handleReset}
+                                        >
+                                            Reset
+                                        </button>
+                                    )}
+                                </div>
                                 <p className="hint" style={{ marginTop: '6px' }}>
                                     {hasPivot
                                         ? '⊕ Magenta sphere shows the current pivot in the 3D view.'
-                                        : 'Board rotates around its center. Change to rotate around an edge or corner.'}
+                                        : 'Board rotates around its center. Set a pivot point to change its hinge.'}
                                 </p>
                             </>
                         );
@@ -819,203 +883,7 @@ const InspectorPanel = () => {
                         </div>
                     );
                 })()}
-                {/* ── Joint ── */}
-                {(() => {
-                    // ── Color theme per joint state ───────────────────────────
-                    const JOINT_SEQ = ['Miter', 'Butt 1', 'Butt 2'];
-                    const JOINT_DESC = {
-                        'Miter': 'Panels overlap — click to make this piece run full',
-                        'Butt 1': 'This piece runs full, neighbours trimmed — click to swap',
-                        'Butt 2': 'This piece is trimmed, neighbours run full — click to restore',
-                    };
-                    const JOINT_COLOR = { 'Miter': 'rgba(150,95,188,0.18)', 'Butt 1': 'rgba(188,138,95,0.18)', 'Butt 2': 'rgba(95,150,188,0.18)' };
-                    const JOINT_BORDER = { 'Miter': 'rgba(150,95,188,0.7)', 'Butt 1': 'rgba(188,138,95,0.7)', 'Butt 2': 'rgba(95,150,188,0.7)' };
-                    const JOINT_TEXT = { 'Miter': '#9a60c0', 'Butt 1': '#bc8a5f', 'Butt 2': '#5fa0c0' };
 
-                    // ── AABB helpers ──────────────────────────────────────────
-                    const bbOf = (b) => [0, 1, 2].map(i => ({
-                        min: b.position[i] - b.size[i] / 2,
-                        max: b.position[i] + b.size[i] / 2,
-                    }));
-                    const thinAxis = (b) => b.size.indexOf(Math.min(...b.size));
-                    const overlaps = (a, b) => {
-                        const ba = bbOf(a), bb = bbOf(b);
-                        return [0, 1, 2].every(i =>
-                            Math.min(ba[i].max, bb[i].max) - Math.max(ba[i].min, bb[i].min) > 0.01
-                        );
-                    };
-
-                    // ── Detect current state from geometry ────────────────────
-                    const siblings = boards.filter(b =>
-                        b.id !== selectedBoard.id && b.parentId === selectedBoard.parentId
-                    );
-                    const overlapNeighbors = siblings.filter(s => overlaps(selectedBoard, s));
-                    const cur = overlapNeighbors.length > 0
-                        ? 'Miter'
-                        : (JOINT_SEQ.includes(selectedBoard.joint) ? selectedBoard.joint : 'Butt 1');
-                    const next = JOINT_SEQ[(JOINT_SEQ.indexOf(cur) + 1) % JOINT_SEQ.length];
-
-                    // ── Geometric joint application ───────────────────────────
-                    const handleJoint = () => {
-                        pushHistory();
-                        const axisA = thinAxis(selectedBoard);
-                        let bds = [...boards];
-
-                        if (cur === 'Miter') {
-                            // → Butt 1: A stays full, trim all overlapping neighbours
-                            //   along A's own thin axis so they stop at A's inner face.
-                            const ba = bbOf(selectedBoard);
-                            for (const nb of overlapNeighbors) {
-                                const bb = bbOf(nb);
-                                const t = { ...nb, size: [...nb.size], position: [...nb.position] };
-                                if (bb[axisA].max > ba[axisA].min && bb[axisA].max <= ba[axisA].max + 0.01) {
-                                    // Neighbour's max protrudes into A → trim its max to A's inner face
-                                    const nMax = ba[axisA].min;
-                                    t.size[axisA] = Math.max(0.1, nMax - bb[axisA].min);
-                                    t.position[axisA] = (bb[axisA].min + nMax) / 2;
-                                } else {
-                                    // Neighbour's min protrudes into A → trim its min to A's inner face
-                                    const nMin = ba[axisA].max;
-                                    t.size[axisA] = Math.max(0.1, bb[axisA].max - nMin);
-                                    t.position[axisA] = (nMin + bb[axisA].max) / 2;
-                                }
-                                t.joint = 'Butt 1';
-                                bds = bds.map(b => b.id === nb.id ? t : b);
-                            }
-                            bds = bds.map(b => b.id === selectedBoard.id ? { ...b, joint: 'Butt 1' } : b);
-
-                        } else if (cur === 'Butt 1') {
-                            // → Butt 2
-                            // Step 1: restore neighbours — they were trimmed along axisA,
-                            //   with their trimmed end touching A's inner face. Extend back.
-                            const ba = bbOf(selectedBoard);
-                            const thiccA = selectedBoard.size[axisA];
-                            for (const nb of siblings) {
-                                const bb = bbOf(nb);
-                                const t = { ...nb, size: [...nb.size], position: [...nb.position] };
-                                if (Math.abs(bb[axisA].max - ba[axisA].min) < 0.06) {
-                                    t.size[axisA] += thiccA;
-                                    t.position[axisA] += thiccA / 2;
-                                } else if (Math.abs(bb[axisA].min - ba[axisA].max) < 0.06) {
-                                    t.size[axisA] += thiccA;
-                                    t.position[axisA] -= thiccA / 2;
-                                } else { continue; }
-                                t.joint = 'Butt 2';
-                                bds = bds.map(b => b.id === nb.id ? t : b);
-                            }
-                            // Step 2: trim A along every restored neighbour's own thin axis.
-                            //   Track A's running bbox as each trim is applied sequentially.
-                            let ua = { ...selectedBoard, size: [...selectedBoard.size], position: [...selectedBoard.position] };
-                            for (const nb of siblings) {
-                                const nbLatest = bds.find(b => b.id === nb.id) ?? nb;
-                                const axisB = thinAxis(nbLatest);
-                                const baCur = bbOf(ua);
-                                const bb = bbOf(nbLatest);
-                                if (baCur[axisB].max > bb[axisB].min + 0.01 && baCur[axisB].max <= bb[axisB].max + 0.01) {
-                                    const nMax = bb[axisB].min;
-                                    ua = { ...ua, size: [...ua.size], position: [...ua.position] };
-                                    ua.size[axisB] = Math.max(0.1, nMax - baCur[axisB].min);
-                                    ua.position[axisB] = (baCur[axisB].min + nMax) / 2;
-                                } else if (baCur[axisB].min < bb[axisB].max - 0.01 && baCur[axisB].min >= bb[axisB].min - 0.01) {
-                                    const nMin = bb[axisB].max;
-                                    ua = { ...ua, size: [...ua.size], position: [...ua.position] };
-                                    ua.size[axisB] = Math.max(0.1, baCur[axisB].max - nMin);
-                                    ua.position[axisB] = (nMin + baCur[axisB].max) / 2;
-                                }
-                            }
-                            ua.joint = 'Butt 2';
-                            bds = bds.map(b => b.id === selectedBoard.id ? ua : b);
-
-                        } else if (cur === 'Butt 2') {
-                            // → Miter: restore A by extending it wherever it touches a
-                            //   neighbour's inner face along that neighbour's thin axis.
-                            let ua = { ...selectedBoard, size: [...selectedBoard.size], position: [...selectedBoard.position] };
-                            for (const nb of siblings) {
-                                const axisB = thinAxis(nb);
-                                const thiccB = nb.size[axisB];
-                                const bb = bbOf(nb);
-                                const baCur = bbOf(ua);
-                                if (Math.abs(baCur[axisB].max - bb[axisB].min) < 0.06) {
-                                    ua = { ...ua, size: [...ua.size], position: [...ua.position] };
-                                    ua.size[axisB] += thiccB;
-                                    ua.position[axisB] += thiccB / 2;
-                                } else if (Math.abs(baCur[axisB].min - bb[axisB].max) < 0.06) {
-                                    ua = { ...ua, size: [...ua.size], position: [...ua.position] };
-                                    ua.size[axisB] += thiccB;
-                                    ua.position[axisB] -= thiccB / 2;
-                                }
-                            }
-                            ua.joint = 'Miter';
-                            bds = bds.map(b => b.id === selectedBoard.id ? ua : b);
-                        }
-
-                        setBoards(bds);
-                    };
-
-                    return (
-                        <div className="inspector-card">
-                            <h4>Joint</h4>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
-                                <button
-                                    style={{
-                                        padding: '5px 14px', fontSize: '0.75rem', fontWeight: 700, minWidth: '82px',
-                                        borderRadius: '6px', border: `1px solid ${JOINT_BORDER[cur]}`,
-                                        background: JOINT_COLOR[cur], color: JOINT_TEXT[cur],
-                                        cursor: 'pointer', letterSpacing: '0.3px', transition: 'all 0.15s',
-                                    }}
-                                    onMouseEnter={e => e.currentTarget.style.filter = 'brightness(1.2)'}
-                                    onMouseLeave={e => e.currentTarget.style.filter = ''}
-                                    onClick={handleJoint}
-                                >
-                                    {cur}
-                                </button>
-                                <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', lineHeight: 1.3 }}>
-                                    {JOINT_DESC[cur]}
-                                </span>
-                            </div>
-                        </div>
-                    );
-                })()}
-                {/* ── Dual Edge Joint Cards ── */}
-                {selectedBoard.edgeJoints && selectedBoard.edgeJoints.map((rj) => {
-                    const partner = boards.find(b => b.id.toString() === rj.partnerId);
-                    const partnerName = partner?.name ?? rj.partnerId;
-                    const overBoard = boards.find(b => b.id.toString() === rj.overBoardId);
-                    const isOver = overBoard?.id === selectedBoard.id;
-                    const jointTypeLabel = rj.type === 'butt' ? 'Butt' : 'Dual Rabbet';
-
-                    return (
-                        <div key={rj.partnerId} className="inspector-card">
-                            <h4>🔗 {jointTypeLabel} Joint</h4>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
-                                <span style={{ fontSize: '0.75rem', color: 'var(--text-main)', flex: 1 }}>
-                                    {isOver ? (
-                                        <><strong>{selectedBoard.name}</strong> over <strong>{partnerName}</strong></>
-                                    ) : (
-                                        <><strong>{partnerName}</strong> over <strong>{selectedBoard.name}</strong></>
-                                    )}
-                                </span>
-                                <button
-                                    onClick={() => toggleEdgeJoint(selectedBoard.id, rj.partnerId)}
-                                    title="Flip dual Edge Joint"
-                                    style={{
-                                        padding: '3px 10px', fontSize: '0.72rem', fontWeight: 600,
-                                        background: 'rgba(100,180,255,0.12)', border: '1px solid rgba(100,180,255,0.4)',
-                                        borderRadius: '5px', color: '#64b4ff', cursor: 'pointer',
-                                    }}
-                                >⇄</button>
-                                <button
-                                    onClick={() => removeEdgeJoint(selectedBoard.id, rj.partnerId)}
-                                    title="Remove dual Edge Joint"
-                                    style={{
-                                        padding: '3px 8px', fontSize: '0.72rem', fontWeight: 600,
-                                        background: 'none', border: 'none', color: '#ff3b30', cursor: 'pointer',
-                                    }}
-                                >✕</button>
-                            </div>
-                        </div>
-                    );
-                })}
                 <div className="inspector-card">
                     <h4>Active Constraints</h4>
                     {boardConstraints.length === 0 ? (
@@ -1160,10 +1028,42 @@ const InspectorPanel = () => {
                 </div>
                 <div className="inspector-card">
                     <h4>Clone Component</h4>
-                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '8px' }}>
+                    <div style={{ display: 'flex', gap: '4px', marginTop: '8px', marginBottom: '8px' }}>
+                        <button 
+                            className="nav-btn" 
+                            style={{ flex: 1, padding: '4px 0', fontSize: '0.75rem', backgroundColor: cloneMode === 'local' ? 'rgba(188, 138, 95, 0.3)' : 'transparent', color: cloneMode === 'local' ? 'var(--accent-color)' : 'var(--text-main)', border: `1px solid ${cloneMode === 'local' ? 'var(--accent-color)' : 'var(--border-color)'}` }} 
+                            onClick={() => setCloneMode('local')}
+                        >
+                            Local (Auto)
+                        </button>
+                        <button 
+                            className="nav-btn" 
+                            style={{ flex: 1, padding: '4px 0', fontSize: '0.75rem', backgroundColor: cloneMode === 'worldX' ? 'rgba(255, 59, 48, 0.3)' : 'transparent', color: '#ff3b30', border: `1px solid ${cloneMode === 'worldX' ? '#ff3b30' : 'var(--border-color)'}` }} 
+                            onClick={() => setCloneMode('worldX')}
+                        >
+                            World X
+                        </button>
+                        <button 
+                            className="nav-btn" 
+                            style={{ flex: 1, padding: '4px 0', fontSize: '0.75rem', backgroundColor: cloneMode === 'worldY' ? 'rgba(52, 199, 89, 0.3)' : 'transparent', color: '#34c759', border: `1px solid ${cloneMode === 'worldY' ? '#34c759' : 'var(--border-color)'}` }} 
+                            onClick={() => setCloneMode('worldY')}
+                        >
+                            World Y
+                        </button>
+                        <button 
+                            className="nav-btn" 
+                            style={{ flex: 1, padding: '4px 0', fontSize: '0.75rem', backgroundColor: cloneMode === 'worldZ' ? 'rgba(0, 122, 255, 0.3)' : 'transparent', color: '#007aff', border: `1px solid ${cloneMode === 'worldZ' ? '#007aff' : 'var(--border-color)'}` }} 
+                            onClick={() => setCloneMode('worldZ')}
+                        >
+                            World Z
+                        </button>
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                         <span style={{ fontSize: '0.82rem' }}>Offset (in):</span>
                         <input type="number" step="0.125" value={cloneOffset} onChange={e => setCloneOffset(Number(e.target.value))} style={{ width: '60px', padding: '4px', background: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '4px' }} />
-                        <button className="primary-btn" style={{ flex: 1, padding: '4px 0', fontSize: '0.9rem' }} onClick={handleClone}>Clone Along Thin Axis</button>
+                        <button className="primary-btn" style={{ flex: 1, padding: '4px 0', fontSize: '0.9rem' }} onClick={handleClone}>
+                            {cloneMode === 'local' ? 'Clone (Thin Axis)' : `Clone along ${cloneMode.replace('world', '')}`}
+                        </button>
                     </div>
                 </div>
                 <div style={{ marginTop: '16px' }}>
