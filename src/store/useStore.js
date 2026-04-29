@@ -79,6 +79,10 @@ const useStore = create((set, get) => ({
     computingMessage: null,
     setComputingMessage: (msg) => set({ computingMessage: msg }),
 
+    // ── Overlap Warnings ─────────────────────────────────────────────────────
+    overlappingBoardIds: [],
+    setOverlappingBoardIds: (ids) => set({ overlappingBoardIds: ids }),
+
     isOrtho: false,
     setIsOrtho: (v) => set({ isOrtho: typeof v === 'function' ? v(get().isOrtho) : v }),
 

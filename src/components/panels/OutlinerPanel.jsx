@@ -7,7 +7,8 @@ const OutlinerPanel = () => {
         groups, boards, selectedItemIds,
         toggleSelection, toggleGroupVisibility, toggleBoardVisibility,
         setGroups, handleDragStart: onDragStart, handleDrop: onDrop,
-        manualAddAssembly: onAddAssembly
+        manualAddAssembly: onAddAssembly,
+        overlappingBoardIds,
     } = useStore();
 
     const onDragOver = (e) => { e.preventDefault(); e.stopPropagation(); };
@@ -61,6 +62,9 @@ const OutlinerPanel = () => {
                         )}
                         {isGroup && !hasChildren && <span style={{ marginRight: '4px', display: 'inline-block', width: '12px' }}></span>}
                         {isGroup ? nodeId : g.name}
+                        {!isGroup && overlappingBoardIds && overlappingBoardIds.includes(nodeId) && (
+                            <span title="Board is physically overlapping another board" style={{ marginLeft: '6px', color: '#ff3b30' }}>⚠️</span>
+                        )}
                     </span>
                     <button
                         onClick={(e) => { e.stopPropagation(); isGroup ? toggleGroupVisibility(nodeId) : toggleBoardVisibility(parseInt(nodeId)); }}
