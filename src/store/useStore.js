@@ -227,6 +227,10 @@ const useStore = create((set, get) => ({
     setShakerDoorDialog: (v) => set({ shakerDoorDialog: typeof v === 'function' ? v(get().shakerDoorDialog) : v }),
     drawerDialog: null,
     setDrawerDialog: (v) => set({ drawerDialog: typeof v === 'function' ? v(get().drawerDialog) : v }),
+    faceFrameDialog: null,
+    setFaceFrameDialog: (v) => set({ faceFrameDialog: typeof v === 'function' ? v(get().faceFrameDialog) : v }),
+    shelvingDialog: null,
+    setShelvingDialog: (v) => set({ shelvingDialog: typeof v === 'function' ? v(get().shelvingDialog) : v }),
 
     recentFiles: loadRecentFiles(),
     setRecentFiles: (v) => set({ recentFiles: typeof v === 'function' ? v(get().recentFiles) : v }),

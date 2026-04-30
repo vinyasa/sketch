@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import useStore from '../../store/useStore';
+import { computeWorldAABB, collectChildBoards } from '../../utils/sceneGraph';
 
 const ASSEMBLIES = [
     {
@@ -24,11 +25,25 @@ const ASSEMBLIES = [
         color: '#a07850',
     },
     {
+        id: 'faceFrame',
+        label: 'Face Frame',
+        icon: '🖼️',
+        description: 'Traditional cabinet front with stiles and rails',
+        color: '#b5855c',
+    },
+    {
         id: 'drawerStack',
         label: 'Drawers',
         icon: '🗃️',
         description: 'Stack of drawer boxes with optional faces',
         color: '#8d6d53',
+    },
+    {
+        id: 'shelving',
+        label: 'Shelving',
+        icon: '📚',
+        description: 'Evenly spaced horizontal shelves for any opening',
+        color: '#6d8d53',
     },
 ];
 
@@ -81,25 +96,70 @@ const AssemblyCard = ({ item, onSelect }) => {
 };
 
 const AssembliesPanel = () => {
-    const { setCabinetDialog, setBoxDialog, setShakerDoorDialog, setDrawerDialog } = useStore();
+    const { setCabinetDialog, setBoxDialog, setShakerDoorDialog, setDrawerDialog, setFaceFrameDialog, setShelvingDialog } = useStore();
 
     const handleSelect = (item) => {
+        const { boards, groups, selectedItemIds } = useStore.getState();
+        let bounds = null;
+
+        if (selectedItemIds && selectedItemIds.length > 0) {
+            let selectedBoards = [];
+            selectedItemIds.forEach(id => {
+                if (groups[id]) {
+                    selectedBoards.push(...collectChildBoards(id, boards, groups));
+                } else {
+                    const b = boards.find(b => b.id.toString() === id.toString());
+                    if (b) selectedBoards.push(b);
+                }
+            });
+            if (selectedBoards.length > 0) {
+                bounds = computeWorldAABB(selectedBoards);
+            }
+        }
+
+        let defaultCfg = {};
+        if (bounds) {
+            defaultCfg.width = Math.abs(bounds.maxX - bounds.minX);
+            defaultCfg.height = Math.abs(bounds.maxY - bounds.minY);
+            defaultCfg.depth = Math.abs(bounds.maxZ - bounds.minZ);
+            defaultCfg.offsetX = bounds.minX;
+            defaultCfg.offsetY = bounds.minY;
+            // Provide base offsetZ, overridden below where appropriate
+            defaultCfg.offsetZ = bounds.minZ;
+        }
+
         if (item.id === 'cabinet') {
             setCabinetDialog({
                 width: 24, height: 30, depth: 14,
                 thicknessTB: 0.75, thicknessSide: 0.75,
                 thicknessFront: 0.75, thicknessBack: 0.25,
+                ...defaultCfg,
             });
         } else if (item.id === 'box') {
             setBoxDialog({
                 width: 18, height: 12, depth: 12,
                 thicknessTB: 0.5, thicknessSide: 0.5,
                 thicknessFront: 0.5, thicknessBack: 0.5,
+                ...defaultCfg,
             });
         } else if (item.id === 'shakerDoor') {
-            setShakerDoorDialog({});
+            setShakerDoorDialog({
+                ...defaultCfg,
+                offsetZ: bounds ? bounds.maxZ : 0, // Doors sit on the front
+            });
         } else if (item.id === 'drawerStack') {
-            setDrawerDialog({});
+            setDrawerDialog({
+                ...defaultCfg,
+            });
+        } else if (item.id === 'faceFrame') {
+            setFaceFrameDialog({
+                ...defaultCfg,
+                offsetZ: bounds ? bounds.maxZ : 0, // Face frames sit on the front
+            });
+        } else if (item.id === 'shelving') {
+            setShelvingDialog({
+                ...defaultCfg,
+            });
         }
     };
 

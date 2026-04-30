@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import * as THREE from 'three';
 import useStore from '../../store/useStore';
 
 const ToolsPanel = () => {
@@ -42,10 +43,26 @@ const ToolsPanel = () => {
         })
     );
     
-    const overlaps = selectedBoards.length === 2 && [0, 1, 2].every(i => {
-        const b1b = bbOf(selectedBoards[0]), b2b = bbOf(selectedBoards[1]);
-        return Math.min(b1b[i].max, b2b[i].max) - Math.max(b1b[i].min, b2b[i].min) > 0.05;
-    });
+    const overlaps = selectedBoards.length === 2 && (() => {
+        try {
+            const getBox = (b) => {
+                const euler = new THREE.Euler(...(b.orientation || [0, 0, 0]), 'YXZ');
+                const matrix = new THREE.Matrix4().compose(
+                    new THREE.Vector3(...b.position),
+                    new THREE.Quaternion().setFromEuler(euler),
+                    new THREE.Vector3(1, 1, 1)
+                );
+                return new THREE.Box3().setFromCenterAndSize(new THREE.Vector3(0,0,0), new THREE.Vector3(...b.size)).applyMatrix4(matrix);
+            };
+            const box1 = getBox(selectedBoards[0]);
+            const box2 = getBox(selectedBoards[1]);
+            // Add a negative tolerance so flush boards DO NOT show the subtraction tool
+            box1.expandByScalar(-0.01);
+            return box1.intersectsBox(box2);
+        } catch(e) {
+            return false;
+        }
+    })();
     
     const isMiterJoint = selectedBoards.length === 2 && selectedBoards[0].edgeJoints?.some(j => j.partnerId === selectedBoards[1].id.toString() && j.type === 'miter');
 

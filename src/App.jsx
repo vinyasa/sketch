@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import './index.css';
 import './App.css';
 import Viewport3D from './components/Viewport3D';
@@ -22,6 +22,8 @@ import CabinetBuilderDialog from './components/dialogs/CabinetBuilderDialog';
 import BoxBuilderDialog from './components/dialogs/BoxBuilderDialog';
 import ShakerDoorBuilderDialog from './components/dialogs/ShakerDoorBuilderDialog';
 import DrawerBuilderDialog from './components/dialogs/DrawerBuilderDialog';
+import FaceFrameBuilderDialog from './components/dialogs/FaceFrameBuilderDialog';
+import ShelvingBuilderDialog from './components/dialogs/ShelvingBuilderDialog';
 import AiHelpDialog from './components/dialogs/AiHelpDialog';
 import PrintDialog from './components/dialogs/PrintDialog';
 import SavePromptDialog from './components/dialogs/SavePromptDialog';
@@ -85,11 +87,19 @@ export default function App() {
         return () => clearInterval(id);
     }, [autosaveInterval]);
 
+    const prevOverlappingRef = useRef(0);
+
     // Debounced overlap detection
     useEffect(() => {
         const timer = setTimeout(() => {
             const { overlappingIds } = getOverlappingBoards(boards);
             setOverlappingBoardIds(overlappingIds);
+            
+            // Trigger a pop-up warning if we went from 0 to >0 overlapping boards
+            if (overlappingIds.length > 0 && prevOverlappingRef.current === 0) {
+                 useStore.getState().showToast('⚠️ Warning: Boards are occupying the same space!');
+            }
+            prevOverlappingRef.current = overlappingIds.length;
         }, 500);
         return () => clearTimeout(timer);
     }, [boards, setOverlappingBoardIds]);
@@ -283,6 +293,8 @@ export default function App() {
                 <BoxBuilderDialog />
                 <ShakerDoorBuilderDialog />
                 <DrawerBuilderDialog />
+                <FaceFrameBuilderDialog />
+                <ShelvingBuilderDialog />
                 <AiHelpDialog />
                 <PrintDialog />
                 <SavePromptDialog />

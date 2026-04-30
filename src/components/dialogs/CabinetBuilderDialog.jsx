@@ -17,7 +17,7 @@ const CabinetBuilderDialog = () => {
     const backStyle = dialog.backStyle ?? 'flat';
 
     // Derived panel sizes for the summary (assuming butt joint: sides full height, top/bottom between)
-    const coreDepth = D - tFront - tBack;
+    const coreDepth = backStyle === 'flat' ? D - tBack : D;
     const topBottom = { x: W - 2 * tSide, y: tTB, z: coreDepth };
     const sides = { x: tSide, y: H, z: coreDepth };
     const front = { x: W, y: H, z: tFront };

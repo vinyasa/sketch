@@ -1,0 +1,953 @@
+import * as THREE from 'three';
+import { computeWorldAABB, collectChildBoards } from '../../utils/sceneGraph';
+import { propagateMove, checkConstraintConflict, solveFlushSnap, faceToAxis } from '../../utils/constraintSolver';
+import { WOOD_CATALOGUE, PAINT_PALETTE } from '../../utils/materialCatalogue';
+
+export const createBoardSlice = (set, get) => ({
+  setCustomPivot: (boardId, localOffset) => {
+    const {
+      boards,
+      setBoards,
+      pushHistory
+    } = get();
+    const b = boards.find(b => b.id.toString() === boardId.toString());
+    if (!b) return;
+    pushHistory();
+    const oldPiv = b.pivot || [0, 0, 0];
+    const dx = localOffset[0] - oldPiv[0];
+    const dy = localOffset[1] - oldPiv[1];
+    const dz = localOffset[2] - oldPiv[2];
+
+    // Apply orientation to find world-space delta
+    let wx = dx,
+      wy = dy,
+      wz = dz;
+    const [rx, ry, rz] = b.orientation || [0, 0, 0];
+    if (rx !== 0 || ry !== 0 || rz !== 0) {
+      const ca = Math.cos(rx),
+        sb = Math.sin(rx);
+      const cc = Math.cos(ry),
+        sd = Math.sin(ry);
+      const ce = Math.cos(rz),
+        sf = Math.sin(rz);
+      wx = (cc * ce + sd * sf * sb) * dx + (sd * sb * ce - cc * sf) * dy + ca * sd * dz;
+      wy = ca * sf * dx + ca * ce * dy + -sb * dz;
+      wz = (cc * sf * sb - sd * ce) * dx + (sd * sf + cc * ce * sb) * dy + ca * cc * dz;
+    }
+    setBoards(prev => prev.map(board => {
+      if (board.id.toString() === boardId.toString()) {
+        return {
+          ...board,
+          pivot: [...localOffset],
+          position: [board.position[0] + wx, board.position[1] + wy, board.position[2] + wz]
+        };
+      }
+      return board;
+    }));
+  },
+  // ── end library actions ──────────────────────────────────────────────────
+
+  /**
+   * Apply a material descriptor to all selected boards (or set defaultMaterial
+   * if nothing is selected). Tracks recent custom paint colours.
+   *
+   * @param {{ type: 'wood'|'color', id?: string, hex?: string }} matDesc
+   */
+  applyMaterial: matDesc => {
+    const {
+      selectedItemIds,
+      boards,
+      groups,
+      setBoards,
+      setDefaultMaterial,
+      setRecentColors,
+      recentColors,
+      pushHistory,
+      showToast
+    } = get();
+    if (selectedItemIds.length === 0) {
+      // No selection — update the global default for future new boards
+      setDefaultMaterial(matDesc);
+      const label = matDesc.type === 'color' ? matDesc.hex : matDesc.id;
+      showToast(`Default material → ${label}`);
+    } else {
+      pushHistory();
+
+      // Collect all board IDs to update (direct + inside selected groups)
+      const boardIds = new Set();
+      const collectBoards = gid => {
+        boards.filter(b => b.parentId === gid).forEach(b => boardIds.add(b.id.toString()));
+        Object.keys(groups).filter(k => groups[k].parentId === gid).forEach(collectBoards);
+      };
+      selectedItemIds.forEach(id => {
+        if (groups[id]) collectBoards(id);else boardIds.add(id);
+      });
+      setBoards(prev => prev.map(b => boardIds.has(b.id.toString()) ? {
+        ...b,
+        material: matDesc
+      } : b));
+      const label = matDesc.type === 'color' ? matDesc.hex : matDesc.id;
+      showToast(`Material → ${label} ✓`);
+    }
+
+    // Track recent custom colours (max 8, newest first)
+    if (matDesc.type === 'color') {
+      const updated = [matDesc.hex, ...recentColors.filter(c => c !== matDesc.hex)].slice(0, 8);
+      setRecentColors(updated);
+    }
+  },
+  toggleSelection: (id, isMulti, faceStr = null) => {
+    const {
+      constraintTargetMode,
+      setConstraintTargetMode,
+      pushHistory,
+      boards,
+      groups,
+      constraints,
+      setConstraints,
+      setBoards,
+      selectedItemIds,
+      setSelectedItemIds,
+      showToast
+    } = get();
+    const strId = id.toString();
+    if (constraintTargetMode && constraintTargetMode.active) {
+      // ── Glue: step 1 only — just pick the target board (no face needed) ─
+      if (constraintTargetMode.type === 'Glue') {
+        if (strId === constraintTargetMode.sourceId) return; // can't glue to self
+        const boardA = boards.find(b => b.id.toString() === constraintTargetMode.sourceId);
+        const boardB = boards.find(b => b.id.toString() === strId);
+        if (!boardA || !boardB) return;
+        const proposed = {
+          type: 'Glue',
+          boardAId: constraintTargetMode.sourceId,
+          boardBId: strId
+        };
+        const conflict = checkConstraintConflict(proposed, constraints, boards);
+        if (conflict) {
+          showToast('⚠️ ' + conflict);
+          setConstraintTargetMode(null);
+          return;
+        }
+        pushHistory();
+        const offset = [boardB.position[0] - boardA.position[0], boardB.position[1] - boardA.position[1], boardB.position[2] - boardA.position[2]];
+        const id = Date.now().toString();
+        setConstraints(prev => ({
+          ...prev,
+          [id]: {
+            type: 'Glue',
+            boardAId: boardA.id.toString(),
+            boardBId: boardB.id.toString(),
+            offset,
+            enabled: true
+          }
+        }));
+        setConstraintTargetMode(null);
+        showToast(`Glued "${boardA.name}" to "${boardB.name}"`);
+        return;
+      }
+
+      // ── Flush: 2-step face picker ─────────────────────────────────────
+      if (!faceStr) return;
+      if (constraintTargetMode.step === 1) {
+        if (strId !== constraintTargetMode.sourceId) return;
+        setConstraintTargetMode({
+          ...constraintTargetMode,
+          step: 2,
+          sourceFace: faceStr
+        });
+      } else if (constraintTargetMode.step === 2) {
+        if (strId === constraintTargetMode.sourceId) return;
+        const boardA = boards.find(b => b.id.toString() === constraintTargetMode.sourceId);
+        const boardB = boards.find(b => b.id.toString() === strId);
+        if (!boardA || !boardB) return;
+        const axis = faceToAxis(constraintTargetMode.sourceFace);
+        const proposed = {
+          type: 'Flush',
+          boardAId: boardA.id.toString(),
+          boardBId: strId,
+          faceA: constraintTargetMode.sourceFace,
+          faceB: faceStr
+        };
+        const conflict = checkConstraintConflict(proposed, constraints, boards);
+        if (conflict) {
+          showToast('⚠️ ' + conflict);
+          setConstraintTargetMode(null);
+          return;
+        }
+        pushHistory();
+        // Snap boardA to satisfy the constraint immediately
+        const snappedPos = solveFlushSnap(boardA, constraintTargetMode.sourceFace, boardB, faceStr);
+        if (snappedPos) {
+          const deltaVec = [snappedPos[0] - boardA.position[0], snappedPos[1] - boardA.position[1], snappedPos[2] - boardA.position[2]];
+          const moveMap = propagateMove([boardA.id.toString()], deltaVec, constraints);
+          setBoards(prev => prev.map(b => {
+            const d = moveMap.get(b.id.toString());
+            if (d) {
+              return {
+                ...b,
+                position: [b.position[0] + d[0], b.position[1] + d[1], b.position[2] + d[2]]
+              };
+            }
+            return b;
+          }));
+        }
+        const cId = Date.now().toString();
+        setConstraints(prev => ({
+          ...prev,
+          [cId]: {
+            type: 'Flush',
+            boardAId: boardA.id.toString(),
+            boardBId: strId,
+            faceA: constraintTargetMode.sourceFace,
+            faceB: faceStr,
+            axis,
+            enabled: true
+          }
+        }));
+        setConstraintTargetMode(null);
+        showToast(`Flush constraint added on ${['X', 'Y', 'Z'][axis]} axis.`);
+      }
+      return;
+    }
+    if (isMulti) {
+      setSelectedItemIds(prev => prev.includes(strId) ? prev.filter(x => x !== strId) : [...prev, strId]);
+    } else {
+      setSelectedItemIds([strId]);
+    }
+  },
+  updateSelectedBoards: (key, value) => {
+    const {
+      pushHistory,
+      setBoards,
+      boards,
+      selectedItemIds
+    } = get();
+    pushHistory();
+    setBoards(boards.map(b => selectedItemIds.includes(b.id.toString()) ? {
+      ...b,
+      [key]: value
+    } : b));
+  },
+  // ─── CSG Operation CRUD ──────────────────────────────────────────────────
+  addOperation: (boardId, opType) => {
+    const {
+      pushHistory,
+      setBoards
+    } = get();
+    pushHistory();
+    const defaults = {
+      hole: {
+        type: 'hole',
+        radius: 1,
+        offsetX: 0,
+        offsetY: 0,
+        axis: 'y'
+      },
+      cove: {
+        type: 'cove',
+        edge: 'top',
+        depth: 1,
+        axis: 'y'
+      },
+      arc: {
+        type: 'arc',
+        startAngle: 0,
+        endAngle: 90,
+        innerRadius: 0,
+        axis: 'y'
+      }
+    };
+    const op = {
+      id: Date.now(),
+      ...(defaults[opType] ?? {
+        type: opType
+      })
+    };
+    setBoards(prev => prev.map(b => b.id.toString() === boardId.toString() ? {
+      ...b,
+      operations: [...(b.operations || []), op]
+    } : b));
+  },
+  updateOperation: (boardId, opId, patch) => {
+    const {
+      pushHistory,
+      setBoards
+    } = get();
+    pushHistory();
+    setBoards(prev => prev.map(b => b.id.toString() === boardId.toString() ? {
+      ...b,
+      operations: (b.operations || []).map(o => o.id === opId ? {
+        ...o,
+        ...patch
+      } : o)
+    } : b));
+  },
+  removeOperation: (boardId, opId) => {
+    const {
+      pushHistory,
+      setBoards
+    } = get();
+    pushHistory();
+    setBoards(prev => prev.map(b => b.id.toString() === boardId.toString() ? {
+      ...b,
+      operations: (b.operations || []).filter(o => o.id !== opId)
+    } : b));
+  },
+  // ─── Hardware Attachment CRUD ────────────────────────────────────────────
+  addHardware: (boardId, catalogueItem, face) => {
+    const {
+      pushHistory,
+      setBoards
+    } = get();
+    pushHistory();
+    const hw = {
+      id: 'hw_' + Date.now(),
+      name: catalogueItem.label,
+      modelUrl: catalogueItem.modelUrl,
+      catalogueId: catalogueItem.id,
+      face: face || catalogueItem.defaultFace || 'front',
+      offset: [0, 0, 0],
+      rotation: [0, 0, 0],
+      scale: 1
+    };
+    setBoards(prev => prev.map(b => b.id.toString() === boardId.toString() ? {
+      ...b,
+      hardware: [...(b.hardware || []), hw]
+    } : b));
+  },
+  updateHardware: (boardId, hwId, patch) => {
+    const {
+      pushHistory,
+      setBoards
+    } = get();
+    pushHistory();
+    setBoards(prev => prev.map(b => b.id.toString() === boardId.toString() ? {
+      ...b,
+      hardware: (b.hardware || []).map(h => h.id === hwId ? {
+        ...h,
+        ...patch
+      } : h)
+    } : b));
+  },
+  removeHardware: (boardId, hwId) => {
+    const {
+      pushHistory,
+      setBoards
+    } = get();
+    pushHistory();
+    setBoards(prev => prev.map(b => b.id.toString() === boardId.toString() ? {
+      ...b,
+      hardware: (b.hardware || []).filter(h => h.id !== hwId)
+    } : b));
+  },
+  toggleBoardVisibility: id => {
+    const {
+      setBoards
+    } = get();
+    setBoards(bds => bds.map(b => b.id === id ? {
+      ...b,
+      visible: b.visible === false ? true : false
+    } : b));
+  },
+  toggleGroupVisibility: groupId => {
+    const {
+      setGroups
+    } = get();
+    setGroups(prev => {
+      const cur = prev[groupId] || {};
+      return {
+        ...prev,
+        [groupId]: {
+          ...cur,
+          visible: cur.visible === false ? true : false
+        }
+      };
+    });
+  },
+  // ─── Update a vector field (size or position) on selected boards ─────────
+  updateVector: (key, index, value) => {
+    const {
+      selectedItemIds,
+      pushHistory,
+      boards,
+      constraints,
+      setBoards
+    } = get();
+    if (selectedItemIds.length === 0) return;
+    pushHistory();
+    const floatVal = parseFloat(value) || 0;
+    if (key === 'position') {
+      // Find the primary board to compute delta
+      const primaryBoard = boards.find(bd => selectedItemIds.includes(bd.id.toString()));
+      if (!primaryBoard) return;
+      const delta = floatVal - primaryBoard.position[index];
+      if (delta === 0) return;
+      const deltaVec = [0, 0, 0];
+      deltaVec[index] = delta;
+
+      // Propagate through constraints
+      const moveMap = propagateMove(selectedItemIds, deltaVec, constraints);
+      setBoards(boards.map(b => {
+        const d = moveMap.get(b.id.toString());
+        if (d) {
+          return {
+            ...b,
+            position: [b.position[0] + d[0], b.position[1] + d[1], b.position[2] + d[2]]
+          };
+        }
+        return b;
+      }));
+    } else {
+      // Size / other scalar field — only apply to directly selected boards
+      setBoards(boards.map(b => {
+        if (selectedItemIds.includes(b.id.toString())) {
+          let newVec = [...b[key]];
+          newVec[index] = floatVal;
+          return {
+            ...b,
+            [key]: newVec
+          };
+        }
+        return b;
+      }));
+    }
+  },
+  // ─── Apply incremental rotation to a board (quaternion math) ──────────────
+  // Applies rotation exactly along the board's LOCAL axis, avoiding gimbal lock.
+  incrementRotation: (axis, degrees) => {
+    const {
+      selectedItemIds,
+      pushHistory,
+      boards,
+      setBoards
+    } = get();
+    if (selectedItemIds.length === 0) return;
+    pushHistory();
+    const radians = degrees * Math.PI / 180;
+    const axisVec = new THREE.Vector3();
+    if (axis === 0) axisVec.set(1, 0, 0);
+    if (axis === 1) axisVec.set(0, 1, 0);
+    if (axis === 2) axisVec.set(0, 0, 1);
+    const qInc = new THREE.Quaternion().setFromAxisAngle(axisVec, radians);
+    setBoards(boards.map(b => {
+      if (selectedItemIds.includes(b.id.toString())) {
+        const currentEuler = new THREE.Euler(...(b.orientation || [0, 0, 0]), 'YXZ');
+        const qCurrent = new THREE.Quaternion().setFromEuler(currentEuler);
+
+        // Multiply applies the rotation LOCALLY
+        qCurrent.multiply(qInc);
+        const newEuler = new THREE.Euler().setFromQuaternion(qCurrent, 'YXZ');
+
+        // Keep values wrapped inside reasonable bounds slightly (to avoid drifting)
+        let x = newEuler.x;
+        let y = newEuler.y;
+        let z = newEuler.z;
+        return {
+          ...b,
+          orientation: [x, y, z]
+        };
+      }
+      return b;
+    }));
+  },
+  // ─── Reset orientation on selected boards to [0,0,0] ─────────────────────
+  resetRotation: () => {
+    const {
+      selectedItemIds,
+      pushHistory,
+      boards,
+      setBoards
+    } = get();
+    if (selectedItemIds.length === 0) return;
+    pushHistory();
+    setBoards(boards.map(b => selectedItemIds.includes(b.id.toString()) ? {
+      ...b,
+      orientation: [0, 0, 0]
+    } : b));
+  },
+  // ─── applyRotation removed — local orientation model ──────────────────────
+  // Operations (miter, dado, hole, etc.) are defined in LOCAL board space.
+  // Rotating a board only changes its `orientation` Euler — no baking, no
+  // axis/face remapping.  The old applyRotation bake-rotation logic has been
+  // intentionally deleted as part of the local-orientation migration.
+
+  // ─── Move all boards in a group by a delta ───────────────────────────────
+  moveGroup: (groupId, axis, delta) => {
+    const {
+      pushHistory,
+      boards,
+      groups,
+      constraints,
+      setBoards
+    } = get();
+    if (delta === 0) return;
+    pushHistory();
+    const childBoards = collectChildBoards(groupId, boards, groups);
+    const childIds = childBoards.map(b => b.id.toString());
+    const deltaVec = [0, 0, 0];
+    deltaVec[axis] = delta;
+    const moveMap = propagateMove(childIds, deltaVec, constraints);
+    setBoards(boards.map(b => {
+      const d = moveMap.get(b.id.toString());
+      if (d) {
+        return {
+          ...b,
+          position: [b.position[0] + d[0], b.position[1] + d[1], b.position[2] + d[2]]
+        };
+      }
+      return b;
+    }));
+  },
+  handleDragStart: (e, id, type) => {
+    const {
+      selectedItemIds
+    } = get();
+    // If the dragged item is part of the current selection, move all selected items.
+    // Otherwise, just move the single dragged item.
+    const idsToMove = selectedItemIds.includes(id.toString()) ? selectedItemIds : [id.toString()];
+    e.dataTransfer.setData('drag_ids', JSON.stringify(idsToMove));
+    e.dataTransfer.setData('drag_id', id); // keep for backwards compat
+    e.dataTransfer.setData('drag_type', type);
+    e.stopPropagation();
+  },
+  handleDrop: (e, newParentId) => {
+    const {
+      pushHistory,
+      setBoards,
+      setGroups,
+      groups,
+      boards
+    } = get();
+    e.preventDefault();
+    e.stopPropagation();
+
+    // Try multi-select payload first, fall back to single
+    let ids;
+    try {
+      ids = JSON.parse(e.dataTransfer.getData('drag_ids') || '[]');
+    } catch {
+      ids = [];
+    }
+    if (!ids.length) ids = [e.dataTransfer.getData('drag_id')].filter(Boolean);
+
+    // Remove the target itself to prevent circular reparenting
+    ids = ids.filter(id => id !== newParentId);
+    if (!ids.length) return;
+    pushHistory();
+    const boardIds = new Set(ids.filter(id => boards.some(b => b.id.toString() === id)));
+    const groupIds = ids.filter(id => groups[id] !== undefined);
+    setBoards(prev => prev.map(b => boardIds.has(b.id.toString()) ? {
+      ...b,
+      parentId: newParentId
+    } : b));
+    setGroups(prev => {
+      let next = {
+        ...prev
+      };
+      groupIds.forEach(id => {
+        if (next[id]) next[id] = {
+          ...next[id],
+          parentId: newParentId
+        };
+      });
+      return next;
+    });
+  },
+  // ─── Drop to floor: set the board so its bottom face sits at Y=0 ─────────
+  dropBoardToFloor: () => {
+    const {
+      selectedItemIds,
+      boards,
+      pushHistory,
+      setBoards
+    } = get();
+    const selectedBoard = selectedItemIds.length === 1 && boards.find(b => b.id.toString() === selectedItemIds[0]);
+    if (!selectedBoard) return;
+    pushHistory();
+
+    // Use orientation-aware AABB to find the true bottom Y
+    const aabb = computeWorldAABB([selectedBoard]);
+    const bottomY = aabb.minY;
+    const delta = -bottomY; // shift so bottom sits at Y=0
+
+    setBoards(boards.map(b => {
+      if (selectedItemIds.includes(b.id.toString())) {
+        return {
+          ...b,
+          position: [b.position[0], b.position[1] + delta, b.position[2]]
+        };
+      }
+      return b;
+    }));
+  },
+  dropGroupToFloor: () => {
+    const {
+      selectedItemIds,
+      groups,
+      pushHistory,
+      boards,
+      setBoards
+    } = get();
+    const selectedGroup = selectedItemIds.length === 1 && Object.keys(groups).find(k => k === selectedItemIds[0]);
+    if (!selectedGroup) return;
+    pushHistory();
+
+    // Find the lowest Y extent of all child boards (orientation-aware)
+    const childBoards = collectChildBoards(selectedGroup, boards, groups);
+    if (childBoards.length === 0) return;
+    const aabb = computeWorldAABB(childBoards);
+    const lowestY = aabb.minY;
+    if (lowestY === Infinity) return;
+    // Shift all child boards so the lowest is sitting on Y=0
+    const delta = -lowestY;
+    const childIds = new Set(childBoards.map(b => b.id.toString()));
+    setBoards(boards.map(b => {
+      if (childIds.has(b.id.toString())) {
+        return {
+          ...b,
+          position: [b.position[0], b.position[1] + delta, b.position[2]]
+        };
+      }
+      return b;
+    }));
+  },
+  // Drop the entire current multi-selection to the floor (works for any mix of boards and groups)
+  dropSelectionToFloor: () => {
+    const {
+      selectedItemIds,
+      boards,
+      groups,
+      pushHistory,
+      setBoards
+    } = get();
+    if (selectedItemIds.length === 0) return;
+
+    // Collect all boards in the selection (direct boards + children of selected groups)
+    const boardSet = new Set();
+    selectedItemIds.forEach(id => {
+      const board = boards.find(b => b.id.toString() === id);
+      if (board) {
+        boardSet.add(board);
+      } else if (groups[id]) {
+        collectChildBoards(id, boards, groups).forEach(b => boardSet.add(b));
+      }
+    });
+    const selBoards = Array.from(boardSet);
+    if (selBoards.length === 0) return;
+
+    // Find the lowest Y extent across all selected boards (orientation-aware)
+    const aabb = computeWorldAABB(selBoards);
+    const lowestY = aabb.minY;
+    if (lowestY === Infinity) return;
+    const delta = -lowestY; // shift so lowest point lands on Y=0
+    if (delta === 0) return;
+    pushHistory();
+    const selIds = new Set(selBoards.map(b => b.id.toString()));
+    setBoards(boards.map(b => selIds.has(b.id.toString()) ? {
+      ...b,
+      position: [b.position[0], b.position[1] + delta, b.position[2]]
+    } : b));
+  },
+  manualAddBoard: () => {
+    const {
+      selectedItemIds,
+      boards,
+      groups,
+      setNewBoardDialog
+    } = get();
+    const selectedBoard = selectedItemIds.length === 1 && boards.find(b => b.id.toString() === selectedItemIds[0]);
+    const selectedGroup = selectedItemIds.length === 1 && Object.keys(groups).find(k => k === selectedItemIds[0]);
+    const targetParent = selectedGroup || (selectedBoard ? selectedBoard.parentId : 'Workspace');
+    setNewBoardDialog({
+      name: 'New Component',
+      parentId: targetParent,
+      sizeX: 12,
+      sizeY: 0.75,
+      sizeZ: 12,
+      position: [0, 0.375, 0]
+    });
+  },
+  manualAddCylinder: () => {
+    const {
+      selectedItemIds,
+      boards,
+      groups,
+      setNewBoardDialog
+    } = get();
+    const selectedBoard = selectedItemIds.length === 1 && boards.find(b => b.id.toString() === selectedItemIds[0]);
+    const selectedGroup = selectedItemIds.length === 1 && Object.keys(groups).find(k => k === selectedItemIds[0]);
+    const targetParent = selectedGroup || (selectedBoard ? selectedBoard.parentId : 'Workspace');
+    const radius = 0.875; // 1.75" diameter — typical round furniture leg
+    const height = 12;
+    const diameter = radius * 2;
+    setNewBoardDialog({
+      name: 'Cylinder',
+      parentId: targetParent,
+      shape: 'cylinder',
+      cylinder: {
+        radius,
+        axis: 'y'
+      },
+      sizeX: diameter,
+      sizeY: height,
+      sizeZ: diameter,
+      position: [0, height / 2, 0]
+    });
+  },
+  manualAddTaper: () => {
+    const {
+      selectedItemIds,
+      boards,
+      groups,
+      setNewBoardDialog
+    } = get();
+    const selectedBoard = selectedItemIds.length === 1 && boards.find(b => b.id.toString() === selectedItemIds[0]);
+    const selectedGroup = selectedItemIds.length === 1 && Object.keys(groups).find(k => k === selectedItemIds[0]);
+    const targetParent = selectedGroup || (selectedBoard ? selectedBoard.parentId : 'Workspace');
+    const w = 1.75,
+      h = 12,
+      d = 1.75;
+    setNewBoardDialog({
+      name: 'Tapered Leg',
+      parentId: targetParent,
+      shape: 'taper',
+      taper: {
+        angleLeft: 2,
+        angleRight: 2,
+        angleFront: 2,
+        angleBack: 2
+      },
+      sizeX: w,
+      sizeY: h,
+      sizeZ: d,
+      position: [0, h / 2, 0]
+    });
+  },
+  manualAddArc: () => {
+    const {
+      selectedItemIds,
+      boards,
+      groups,
+      setNewBoardDialog
+    } = get();
+    const selectedBoard = selectedItemIds.length === 1 && boards.find(b => b.id.toString() === selectedItemIds[0]);
+    const selectedGroup = selectedItemIds.length === 1 && Object.keys(groups).find(k => k === selectedItemIds[0]);
+    const targetParent = selectedGroup || (selectedBoard ? selectedBoard.parentId : 'Workspace');
+    const radius = 12; // 12" radius corner piece
+    const thickness = 0.75; // 3/4" material
+    setNewBoardDialog({
+      name: 'Arc / Curve',
+      parentId: targetParent,
+      shape: 'arc',
+      arc: {
+        startAngle: 0,
+        endAngle: 90,
+        innerRadius: 0,
+        axis: 'y'
+      },
+      sizeX: radius,
+      sizeY: thickness,
+      sizeZ: radius,
+      position: [0, thickness / 2, 0]
+    });
+  },
+  manualAddCove: () => {
+    const {
+      selectedItemIds,
+      boards,
+      groups,
+      setNewBoardDialog
+    } = get();
+    const selectedBoard = selectedItemIds.length === 1 && boards.find(b => b.id.toString() === selectedItemIds[0]);
+    const selectedGroup = selectedItemIds.length === 1 && Object.keys(groups).find(k => k === selectedItemIds[0]);
+    const targetParent = selectedGroup || (selectedBoard ? selectedBoard.parentId : 'Workspace');
+    const width = 12;
+    const height = 4;
+    const thickness = 0.75;
+    setNewBoardDialog({
+      name: 'Cove / Arch',
+      parentId: targetParent,
+      shape: 'cove',
+      cove: {
+        edge: 'top',
+        depth: 2,
+        axis: 'z'
+      },
+      sizeX: width,
+      sizeY: height,
+      sizeZ: thickness,
+      position: [0, height / 2, 0]
+    });
+  },
+  manualAddHole: () => {
+    const {
+      selectedItemIds,
+      boards,
+      groups,
+      setNewBoardDialog
+    } = get();
+    const selectedBoard = selectedItemIds.length === 1 && boards.find(b => b.id.toString() === selectedItemIds[0]);
+    const selectedGroup = selectedItemIds.length === 1 && Object.keys(groups).find(k => k === selectedItemIds[0]);
+    const targetParent = selectedGroup || (selectedBoard ? selectedBoard.parentId : 'Workspace');
+    const sizeX = 12,
+      sizeY = 12,
+      sizeZ = 0.75;
+    setNewBoardDialog({
+      name: 'Panel with Hole',
+      parentId: targetParent,
+      shape: 'hole',
+      hole: {
+        radius: 2,
+        offsetX: 0,
+        offsetY: 0,
+        axis: 'z'
+      },
+      sizeX,
+      sizeY,
+      sizeZ,
+      position: [0, sizeY / 2, 0]
+    });
+  },
+  handleComponentDelete: () => {
+    const {
+      setConfirmDialog,
+      selectedItemIds,
+      boards,
+      pushHistory,
+      setBoards,
+      setSelectedItemIds
+    } = get();
+    const selectedBoard = selectedItemIds.length === 1 && boards.find(b => b.id.toString() === selectedItemIds[0]);
+    const boardToDelete = selectedBoard;
+    setConfirmDialog({
+      message: `Are you sure you want to delete component "${boardToDelete.name}"? This action will permanently remove it from the project.`,
+      onConfirm: () => {
+        pushHistory();
+        setBoards(prev => prev.filter(bd => bd.id !== boardToDelete.id));
+        setSelectedItemIds(prev => prev.filter(id => id !== boardToDelete.id.toString()));
+        setConfirmDialog(null);
+      }
+    });
+  },
+  handleMultiDelete: () => {
+    const {
+      setConfirmDialog,
+      selectedItemIds,
+      groups,
+      boards,
+      constraints,
+      pushHistory,
+      setBoards,
+      setGroups,
+      setSelectedItemIds,
+      setConstraints
+    } = get();
+    const count = selectedItemIds.length;
+    setConfirmDialog({
+      message: `Delete ${count} selected item${count !== 1 ? 's' : ''}? This will remove all selected boards and assemblies (including their children) permanently.`,
+      onConfirm: () => {
+        pushHistory();
+        const allGroupIdsToDel = new Set();
+        const allBoardIdsToDel = new Set();
+        const traverseGroup = gId => {
+          allGroupIdsToDel.add(gId);
+          Object.keys(groups).forEach(k => {
+            if (groups[k].parentId === gId) traverseGroup(k);
+          });
+          boards.forEach(bd => {
+            if (bd.parentId === gId) allBoardIdsToDel.add(bd.id.toString());
+          });
+        };
+        selectedItemIds.forEach(id => {
+          if (groups[id]) {
+            traverseGroup(id);
+          } else {
+            allBoardIdsToDel.add(id);
+          }
+        });
+        setBoards(prev => prev.filter(bd => !allBoardIdsToDel.has(bd.id.toString())));
+        setGroups(prev => {
+          const next = {
+            ...prev
+          };
+          allGroupIdsToDel.forEach(id => delete next[id]);
+          return next;
+        });
+        // Remove constraints that reference any deleted board
+        setConstraints(prev => {
+          const next = {};
+          Object.entries(prev).forEach(([cId, c]) => {
+            if (!allBoardIdsToDel.has(c.boardAId) && !allBoardIdsToDel.has(c.boardBId)) {
+              next[cId] = c;
+            }
+          });
+          return next;
+        });
+        setSelectedItemIds([]);
+        setConfirmDialog(null);
+      }
+    });
+  },
+  handleNewBoardConfirm: () => {
+    const {
+      pushHistory,
+      newBoardDialog,
+      setBoards,
+      defaultMaterial,
+      setSelectedItemIds,
+      setNewBoardDialog
+    } = get();
+    pushHistory();
+    const newId = Date.now();
+
+    // Carry through base shapes (box, taper, cylinder)
+    const boardShape = newBoardDialog.shape;
+    const boardTaper = newBoardDialog.taper;
+    const boardCylinder = newBoardDialog.cylinder;
+
+    // Translate cutting shapes into operations
+    const boardArc = newBoardDialog.arc;
+    const boardCove = newBoardDialog.cove;
+    const boardHole = newBoardDialog.hole;
+    const operations = [];
+    if (boardArc) operations.push({
+      id: Date.now() + 1,
+      type: 'arc',
+      ...boardArc
+    });
+    if (boardCove) operations.push({
+      id: Date.now() + 2,
+      type: 'cove',
+      ...boardCove
+    });
+    if (boardHole) operations.push({
+      id: Date.now() + 3,
+      type: 'hole',
+      ...boardHole
+    });
+    let finalShape = boardShape || 'box';
+    if (['arc', 'cove', 'hole'].includes(finalShape)) {
+      finalShape = 'box';
+    }
+    setBoards(prev => [...prev, {
+      id: newId,
+      name: newBoardDialog.name || 'New Component',
+      parentId: newBoardDialog.parentId,
+      size: [newBoardDialog.sizeX, newBoardDialog.sizeY, newBoardDialog.sizeZ],
+      position: newBoardDialog.position,
+      material: defaultMaterial,
+      joint: 'None',
+      shape: finalShape,
+      operations,
+      ...(boardTaper ? {
+        taper: boardTaper
+      } : {}),
+      ...(boardCylinder ? {
+        cylinder: boardCylinder
+      } : {})
+    }]);
+    setSelectedItemIds([newId.toString()]);
+    setNewBoardDialog(null);
+  }
+});

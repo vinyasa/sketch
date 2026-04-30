@@ -4,6 +4,7 @@ import { normalizeMaterial, getMaterialDisplayColor, WOOD_CATALOGUE } from '../.
 import { taperValidation, normalizeTaper } from '../../utils/geometryBuilders';
 
 import useStore from '../../store/useStore';
+import ParametricControls from './ParametricControls';
 
 // ── Build a compact summary string for each tool type ────────────────────────
 function getToolSummary(op) {
@@ -224,22 +225,7 @@ const InspectorPanel = () => {
                             {isGlued ? 'Unglue Assembly' : 'Glue Assembly'}
                         </button>
                         {groups[selectedGroup].meta?.builder && (
-                            <button
-                                className="primary-btn"
-                                style={{ width: '100%', padding: '8px', fontWeight: 'bold', marginBottom: '8px' }}
-                                onClick={() => {
-                                    const meta = groups[selectedGroup].meta;
-                                    if (meta.builder === 'cabinet') {
-                                        setCabinetDialog({ ...meta.params, editGroupId: selectedGroup });
-                                    } else if (meta.builder === 'shaker-door') {
-                                        setShakerDoorDialog({ ...meta.params, editGroupId: selectedGroup });
-                                    } else if (meta.builder === 'drawerStack') {
-                                        setDrawerDialog({ ...meta.params, editGroupId: selectedGroup });
-                                    }
-                                }}
-                            >
-                                Edit Parameters
-                            </button>
+                            <ParametricControls groupId={selectedGroup} meta={groups[selectedGroup].meta} />
                         )}
                         <button
                             className="primary-btn"

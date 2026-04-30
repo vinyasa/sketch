@@ -20,13 +20,11 @@ export function getOverlappingBoards(boards) {
         
         if (b.pivot) {
              const pivotPos = new THREE.Vector3(...b.pivot);
-             const pivotMatrix = new THREE.Matrix4().makeTranslation(pivotPos.x, pivotPos.y, pivotPos.z);
              const rotationMatrix = new THREE.Matrix4().makeRotationFromQuaternion(quaternion);
              const invPivotMatrix = new THREE.Matrix4().makeTranslation(-pivotPos.x, -pivotPos.y, -pivotPos.z);
              const translationMatrix = new THREE.Matrix4().makeTranslation(position.x, position.y, position.z);
              
              matrix.multiply(translationMatrix)
-                   .multiply(pivotMatrix)
                    .multiply(rotationMatrix)
                    .multiply(invPivotMatrix);
         } else {
@@ -63,6 +61,13 @@ export function getOverlappingBoards(boards) {
                 b1.board.operations?.some(op => op.type === 'subtract' && op.cutterId === b2.id) ||
                 b2.board.operations?.some(op => op.type === 'subtract' && op.cutterId === b1.id);
             if (hasSubtract) continue;
+
+            // Ignore intentional joinery overlaps (dados, grooves, rabbets)
+            // since OBBs do not account for the material removed by these operations.
+            const joineryOps = ['dado', 'groove', 'rabbet'];
+            const b1HasJoinery = b1.board.operations?.some(op => joineryOps.includes(op.type));
+            const b2HasJoinery = b2.board.operations?.some(op => joineryOps.includes(op.type));
+            if (b1HasJoinery || b2HasJoinery) continue;
 
             // Ignore if they are part of a parent-child relationship (e.g. drawer side and drawer face if implemented that way)
             // But standard boards don't have parent-child physically, so this is fine.
