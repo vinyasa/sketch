@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import * as THREE from 'three';
+import { OBB } from 'three/addons/math/OBB.js';
 import useStore from '../../store/useStore';
 
 const ToolsPanel = () => {
@@ -45,20 +46,36 @@ const ToolsPanel = () => {
     
     const overlaps = selectedBoards.length === 2 && (() => {
         try {
-            const getBox = (b) => {
-                const euler = new THREE.Euler(...(b.orientation || [0, 0, 0]), 'YXZ');
-                const matrix = new THREE.Matrix4().compose(
-                    new THREE.Vector3(...b.position),
-                    new THREE.Quaternion().setFromEuler(euler),
-                    new THREE.Vector3(1, 1, 1)
+            const getOBB = (b) => {
+                const rot = b.orientation || b.rotation || [0, 0, 0];
+                const euler = new THREE.Euler(rot[0], rot[1], rot[2], 'YXZ');
+                const quaternion = new THREE.Quaternion().setFromEuler(euler);
+                const position = new THREE.Vector3(...b.position);
+                
+                let matrix = new THREE.Matrix4();
+                if (b.pivot) {
+                     const pivotPos = new THREE.Vector3(...b.pivot);
+                     const rotationMatrix = new THREE.Matrix4().makeRotationFromQuaternion(quaternion);
+                     const invPivotMatrix = new THREE.Matrix4().makeTranslation(-pivotPos.x, -pivotPos.y, -pivotPos.z);
+                     const translationMatrix = new THREE.Matrix4().makeTranslation(position.x, position.y, position.z);
+                     matrix.multiply(translationMatrix).multiply(rotationMatrix).multiply(invPivotMatrix);
+                } else {
+                     matrix.compose(position, quaternion, new THREE.Vector3(1, 1, 1));
+                }
+
+                const obb = new OBB();
+                const epsilon = 0.05; // Shrink slightly to avoid false positive on flush
+                obb.halfSize.set(
+                    Math.max(0, b.size[0]/2 - epsilon), 
+                    Math.max(0, b.size[1]/2 - epsilon), 
+                    Math.max(0, b.size[2]/2 - epsilon)
                 );
-                return new THREE.Box3().setFromCenterAndSize(new THREE.Vector3(0,0,0), new THREE.Vector3(...b.size)).applyMatrix4(matrix);
+                obb.applyMatrix4(matrix);
+                return obb;
             };
-            const box1 = getBox(selectedBoards[0]);
-            const box2 = getBox(selectedBoards[1]);
-            // Add a negative tolerance so flush boards DO NOT show the subtraction tool
-            box1.expandByScalar(-0.01);
-            return box1.intersectsBox(box2);
+            const obb1 = getOBB(selectedBoards[0]);
+            const obb2 = getOBB(selectedBoards[1]);
+            return obb1.intersectsOBB(obb2);
         } catch(e) {
             return false;
         }

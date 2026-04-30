@@ -14,6 +14,10 @@ const computeSnapPoints = (board) => {
   };
 
   const points = [];
+  
+  // Pivot point
+  points.push({ localOffset: [pivot[0], pivot[1], pivot[2]], worldPos: toWorld(pivot[0], pivot[1], pivot[2]), type: 'pivot' });
+
   // 8 corners
   for (const sx of [-1, 1]) for (const sy of [-1, 1]) for (const sz of [-1, 1]) {
     points.push({ localOffset: [sx*hx, sy*hy, sz*hz], worldPos: toWorld(sx*hx, sy*hy, sz*hz), type: 'corner' });
@@ -38,7 +42,7 @@ const computeSnapPoints = (board) => {
 const findNearestSnap = (worldPoint, board) => {
   const snapPoints = computeSnapPoints(board);
   let best = null, bestDist = Infinity;
-  const thresholds = { corner: 2.0, edge: 1.5, face: 1.0 };
+  const thresholds = { pivot: 2.5, corner: 2.0, edge: 1.5, face: 1.0 };
   for (const sp of snapPoints) {
     const d = Math.sqrt(
       (sp.worldPos[0] - worldPoint[0]) ** 2 +

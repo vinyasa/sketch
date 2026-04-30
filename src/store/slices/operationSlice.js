@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { OBB } from 'three/addons/math/OBB.js';
 
 export const createOperationSlice = (set, get) => ({
   // ─── Boolean Subtraction ─────────────────────────────────────────────────
@@ -23,19 +24,53 @@ export const createOperationSlice = (set, get) => ({
     if (!targetBoard || !cutterBoard) return;
 
     // ── Compute relative transform (cutter in target's local space) ───
-    const targetEuler = new THREE.Euler(...(targetBoard.orientation || [0, 0, 0]), 'YXZ');
-    const targetMatrix = new THREE.Matrix4().compose(new THREE.Vector3(...targetBoard.position), new THREE.Quaternion().setFromEuler(targetEuler), new THREE.Vector3(1, 1, 1));
-    const cutterEuler = new THREE.Euler(...(cutterBoard.orientation || [0, 0, 0]), 'YXZ');
-    const cutterMatrix = new THREE.Matrix4().compose(new THREE.Vector3(...cutterBoard.position), new THREE.Quaternion().setFromEuler(cutterEuler), new THREE.Vector3(1, 1, 1));
+    const getGeoMatrix = (b) => {
+        const euler = new THREE.Euler(...(b.orientation || [0, 0, 0]), 'YXZ');
+        const matrix = new THREE.Matrix4().compose(new THREE.Vector3(...b.position), new THREE.Quaternion().setFromEuler(euler), new THREE.Vector3(1, 1, 1));
+        if (b.pivot) {
+             matrix.multiply(new THREE.Matrix4().makeTranslation(-b.pivot[0], -b.pivot[1], -b.pivot[2]));
+        }
+        return matrix;
+    };
+    
+    const Wt = getGeoMatrix(targetBoard);
+    const Wc = getGeoMatrix(cutterBoard);
 
     // ── Validate overlap (using oriented bounding boxes) ──────────────
-    const boxA = new THREE.Box3().setFromCenterAndSize(new THREE.Vector3(0, 0, 0), new THREE.Vector3(...targetBoard.size)).applyMatrix4(targetMatrix);
-    const boxB = new THREE.Box3().setFromCenterAndSize(new THREE.Vector3(0, 0, 0), new THREE.Vector3(...cutterBoard.size)).applyMatrix4(cutterMatrix);
-    if (!boxA.intersectsBox(boxB)) {
+    const getOBB = (b) => {
+        const euler = new THREE.Euler(...(b.orientation || [0, 0, 0]), 'YXZ');
+        const quaternion = new THREE.Quaternion().setFromEuler(euler);
+        const position = new THREE.Vector3(...b.position);
+        
+        let matrix = new THREE.Matrix4();
+        if (b.pivot) {
+             const pivotPos = new THREE.Vector3(...b.pivot);
+             const rotationMatrix = new THREE.Matrix4().makeRotationFromQuaternion(quaternion);
+             const invPivotMatrix = new THREE.Matrix4().makeTranslation(-pivotPos.x, -pivotPos.y, -pivotPos.z);
+             const translationMatrix = new THREE.Matrix4().makeTranslation(position.x, position.y, position.z);
+             matrix.multiply(translationMatrix).multiply(rotationMatrix).multiply(invPivotMatrix);
+        } else {
+             matrix.compose(position, quaternion, new THREE.Vector3(1, 1, 1));
+        }
+
+        const obb = new OBB(); // ensure OBB is imported or available
+        obb.halfSize.set(
+            Math.max(0, b.size[0]/2), 
+            Math.max(0, b.size[1]/2), 
+            Math.max(0, b.size[2]/2)
+        );
+        obb.applyMatrix4(matrix);
+        return obb;
+    };
+
+    const obbA = getOBB(targetBoard);
+    const obbB = getOBB(cutterBoard);
+
+    if (!obbA.intersectsOBB(obbB)) {
       showToast('⚠ Boards must overlap to apply a boolean subtraction');
       return;
     }
-    const relativeMatrix = targetMatrix.clone().invert().multiply(cutterMatrix);
+    const relativeMatrix = Wt.clone().invert().multiply(Wc);
 
     // ── Build the operation (frozen snapshot) ─────────────────────────
     const op = {

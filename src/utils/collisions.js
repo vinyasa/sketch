@@ -8,9 +8,9 @@ export function getOverlappingBoards(boards) {
     const obbs = boards.map(b => {
         const rot = b.orientation || b.rotation || [0, 0, 0];
         const euler = new THREE.Euler(
-            rot[0] * Math.PI / 180,
-            rot[1] * Math.PI / 180,
-            rot[2] * Math.PI / 180,
+            rot[0],
+            rot[1],
+            rot[2],
             'YXZ'
         );
         const quaternion = new THREE.Quaternion().setFromEuler(euler);
@@ -67,7 +67,7 @@ export function getOverlappingBoards(boards) {
             const joineryOps = ['dado', 'groove', 'rabbet'];
             const b1HasJoinery = b1.board.operations?.some(op => joineryOps.includes(op.type));
             const b2HasJoinery = b2.board.operations?.some(op => joineryOps.includes(op.type));
-            if (b1HasJoinery || b2HasJoinery) continue;
+            if ((b1HasJoinery || b2HasJoinery) && b1.board.shape !== 'cylinder' && b2.board.shape !== 'cylinder') continue;
 
             // Ignore if they are part of a parent-child relationship (e.g. drawer side and drawer face if implemented that way)
             // But standard boards don't have parent-child physically, so this is fine.

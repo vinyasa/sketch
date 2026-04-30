@@ -101,6 +101,9 @@ const useStore = create((set, get) => ({
     showGrid: true,
     setShowGrid: (v) => set({ showGrid: typeof v === 'function' ? v(get().showGrid) : v }),
 
+    enableCollisions: loadState('enableCollisions', true),
+    setEnableCollisions: (v) => set({ enableCollisions: typeof v === 'function' ? v(get().enableCollisions) : v }),
+
     autosaveInterval: loadState('autosaveInterval', '10'),
     setAutosaveInterval: (v) => set({ autosaveInterval: typeof v === 'function' ? v(get().autosaveInterval) : v }),
 

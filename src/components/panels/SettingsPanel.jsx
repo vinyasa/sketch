@@ -10,6 +10,7 @@ const SettingsPanel = () => {
         showEdges, setShowEdges,
         showMeasurements, setShowMeasurements,
         showBoundingBox, setShowBoundingBox,
+        enableCollisions, setEnableCollisions,
         globalBounds, setGlobalBounds,
         theme, setTheme,
         autosaveInterval, setAutosaveInterval,
@@ -80,6 +81,14 @@ const SettingsPanel = () => {
                     Show Selection Envelope
                 </label>
                 <p className="hint" style={{ marginTop: '4px' }}>Renders an absolute 3D bounding box indicating total geometric size of selected components.</p>
+            </div>
+
+            <div className="inspector-card">
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: '600', opacity: 0.85 }}>
+                    <input type="checkbox" checked={enableCollisions} onChange={(e) => setEnableCollisions(e.target.checked)} style={{ width: '18px', height: '18px' }} />
+                    Enable Physics / Collision Warnings
+                </label>
+                <p className="hint" style={{ marginTop: '4px' }}>Visually flag overlapping geometry or illegal structural intersections in the viewport.</p>
             </div>
 
             <div className="inspector-card">

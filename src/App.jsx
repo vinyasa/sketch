@@ -67,6 +67,7 @@ export default function App() {
         headerBottom,
         setOverlappingBoardIds,
         overlappingBoardIds,
+        enableCollisions,
     } = useStore();
 
     // Apply theme on initial mount (store handles subsequent changes via setTheme)
@@ -91,6 +92,12 @@ export default function App() {
 
     // Debounced overlap detection
     useEffect(() => {
+        if (!enableCollisions) {
+            if (overlappingBoardIds.length > 0) setOverlappingBoardIds([]);
+            prevOverlappingRef.current = 0;
+            return;
+        }
+
         const timer = setTimeout(() => {
             const { overlappingIds } = getOverlappingBoards(boards);
             setOverlappingBoardIds(overlappingIds);
@@ -102,7 +109,7 @@ export default function App() {
             prevOverlappingRef.current = overlappingIds.length;
         }, 500);
         return () => clearTimeout(timer);
-    }, [boards, setOverlappingBoardIds]);
+    }, [boards, enableCollisions, setOverlappingBoardIds]);
 
     return (
         <ErrorBoundary>
