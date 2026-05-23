@@ -33,3 +33,61 @@ export const formatUnit = (val, units) => {
     
     return `${whole} ${num}/${den}"`;
 };
+
+/**
+ * Get the decimal inch value for a given grid snapping string.
+ * @param {string} gridSnap - The snapping preset string
+ * @param {string} units - 'imperial' or 'metric'
+ * @returns {number} Grid step in decimal inches (or 0 if off)
+ */
+export const getGridStep = (gridSnap, units) => {
+    if (gridSnap === 'off') return 0;
+    if (units === 'metric') {
+        if (gridSnap === '1 mm') return 1 / 25.4;
+        if (gridSnap === '2 mm') return 2 / 25.4;
+        if (gridSnap === '5 mm') return 5 / 25.4;
+        if (gridSnap === '10 mm') return 10 / 25.4;
+        if (gridSnap.includes('in')) {
+            const impVal = getGridStep(gridSnap, 'imperial');
+            return impVal;
+        }
+        const val = parseFloat(gridSnap);
+        return isNaN(val) ? 5 / 25.4 : val / 25.4;
+    } else {
+        if (gridSnap === '1/16 in') return 0.0625;
+        if (gridSnap === '1/8 in') return 0.125;
+        if (gridSnap === '1/4 in') return 0.25;
+        if (gridSnap === '1/2 in') return 0.5;
+        if (gridSnap === '1 in') return 1.0;
+        if (gridSnap.includes('mm')) {
+            const metVal = parseFloat(gridSnap);
+            return isNaN(metVal) ? 0.25 : metVal / 25.4;
+        }
+        return 0.125;
+    }
+};
+
+/**
+ * Convert a value from the active unit system (inches or mm) to the internal decimal inch store.
+ * @param {number|string} val - The input value (display value)
+ * @param {string} units - 'imperial' or 'metric'
+ * @returns {number} The value in decimal inches
+ */
+export const toImperial = (val, units) => {
+    const num = parseFloat(val);
+    if (isNaN(num)) return 0;
+    return units === 'metric' ? num / 25.4 : num;
+};
+
+/**
+ * Convert an internal decimal inch value to the active unit system's display value.
+ * @param {number|string} val - The value in decimal inches
+ * @param {string} units - 'imperial' or 'metric'
+ * @returns {number} The display value (in inches or mm)
+ */
+export const toDisplay = (val, units) => {
+    const num = parseFloat(val);
+    if (isNaN(num)) return 0;
+    return units === 'metric' ? num * 25.4 : num;
+};
+

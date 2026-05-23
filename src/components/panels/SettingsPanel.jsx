@@ -32,12 +32,24 @@ const SettingsPanel = () => {
             <div className="inspector-card">
                 <label style={{ fontWeight: '600', opacity: 0.85, display: 'block', marginBottom: '8px' }}>Global Grid Snapping</label>
                 <select className="nav-btn" value={gridSnap} onChange={(e) => setGridSnap(e.target.value)} style={{ width: '100%', outline: 'none' }}>
-                    <option value="off">Off (Free floating)</option>
-                    <option value="1/16 in">1/16 Inch (Extreme)</option>
-                    <option value="1/8 in">1/8 Inch (Fine)</option>
-                    <option value="1/4 in">1/4 Inch (Standard)</option>
-                    <option value="1/2 in">1/2 Inch (Rough)</option>
-                    <option value="1 in">1 Inch (Very Rough)</option>
+                    {units === 'metric' ? (
+                        <>
+                            <option value="off">Off (Free floating)</option>
+                            <option value="1 mm">1 mm (Extreme)</option>
+                            <option value="2 mm">2 mm (Fine)</option>
+                            <option value="5 mm">5 mm (Standard)</option>
+                            <option value="10 mm">10 mm (Rough)</option>
+                        </>
+                    ) : (
+                        <>
+                            <option value="off">Off (Free floating)</option>
+                            <option value="1/16 in">1/16 Inch (Extreme)</option>
+                            <option value="1/8 in">1/8 Inch (Fine)</option>
+                            <option value="1/4 in">1/4 Inch (Standard)</option>
+                            <option value="1/2 in">1/2 Inch (Rough)</option>
+                            <option value="1 in">1 Inch (Very Rough)</option>
+                        </>
+                    )}
                 </select>
                 <p className="hint" style={{ marginTop: '4px' }}>Controls the bounding lock when nudging components via the AI or inspector.</p>
             </div>

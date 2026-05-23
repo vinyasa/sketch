@@ -112,7 +112,6 @@ const OutlinerPanel = () => {
                 <div style={{ marginTop: '14px', padding: '0 6px' }}>
                     <button className="nav-btn" style={{ width: '100%', border: '1px solid var(--border-color)', background: 'rgba(0,0,0,0.05)', fontSize: '0.7rem', padding: '4px 8px' }} onClick={onAddAssembly}>+ Assembly</button>
                 </div>
-                <p className="hint" style={{ textAlign: 'center', marginTop: '4px' }}>Use ＋ Add in the toolbar to add components.</p>
             </div>
         </div>
     );

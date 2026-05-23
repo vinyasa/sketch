@@ -543,7 +543,7 @@ function PivotSnapPreview() {
   if (!pivotHoverSnap) return null;
   return (
     <mesh position={pivotHoverSnap} raycast={() => null}>
-      <sphereGeometry args={[0.3, 16, 16]} />
+      <sphereGeometry args={[0.15, 16, 16]} />
       <meshBasicMaterial color="#ff00ff" depthTest={false} transparent opacity={0.6} />
     </mesh>
   );
@@ -779,7 +779,7 @@ const MeasureSnapPreview = ({ boards, measureMode }) => {
         return (
           <group>
             <mesh position={wp} renderOrder={11} raycast={() => null}>
-              {isCorner ? <boxGeometry args={[0.45, 0.45, 0.45]} /> : <sphereGeometry args={[isEdge ? 0.3 : 0.2, 12, 12]} />}
+              {isCorner ? <boxGeometry args={[0.25, 0.25, 0.25]} /> : <sphereGeometry args={[isEdge ? 0.2 : 0.15, 12, 12]} />}
               <meshBasicMaterial color={isCorner ? '#00ff88' : isEdge ? '#00ccff' : '#ffcc00'} depthTest={false} transparent opacity={0.85} />
             </mesh>
           </group>
@@ -794,11 +794,11 @@ const MeasureSnapPreview = ({ boards, measureMode }) => {
         return (
           <group>
             <mesh position={worldPos} renderOrder={10} raycast={() => null}>
-              <sphereGeometry args={[0.35, 16, 16]} />
+              <sphereGeometry args={[0.25, 16, 16]} />
               <meshBasicMaterial color="#ff9f0a" depthTest={false} transparent opacity={0.9} />
             </mesh>
             <mesh position={worldPos} renderOrder={9} raycast={() => null}>
-              <ringGeometry args={[0.5, 0.7, 24]} />
+              <ringGeometry args={[0.35, 0.5, 24]} />
               <meshBasicMaterial color="#ff9f0a" depthTest={false} transparent opacity={0.4} side={THREE.DoubleSide} />
             </mesh>
           </group>
@@ -1033,30 +1033,7 @@ export default function Viewport3D() {
     };
   }, []);
 
-  const isDark = theme === 'dark';
-  const majorColor = isDark ? 0x666666 : 0x999999;
-  const minorColor = isDark ? 0x242424 : 0xd2d2d2;
-
   const workspaceSize = useStore(s => s.workspaceSize) || 120;
-  const gridRadius = workspaceSize;
-  let minorDivs = 0, majorDivs = Math.ceil(workspaceSize / 6);
-
-  if (gridSnap === '1/16 in') {
-    minorDivs = workspaceSize * 4;
-    majorDivs = Math.ceil(workspaceSize / 1.5);
-  } else if (gridSnap === '1/8 in') {
-    minorDivs = workspaceSize * 2;
-    majorDivs = Math.ceil(workspaceSize / 3);
-  } else if (gridSnap === '1/4 in') {
-    minorDivs = workspaceSize;
-    majorDivs = Math.ceil(workspaceSize / 6);
-  } else if (gridSnap === '1/2 in' || gridSnap === '1 in') {
-    minorDivs = workspaceSize;
-    majorDivs = Math.ceil(workspaceSize / 6);
-  } else if (gridSnap === 'off') {
-    minorDivs = 0;
-    majorDivs = Math.ceil(workspaceSize / 6);
-  }
 
   return (
     <div className="viewport-container" style={{ width: '100%', height: '100%', position: 'relative' }}>
@@ -1086,6 +1063,7 @@ export default function Viewport3D() {
           workspaceSize={workspaceSize}
           gridSnap={gridSnap}
           lighting={lighting}
+          units={units}
         />
 
         {globalBounds?.enabled && !printCapture && (

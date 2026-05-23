@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { useTexture, useGLTF, Edges, Html, Line } from '@react-three/drei';
 import useStore from '../store/useStore';
 import { computeWorldAABB, collectChildBoards, calculateGroupAABB } from '../utils/sceneGraph';
-import { formatUnit } from '../utils/units';
+import { formatUnit, getGridStep } from '../utils/units';
 import { WOOD_CATALOGUE, WOOD_TEXTURE_URLS, normalizeMaterial } from '../utils/materialCatalogue';
 import { buildTaperGeometry, normalizeTaper } from '../utils/geometryBuilders';
 import { computeHardwareTransform } from '../utils/hardwareCatalogue';
@@ -568,9 +568,9 @@ const BoardMesh = ({ b, selectedItemIds, toggleSelection, textures, showEdges, c
           e.stopPropagation();
 
           // ── Pivot Mode ──
-          const { pivotMode, setPivotMode, gridSnap, setCustomPivot, setPivotHoverSnap } = useStore.getState();
+          const { pivotMode, setPivotMode, gridSnap, setCustomPivot, setPivotHoverSnap, units } = useStore.getState();
           if (pivotMode?.active && pivotMode.boardId === b.id.toString()) {
-            const gridStep = gridSnap === '1/8 in' ? 0.125 : gridSnap === '1/4 in' ? 0.25 : gridSnap === '1/2 in' ? 0.5 : gridSnap === '1 in' ? 1.0 : 0.125;
+            const gridStep = getGridStep(gridSnap, units) || 0.125;
             const pt = e.point.clone();
             const euler = new THREE.Euler(...(b.orientation || [0, 0, 0]), 'YXZ');
             pt.sub(new THREE.Vector3(...b.position));
@@ -679,10 +679,10 @@ const BoardMesh = ({ b, selectedItemIds, toggleSelection, textures, showEdges, c
         }}
         onPointerMove={(e) => {
           // ── Pivot Mode hover snap tracking ──
-          const { pivotMode, setPivotHoverSnap, gridSnap } = useStore.getState();
+          const { pivotMode, setPivotHoverSnap, gridSnap, units } = useStore.getState();
           if (pivotMode?.active && pivotMode.boardId === b.id.toString()) {
             e.stopPropagation();
-            const gridStep = gridSnap === '1/8 in' ? 0.125 : gridSnap === '1/4 in' ? 0.25 : gridSnap === '1/2 in' ? 0.5 : gridSnap === '1 in' ? 1.0 : 0.125;
+            const gridStep = getGridStep(gridSnap, units) || 0.125;
             const pt = e.point.clone();
             const euler = new THREE.Euler(...(b.orientation || [0, 0, 0]), 'YXZ');
             pt.sub(new THREE.Vector3(...b.position));
@@ -833,7 +833,7 @@ const BoardMesh = ({ b, selectedItemIds, toggleSelection, textures, showEdges, c
         <group>
           {/* Pivot sphere — magenta, always visible */}
           <mesh raycast={() => null}>
-            <sphereGeometry args={[0.35, 16, 16]} />
+            <sphereGeometry args={[0.15, 16, 16]} />
             <meshBasicMaterial color="#ff00ff" transparent opacity={0.85} depthTest={false} />
           </mesh>
           {/* Dashed line from pivot to board center */}

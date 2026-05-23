@@ -2,16 +2,26 @@ import React, { useState, useEffect } from 'react';
 import useStore from '../../store/useStore';
 
 const ParametricControls = ({ groupId, meta }) => {
-    const { buildCabinet, buildBox, buildShakerDoor, buildDrawers, gridSnap } = useStore();
+    const { buildCabinet, buildBox, buildShakerDoor, buildDrawers, gridSnap, units } = useStore();
     const [params, setParams] = useState(meta.params || {});
 
     let defaultStep = 0.5;
-    if (gridSnap === '1/16 in') defaultStep = 0.0625;
-    else if (gridSnap === '1/8 in') defaultStep = 0.125;
-    else if (gridSnap === '1/4 in') defaultStep = 0.25;
-    else if (gridSnap === '1/2 in') defaultStep = 0.5;
-    else if (gridSnap === '1 in') defaultStep = 1.0;
-    else if (gridSnap === 'off') defaultStep = 0.125;
+    if (units === 'metric') {
+        if (gridSnap === '1 mm') defaultStep = 1;
+        else if (gridSnap === '2 mm') defaultStep = 2;
+        else if (gridSnap === '5 mm') defaultStep = 5;
+        else if (gridSnap === '10 mm') defaultStep = 10;
+        else if (gridSnap === 'off') defaultStep = 5;
+        else defaultStep = 5;
+    } else {
+        if (gridSnap === '1/16 in') defaultStep = 0.0625;
+        else if (gridSnap === '1/8 in') defaultStep = 0.125;
+        else if (gridSnap === '1/4 in') defaultStep = 0.25;
+        else if (gridSnap === '1/2 in') defaultStep = 0.5;
+        else if (gridSnap === '1 in') defaultStep = 1.0;
+        else if (gridSnap === 'off') defaultStep = 0.125;
+        else defaultStep = 0.25;
+    }
 
     // Keep local state in sync when selecting different assemblies
     useEffect(() => {
@@ -19,9 +29,12 @@ const ParametricControls = ({ groupId, meta }) => {
     }, [groupId, meta.params]);
 
     const handleChange = (key, value) => {
-        const numVal = parseFloat(value);
-        // We allow string while typing, but pass number to the builder if possible
-        const newParams = { ...params, [key]: isNaN(numVal) && value !== '' ? value : value };
+        let numVal = parseFloat(value);
+        // Scale display input back to internal decimal inches
+        if (units === 'metric' && key !== 'count' && !isNaN(numVal)) {
+            numVal = numVal / 25.4;
+        }
+        const newParams = { ...params, [key]: isNaN(numVal) ? value : numVal };
         setParams(newParams);
 
         // Only call builder if we have a valid parsed number or empty (the builder has fallbacks)
@@ -41,26 +54,32 @@ const ParametricControls = ({ groupId, meta }) => {
 
     const renderInput = (key, label, customStep, customMin) => {
         const step = customStep !== undefined ? customStep : defaultStep;
-        const min = customMin !== undefined ? customMin : 0.0625;
+        const min = customMin !== undefined ? customMin : (units === 'metric' ? 1.5 : 0.0625);
+        
+        let displayVal = params[key] ?? '';
+        if (units === 'metric' && key !== 'count' && displayVal !== '') {
+            displayVal = (parseFloat(displayVal) * 25.4).toFixed(1);
+        }
+
         return (
-        <div style={{ marginBottom: '8px' }}>
-            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>{label}</div>
-            <input 
-                type="number" 
-                step={step} 
-                min={min} 
-                value={params[key] ?? ''} 
-                onChange={e => handleChange(key, e.target.value)}
-                style={{ 
-                    width: '100%', padding: '5px 8px', 
-                    background: 'var(--bg-color)', color: 'var(--text-main)', 
-                    border: '1px solid var(--border-color)', borderRadius: '6px', 
-                    outline: 'none', fontSize: '0.9rem' 
-                }} 
-            />
-        </div>
-    );
-};
+            <div style={{ marginBottom: '8px' }}>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>{label}</div>
+                <input 
+                    type="number" 
+                    step={step} 
+                    min={min} 
+                    value={displayVal} 
+                    onChange={e => handleChange(key, e.target.value)}
+                    style={{ 
+                        width: '100%', padding: '5px 8px', 
+                        background: 'var(--bg-color)', color: 'var(--text-main)', 
+                        border: '1px solid var(--border-color)', borderRadius: '6px', 
+                        outline: 'none', fontSize: '0.9rem' 
+                    }} 
+                />
+            </div>
+        );
+    };
 
     let controls = null;
 
@@ -73,10 +92,10 @@ const ParametricControls = ({ groupId, meta }) => {
                     {renderInput('depth', 'Depth (Z)')}
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                    {renderInput('thicknessTB', 'Top/Bottom (in)')}
-                    {renderInput('thicknessSide', 'Sides (in)')}
-                    {renderInput('thicknessFront', 'Front (in)')}
-                    {renderInput('thicknessBack', 'Back (in)')}
+                    {renderInput('thicknessTB', `Top/Bottom (${units === 'metric' ? 'mm' : 'in'})`)}
+                    {renderInput('thicknessSide', `Sides (${units === 'metric' ? 'mm' : 'in'})`)}
+                    {renderInput('thicknessFront', `Front (${units === 'metric' ? 'mm' : 'in'})`)}
+                    {renderInput('thicknessBack', `Back (${units === 'metric' ? 'mm' : 'in'})`)}
                 </div>
             </>
         );

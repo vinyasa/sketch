@@ -372,7 +372,9 @@ export const createBoardSlice = (set, get) => ({
       pushHistory,
       boards,
       constraints,
-      setBoards
+      setBoards,
+      units,
+      showToast
     } = get();
     if (selectedItemIds.length === 0) return;
     pushHistory();
@@ -381,7 +383,25 @@ export const createBoardSlice = (set, get) => ({
       // Find the primary board to compute delta
       const primaryBoard = boards.find(bd => selectedItemIds.includes(bd.id.toString()));
       if (!primaryBoard) return;
-      const delta = floatVal - primaryBoard.position[index];
+
+      let clampedVal = floatVal;
+      let wasClamped = false;
+      if (floatVal < -5000) {
+        clampedVal = -5000;
+        wasClamped = true;
+      } else if (floatVal > 5000) {
+        clampedVal = 5000;
+        wasClamped = true;
+      }
+
+      if (wasClamped) {
+        const axisLetter = ['X', 'Y', 'Z'][index];
+        const unitLabel = units === 'metric' ? 'mm' : 'in';
+        const displayVal = units === 'metric' ? (clampedVal * 25.4).toFixed(0) : clampedVal.toFixed(2);
+        showToast(`⚠️ Position ${axisLetter} clamped to safe limit of ${displayVal} ${unitLabel}`);
+      }
+
+      const delta = clampedVal - primaryBoard.position[index];
       if (delta === 0) return;
       const deltaVec = [0, 0, 0];
       deltaVec[index] = delta;
@@ -391,19 +411,57 @@ export const createBoardSlice = (set, get) => ({
       setBoards(boards.map(b => {
         const d = moveMap.get(b.id.toString());
         if (d) {
+          let nx = b.position[0] + d[0];
+          let ny = b.position[1] + d[1];
+          let nz = b.position[2] + d[2];
+
+          let propClamped = false;
+          if (nx < -5000) { nx = -5000; propClamped = true; }
+          else if (nx > 5000) { nx = 5000; propClamped = true; }
+
+          if (ny < -5000) { ny = -5000; propClamped = true; }
+          else if (ny > 5000) { ny = 5000; propClamped = true; }
+
+          if (nz < -5000) { nz = -5000; propClamped = true; }
+          else if (nz > 5000) { nz = 5000; propClamped = true; }
+
+          if (propClamped && b.id.toString() === primaryBoard.id.toString() && !wasClamped) {
+            showToast(`⚠️ Position clamped to safe bounds`);
+          }
+
           return {
             ...b,
-            position: [b.position[0] + d[0], b.position[1] + d[1], b.position[2] + d[2]]
+            position: [nx, ny, nz]
           };
         }
         return b;
       }));
     } else {
+      let clampedVal = floatVal;
+      let wasClamped = false;
+      if (key === 'size') {
+        if (floatVal < 0.0625) {
+          clampedVal = 0.0625;
+          wasClamped = true;
+        } else if (floatVal > 1000) {
+          clampedVal = 1000;
+          wasClamped = true;
+        }
+
+        if (wasClamped) {
+          // Determine friendly label if standard Length/Width/Thickness
+          const dimLabel = ['Length', 'Width', 'Thickness'][index] || `Size axis ${index}`;
+          const unitLabel = units === 'metric' ? 'mm' : 'in';
+          const displayVal = units === 'metric' ? (clampedVal * 25.4).toFixed(1) : clampedVal.toFixed(3);
+          showToast(`⚠️ ${dimLabel} clamped to safe limit of ${displayVal} ${unitLabel}`);
+        }
+      }
+
       // Size / other scalar field — only apply to directly selected boards
       setBoards(boards.map(b => {
         if (selectedItemIds.includes(b.id.toString())) {
           let newVec = [...b[key]];
-          newVec[index] = floatVal;
+          newVec[index] = clampedVal;
           return {
             ...b,
             [key]: newVec

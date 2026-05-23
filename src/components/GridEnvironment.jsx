@@ -31,7 +31,7 @@ export const FloorFrontLabel = () => (
   </Text>
 );
 
-export const GridEnvironment = ({ showGrid, printCapture, theme, workspaceSize, gridSnap, lighting }) => {
+export const GridEnvironment = ({ showGrid, printCapture, theme, workspaceSize, gridSnap, lighting, units }) => {
   if (printCapture) return null;
 
   const isDark = theme === 'dark';
@@ -42,21 +42,47 @@ export const GridEnvironment = ({ showGrid, printCapture, theme, workspaceSize, 
   const gridRadius = size;
   let minorDivs = 0, majorDivs = Math.ceil(size / 6);
 
-  if (gridSnap === '1/16 in') {
-    minorDivs = size * 4;
-    majorDivs = Math.ceil(size / 1.5);
-  } else if (gridSnap === '1/8 in') {
-    minorDivs = size * 2;
-    majorDivs = Math.ceil(size / 3);
-  } else if (gridSnap === '1/4 in') {
-    minorDivs = size;
-    majorDivs = Math.ceil(size / 6);
-  } else if (gridSnap === '1/2 in' || gridSnap === '1 in') {
-    minorDivs = size;
-    majorDivs = Math.ceil(size / 6);
-  } else if (gridSnap === 'off') {
-    minorDivs = 0;
-    majorDivs = Math.ceil(size / 6);
+  if (units === 'metric') {
+    const sizeMm = size * 25.4;
+    if (gridSnap === '1 mm') {
+      minorDivs = Math.round(sizeMm / 10);
+      majorDivs = Math.round(sizeMm / 100) || 1;
+    } else if (gridSnap === '2 mm') {
+      minorDivs = Math.round(sizeMm / 20);
+      majorDivs = Math.round(sizeMm / 100) || 1;
+    } else if (gridSnap === '5 mm') {
+      minorDivs = Math.round(sizeMm / 50);
+      majorDivs = Math.round(sizeMm / 100) || 1;
+    } else if (gridSnap === '10 mm') {
+      minorDivs = Math.round(sizeMm / 100) || 1;
+      majorDivs = Math.round(sizeMm / 200) || 1;
+    } else if (gridSnap === 'off') {
+      minorDivs = 0;
+      majorDivs = Math.round(sizeMm / 100) || 1;
+    } else {
+      minorDivs = Math.round(sizeMm / 50);
+      majorDivs = Math.round(sizeMm / 100) || 1;
+    }
+  } else {
+    if (gridSnap === '1/16 in') {
+      minorDivs = size * 4;
+      majorDivs = Math.ceil(size / 1.5) || 1;
+    } else if (gridSnap === '1/8 in') {
+      minorDivs = size * 2;
+      majorDivs = Math.ceil(size / 3) || 1;
+    } else if (gridSnap === '1/4 in') {
+      minorDivs = size;
+      majorDivs = Math.ceil(size / 6) || 1;
+    } else if (gridSnap === '1/2 in' || gridSnap === '1 in') {
+      minorDivs = size;
+      majorDivs = Math.ceil(size / 6) || 1;
+    } else if (gridSnap === 'off') {
+      minorDivs = 0;
+      majorDivs = Math.ceil(size / 6) || 1;
+    } else {
+      minorDivs = size;
+      majorDivs = Math.ceil(size / 6) || 1;
+    }
   }
 
   return (

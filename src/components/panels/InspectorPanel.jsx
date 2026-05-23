@@ -38,7 +38,7 @@ const InspectorPanel = () => {
     const [rotationStep, setRotationStep] = useState(5);
 
     const {
-        boards, groups, selectedItemIds, constraints,
+        boards, groups, selectedItemIds, constraints, units,
         updateVector, moveGroup,
         setBoards, setGroups, setSelectedItemIds,
         pushHistory,
@@ -153,11 +153,11 @@ const InspectorPanel = () => {
                     />
                 </div>
                 <div className="inspector-section">
-                    <h4>Overall Dimensions (in)</h4>
+                    <h4>Overall Dimensions ({units === 'metric' ? 'mm' : 'in'})</h4>
                     <div className="vec3-inputs">
-                        <div style={{ backgroundColor: 'rgba(255, 60, 60, 0.15)' }}>X<input type="number" value={fmt4(overallSize[0])} disabled style={{ opacity: 0.5, cursor: 'not-allowed' }} /></div>
-                        <div style={{ backgroundColor: 'rgba(60, 200, 90, 0.15)' }}>Y<input type="number" value={fmt4(overallSize[1])} disabled style={{ opacity: 0.5, cursor: 'not-allowed' }} /></div>
-                        <div style={{ backgroundColor: 'rgba(60, 150, 255, 0.15)' }}>Z<input type="number" value={fmt4(overallSize[2])} disabled style={{ opacity: 0.5, cursor: 'not-allowed' }} /></div>
+                        <div style={{ backgroundColor: 'rgba(255, 60, 60, 0.15)' }}>X<input type="number" value={units === 'metric' ? fmt4(overallSize[0] * 25.4) : fmt4(overallSize[0])} disabled style={{ opacity: 0.5, cursor: 'not-allowed' }} /></div>
+                        <div style={{ backgroundColor: 'rgba(60, 200, 90, 0.15)' }}>Y<input type="number" value={units === 'metric' ? fmt4(overallSize[1] * 25.4) : fmt4(overallSize[1])} disabled style={{ opacity: 0.5, cursor: 'not-allowed' }} /></div>
+                        <div style={{ backgroundColor: 'rgba(60, 150, 255, 0.15)' }}>Z<input type="number" value={units === 'metric' ? fmt4(overallSize[2] * 25.4) : fmt4(overallSize[2])} disabled style={{ opacity: 0.5, cursor: 'not-allowed' }} /></div>
                     </div>
                 </div>
                 {!isWorkspace && (() => {
@@ -177,11 +177,11 @@ const InspectorPanel = () => {
 
                     return (
                         <div className="inspector-section">
-                            <h4>Position (in)</h4>
+                            <h4>Position ({units === 'metric' ? 'mm' : 'in'})</h4>
                             <div className="vec3-inputs">
-                                <div style={{ backgroundColor: 'rgba(255, 60, 60, 0.15)' }}>X<input type="number" step="0.125" value={centroid[0]} onChange={e => handleCentroidChange(0, e.target.value)} /></div>
-                                <div style={{ backgroundColor: 'rgba(60, 200, 90, 0.15)' }}>Y<input type="number" step="0.125" value={centroid[1]} onChange={e => handleCentroidChange(1, e.target.value)} /></div>
-                                <div style={{ backgroundColor: 'rgba(60, 150, 255, 0.15)' }}>Z<input type="number" step="0.125" value={centroid[2]} onChange={e => handleCentroidChange(2, e.target.value)} /></div>
+                                <div style={{ backgroundColor: 'rgba(255, 60, 60, 0.15)' }}>X<input type="number" step={units === 'metric' ? '1' : '0.125'} value={units === 'metric' ? fmt4(centroid[0] * 25.4) : centroid[0]} onChange={e => handleCentroidChange(0, units === 'metric' ? parseFloat(e.target.value) / 25.4 : e.target.value)} /></div>
+                                <div style={{ backgroundColor: 'rgba(60, 200, 90, 0.15)' }}>Y<input type="number" step={units === 'metric' ? '1' : '0.125'} value={units === 'metric' ? fmt4(centroid[1] * 25.4) : centroid[1]} onChange={e => handleCentroidChange(1, units === 'metric' ? parseFloat(e.target.value) / 25.4 : e.target.value)} /></div>
+                                <div style={{ backgroundColor: 'rgba(60, 150, 255, 0.15)' }}>Z<input type="number" step={units === 'metric' ? '1' : '0.125'} value={units === 'metric' ? fmt4(centroid[2] * 25.4) : centroid[2]} onChange={e => handleCentroidChange(2, units === 'metric' ? parseFloat(e.target.value) / 25.4 : e.target.value)} /></div>
                             </div>
                             <button style={{ marginTop: '8px', width: '100%' }} className="primary-btn" onClick={dropGroupToFloor}>↓ Set on Floor</button>
                             <p className="hint" style={{ marginTop: '6px' }}>Assembly centroid — changes move all children in real time.</p>
@@ -567,29 +567,32 @@ const InspectorPanel = () => {
                     />
                 </div>
                 <div className="inspector-card">
-                    <h4>Size (in)</h4>
+                    <h4>Size ({units === 'metric' ? 'mm' : 'in'})</h4>
                     <div className="vec3-inputs">
-                        <div style={{ backgroundColor: 'rgba(255, 60, 60, 0.15)' }}>X<input type="number" step="0.125" value={fmt4(selectedBoard.size[0])} onChange={e => updateVector('size', 0, e.target.value)} /></div>
-                        <div style={{ backgroundColor: 'rgba(60, 200, 90, 0.15)' }}>Y<input type="number" step="0.125" value={fmt4(selectedBoard.size[1])} onChange={e => updateVector('size', 1, e.target.value)} /></div>
-                        <div style={{ backgroundColor: 'rgba(60, 150, 255, 0.15)' }}>Z<input type="number" step="0.125" value={fmt4(selectedBoard.size[2])} onChange={e => updateVector('size', 2, e.target.value)} /></div>
+                        <div style={{ backgroundColor: 'rgba(255, 60, 60, 0.15)' }}>X<input type="number" step={units === 'metric' ? '1' : '0.125'} value={units === 'metric' ? fmt4(selectedBoard.size[0] * 25.4) : fmt4(selectedBoard.size[0])} onChange={e => updateVector('size', 0, units === 'metric' ? parseFloat(e.target.value) / 25.4 : e.target.value)} /></div>
+                        <div style={{ backgroundColor: 'rgba(60, 200, 90, 0.15)' }}>Y<input type="number" step={units === 'metric' ? '1' : '0.125'} value={units === 'metric' ? fmt4(selectedBoard.size[1] * 25.4) : fmt4(selectedBoard.size[1])} onChange={e => updateVector('size', 1, units === 'metric' ? parseFloat(e.target.value) / 25.4 : e.target.value)} /></div>
+                        <div style={{ backgroundColor: 'rgba(60, 150, 255, 0.15)' }}>Z<input type="number" step={units === 'metric' ? '1' : '0.125'} value={units === 'metric' ? fmt4(selectedBoard.size[2] * 25.4) : fmt4(selectedBoard.size[2])} onChange={e => updateVector('size', 2, units === 'metric' ? parseFloat(e.target.value) / 25.4 : e.target.value)} /></div>
                     </div>
                     <div className="hint" style={{ marginTop: '6px', fontSize: '0.75rem' }}>
-                        {sorted.map((d, i) => `${dimLabels[i]}: ${d.val.toFixed(2)}" (${['X', 'Y', 'Z'][d.idx]})`).join(' · ')}
+                        {sorted.map((d, i) => {
+                            const val = units === 'metric' ? `${(d.val * 25.4).toFixed(1)}mm` : `${d.val.toFixed(2)}"`;
+                            return `${dimLabels[i]}: ${val} (${['X', 'Y', 'Z'][d.idx]})`;
+                        }).join(' · ')}
                     </div>
                 </div>
 
                 <div className="inspector-card">
-                    <h4>Position (in)</h4>
+                    <h4>Position ({units === 'metric' ? 'mm' : 'in'})</h4>
                     <div className="vec3-inputs">
-                        <div style={{ backgroundColor: 'rgba(255, 60, 60, 0.15)' }}>X<input type="number" step="0.125" value={fmt4(selectedBoard.position[0])} onChange={e => updateVector('position', 0, e.target.value)} /></div>
-                        <div style={{ backgroundColor: 'rgba(60, 200, 90, 0.15)' }}>Y<input type="number" step="0.125" value={fmt4(selectedBoard.position[1])} onChange={e => updateVector('position', 1, e.target.value)} /></div>
-                        <div style={{ backgroundColor: 'rgba(60, 150, 255, 0.15)' }}>Z<input type="number" step="0.125" value={fmt4(selectedBoard.position[2])} onChange={e => updateVector('position', 2, e.target.value)} /></div>
+                        <div style={{ backgroundColor: 'rgba(255, 60, 60, 0.15)' }}>X<input type="number" step={units === 'metric' ? '1' : '0.125'} value={units === 'metric' ? fmt4(selectedBoard.position[0] * 25.4) : fmt4(selectedBoard.position[0])} onChange={e => updateVector('position', 0, units === 'metric' ? parseFloat(e.target.value) / 25.4 : e.target.value)} /></div>
+                        <div style={{ backgroundColor: 'rgba(60, 200, 90, 0.15)' }}>Y<input type="number" step={units === 'metric' ? '1' : '0.125'} value={units === 'metric' ? fmt4(selectedBoard.position[1] * 25.4) : fmt4(selectedBoard.position[1])} onChange={e => updateVector('position', 1, units === 'metric' ? parseFloat(e.target.value) / 25.4 : e.target.value)} /></div>
+                        <div style={{ backgroundColor: 'rgba(60, 150, 255, 0.15)' }}>Z<input type="number" step={units === 'metric' ? '1' : '0.125'} value={units === 'metric' ? fmt4(selectedBoard.position[2] * 25.4) : fmt4(selectedBoard.position[2])} onChange={e => updateVector('position', 2, units === 'metric' ? parseFloat(e.target.value) / 25.4 : e.target.value)} /></div>
                     </div>
                     <button style={{ marginTop: '8px', width: '100%' }} className="primary-btn" onClick={dropBoardToFloor}>↓ Set on Floor</button>
                 </div>
                 {/* ── Pivot Point ── */}
                 <div className="inspector-card">
-                    <h4>Pivot Point</h4>
+                    <h4>Pivot Point ({units === 'metric' ? 'mm' : 'in'})</h4>
                     {(() => {
                         const pivot = selectedBoard.pivot || [0, 0, 0];
                         const hasPivot = pivot[0] !== 0 || pivot[1] !== 0 || pivot[2] !== 0;
@@ -697,7 +700,7 @@ const InspectorPanel = () => {
                                         cursor: 'pointer',
                                     }}
                                 >
-                                    {matchIdx < 0 && <option value={-1} disabled>Custom ({pivot.map(v => v.toFixed(2)).join(', ')})</option>}
+                                    {matchIdx < 0 && <option value={-1} disabled>Custom ({pivot.map(v => (units === 'metric' ? (v * 25.4).toFixed(1) : v.toFixed(2))).join(', ')}{units === 'metric' ? ' mm' : ''})</option>}
                                     <optgroup label="Default">
                                         <option value={0}>⊕ Center (default)</option>
                                     </optgroup>
@@ -719,13 +722,13 @@ const InspectorPanel = () => {
                                 </select>
                                 <div style={{ display: 'flex', gap: '4px', marginTop: '6px' }}>
                                     <div style={{ flex: 1, backgroundColor: 'rgba(255, 60, 60, 0.15)', display: 'flex', alignItems: 'center', padding: '0 4px', borderRadius: '4px', fontSize: '0.75rem', border: '1px solid rgba(255, 60, 60, 0.3)' }}>
-                                        X<input type="number" step="0.125" value={fmt4(pivot[0])} onChange={e => { const v = parseFloat(e.target.value); if (!isNaN(v)) useStore.getState().setCustomPivot(selectedBoard.id, [v, pivot[1], pivot[2]]); }} style={{ width: '100%', background: 'transparent', border: 'none', color: 'inherit', textAlign: 'right', outline: 'none' }} />
+                                        X<input type="number" step={units === 'metric' ? '1' : '0.125'} value={units === 'metric' ? fmt4(pivot[0] * 25.4) : fmt4(pivot[0])} onChange={e => { const v = parseFloat(e.target.value); if (!isNaN(v)) useStore.getState().setCustomPivot(selectedBoard.id, [units === 'metric' ? v / 25.4 : v, pivot[1], pivot[2]]); }} style={{ width: '100%', background: 'transparent', border: 'none', color: 'inherit', textAlign: 'right', outline: 'none' }} />
                                     </div>
                                     <div style={{ flex: 1, backgroundColor: 'rgba(60, 200, 90, 0.15)', display: 'flex', alignItems: 'center', padding: '0 4px', borderRadius: '4px', fontSize: '0.75rem', border: '1px solid rgba(60, 200, 90, 0.3)' }}>
-                                        Y<input type="number" step="0.125" value={fmt4(pivot[1])} onChange={e => { const v = parseFloat(e.target.value); if (!isNaN(v)) useStore.getState().setCustomPivot(selectedBoard.id, [pivot[0], v, pivot[2]]); }} style={{ width: '100%', background: 'transparent', border: 'none', color: 'inherit', textAlign: 'right', outline: 'none' }} />
+                                        Y<input type="number" step={units === 'metric' ? '1' : '0.125'} value={units === 'metric' ? fmt4(pivot[1] * 25.4) : fmt4(pivot[1])} onChange={e => { const v = parseFloat(e.target.value); if (!isNaN(v)) useStore.getState().setCustomPivot(selectedBoard.id, [pivot[0], units === 'metric' ? v / 25.4 : v, pivot[2]]); }} style={{ width: '100%', background: 'transparent', border: 'none', color: 'inherit', textAlign: 'right', outline: 'none' }} />
                                     </div>
                                     <div style={{ flex: 1, backgroundColor: 'rgba(60, 150, 255, 0.15)', display: 'flex', alignItems: 'center', padding: '0 4px', borderRadius: '4px', fontSize: '0.75rem', border: '1px solid rgba(60, 150, 255, 0.3)' }}>
-                                        Z<input type="number" step="0.125" value={fmt4(pivot[2])} onChange={e => { const v = parseFloat(e.target.value); if (!isNaN(v)) useStore.getState().setCustomPivot(selectedBoard.id, [pivot[0], pivot[1], v]); }} style={{ width: '100%', background: 'transparent', border: 'none', color: 'inherit', textAlign: 'right', outline: 'none' }} />
+                                        Z<input type="number" step={units === 'metric' ? '1' : '0.125'} value={units === 'metric' ? fmt4(pivot[2] * 25.4) : fmt4(pivot[2])} onChange={e => { const v = parseFloat(e.target.value); if (!isNaN(v)) useStore.getState().setCustomPivot(selectedBoard.id, [pivot[0], pivot[1], units === 'metric' ? v / 25.4 : v]); }} style={{ width: '100%', background: 'transparent', border: 'none', color: 'inherit', textAlign: 'right', outline: 'none' }} />
                                     </div>
                                 </div>
                                 <div style={{ display: 'flex', gap: '6px', marginTop: '6px' }}>
@@ -776,7 +779,7 @@ const InspectorPanel = () => {
                     
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '4px', marginTop: '6px' }}>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                            <div style={{ fontSize: '0.65rem', textAlign: 'center', color: '#ff3b30', fontWeight: 'bold' }}>Pitch (X)</div>
+                            <div style={{ fontSize: '0.62rem', textAlign: 'center', color: '#ff3b30', fontWeight: 'bold' }} title="Pitch (X)">Tilt Front/Back</div>
                             <div style={{ display: 'flex', gap: '2px' }}>
                                 <button className="nav-btn" style={{ flex: 1, padding: '4px 0' }} onClick={() => incrementRotation(0, -rotationStep)}>-</button>
                                 <button className="nav-btn" style={{ flex: 1, padding: '4px 0' }} onClick={() => incrementRotation(0, rotationStep)}>+</button>
@@ -784,7 +787,7 @@ const InspectorPanel = () => {
                             <button className="nav-btn" style={{ padding: '2px 0', fontSize: '0.6rem' }} onClick={() => incrementRotation(0, 180)}>Flip 180</button>
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                            <div style={{ fontSize: '0.65rem', textAlign: 'center', color: '#3cc85a', fontWeight: 'bold' }}>Yaw (Y)</div>
+                            <div style={{ fontSize: '0.62rem', textAlign: 'center', color: '#3cc85a', fontWeight: 'bold' }} title="Yaw (Y)">Spin Flat</div>
                             <div style={{ display: 'flex', gap: '2px' }}>
                                 <button className="nav-btn" style={{ flex: 1, padding: '4px 0' }} onClick={() => incrementRotation(1, -rotationStep)}>-</button>
                                 <button className="nav-btn" style={{ flex: 1, padding: '4px 0' }} onClick={() => incrementRotation(1, rotationStep)}>+</button>
@@ -792,7 +795,7 @@ const InspectorPanel = () => {
                             <button className="nav-btn" style={{ padding: '2px 0', fontSize: '0.6rem' }} onClick={() => incrementRotation(1, 180)}>Spin 180</button>
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                            <div style={{ fontSize: '0.65rem', textAlign: 'center', color: '#3c96ff', fontWeight: 'bold' }}>Roll (Z)</div>
+                            <div style={{ fontSize: '0.62rem', textAlign: 'center', color: '#3c96ff', fontWeight: 'bold' }} title="Roll (Z)">Tilt Left/Right</div>
                             <div style={{ display: 'flex', gap: '2px' }}>
                                 <button className="nav-btn" style={{ flex: 1, padding: '4px 0' }} onClick={() => incrementRotation(2, -rotationStep)}>-</button>
                                 <button className="nav-btn" style={{ flex: 1, padding: '4px 0' }} onClick={() => incrementRotation(2, rotationStep)}>+</button>

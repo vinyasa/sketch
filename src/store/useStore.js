@@ -294,10 +294,43 @@ const useStore = create((set, get) => ({
     },
 
     units: loadState('units', 'imperial'),
-    setUnits: (v) => set({ units: typeof v === 'function' ? v(get().units) : v }),
+    setUnits: (v) => {
+        const nextUnits = typeof v === 'function' ? v(get().units) : v;
+        let nextSnap = get().gridSnap;
+        if (nextUnits === 'metric') {
+            if (nextSnap === '1/16 in') nextSnap = '1 mm';
+            else if (nextSnap === '1/8 in') nextSnap = '2 mm';
+            else if (nextSnap === '1/4 in') nextSnap = '5 mm';
+            else if (nextSnap === '1/2 in' || nextSnap === '1 in') nextSnap = '10 mm';
+            else if (nextSnap !== 'off') nextSnap = '5 mm';
+        } else {
+            if (nextSnap === '1 mm') nextSnap = '1/16 in';
+            else if (nextSnap === '2 mm') nextSnap = '1/8 in';
+            else if (nextSnap === '5 mm') nextSnap = '1/4 in';
+            else if (nextSnap === '10 mm') nextSnap = '1/2 in';
+            else if (nextSnap !== 'off') nextSnap = '1/4 in';
+        }
+        set({ units: nextUnits, gridSnap: nextSnap });
+        try {
+            const s = localStorage.getItem('lucey_save');
+            const p = s ? JSON.parse(s) : {};
+            p.units = nextUnits;
+            p.gridSnap = nextSnap;
+            localStorage.setItem('lucey_save', JSON.stringify(p));
+        } catch (e) {}
+    },
 
     gridSnap: loadState('gridSnap', '1/8 in'),
-    setGridSnap: (v) => set({ gridSnap: typeof v === 'function' ? v(get().gridSnap) : v }),
+    setGridSnap: (v) => {
+        const nextSnap = typeof v === 'function' ? v(get().gridSnap) : v;
+        set({ gridSnap: nextSnap });
+        try {
+            const s = localStorage.getItem('lucey_save');
+            const p = s ? JSON.parse(s) : {};
+            p.gridSnap = nextSnap;
+            localStorage.setItem('lucey_save', JSON.stringify(p));
+        } catch (e) {}
+    },
 
     workspaceSize: loadState('workspaceSize', 120),
     setWorkspaceSize: (v) => {

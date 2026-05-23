@@ -3,7 +3,7 @@ import { taperValidation, normalizeTaper } from '../../utils/geometryBuilders';
 import useStore from '../../store/useStore';
 
 const NewBoardDialog = () => {
-    const { newBoardDialog: dialog, setNewBoardDialog: setDialog, groups, handleNewBoardConfirm: onConfirm } = useStore();
+    const { newBoardDialog: dialog, setNewBoardDialog: setDialog, groups, handleNewBoardConfirm: onConfirm, units } = useStore();
     if (!dialog) return null;
 
     const shape = dialog.shape ?? 'box';
@@ -74,9 +74,13 @@ const NewBoardDialog = () => {
                     color: 'var(--text-muted)',
                 }}>
                     Bottom cross-section:{' '}
-                    <span style={{ color: xWarn ? '#ff3b30' : 'var(--text-main)', fontWeight: 600 }}>X' = {Math.max(0, xBottom).toFixed(3)}"</span>
+                    <span style={{ color: xWarn ? '#ff3b30' : 'var(--text-main)', fontWeight: 600 }}>
+                        X' = {units === 'metric' ? `${(Math.max(0, xBottom) * 25.4).toFixed(1)}mm` : `${Math.max(0, xBottom).toFixed(3)}"`}
+                    </span>
                     {' × '}
-                    <span style={{ color: zWarn ? '#ff3b30' : 'var(--text-main)', fontWeight: 600 }}>Z' = {Math.max(0, zBottom).toFixed(3)}"</span>
+                    <span style={{ color: zWarn ? '#ff3b30' : 'var(--text-main)', fontWeight: 600 }}>
+                        Z' = {units === 'metric' ? `${(Math.max(0, zBottom) * 25.4).toFixed(1)}mm` : `${Math.max(0, zBottom).toFixed(3)}"`}
+                    </span>
                 </div>
                 <p className="hint" style={{ marginTop: '5px' }}>
                     Top face is full size. Each side tapers inward independently. Size = bounding box.
@@ -145,30 +149,37 @@ const NewBoardDialog = () => {
                     {shape === 'cylinder' && (
                         <div style={{ marginTop: '10px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                             <div>
-                                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Radius (in)</div>
+                                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Radius ({units === 'metric' ? 'mm' : 'in'})</div>
                                 <input
-                                    type="number" min="0.0625" step="0.125" value={parseFloat(cylRadius.toFixed(4))}
+                                    type="number" min={units === 'metric' ? '1' : '0.0625'} step={units === 'metric' ? '1' : '0.125'} value={units === 'metric' ? parseFloat((cylRadius * 25.4).toFixed(2)) : parseFloat(cylRadius.toFixed(4))}
                                     onChange={e => {
-                                        const r = Math.max(0.0625, parseFloat(e.target.value) || 0.0625);
+                                        const val = parseFloat(e.target.value) || 0;
+                                        const r = units === 'metric' ? Math.max(1, val) / 25.4 : Math.max(0.0625, val);
                                         setDialog(p => ({ ...p, cylinder: { radius: r }, sizeX: r * 2, sizeZ: r * 2 }));
                                     }}
                                     style={{ width: '100%', padding: '5px 8px', background: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '6px', outline: 'none', fontSize: '0.9rem' }}
                                 />
-                                <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: '2px' }}>Diam: {(cylRadius * 2).toFixed(3)}"</div>
+                                <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                                    Diam: {units === 'metric' ? `${(cylRadius * 2 * 25.4).toFixed(1)}mm` : `${(cylRadius * 2).toFixed(3)}"`}
+                                </div>
                             </div>
                             <div>
-                                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Height (in)</div>
+                                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Height ({units === 'metric' ? 'mm' : 'in'})</div>
                                 <input
-                                    type="number" min="0.0625" step="0.125" value={parseFloat(cylHeight.toFixed(4))}
+                                    type="number" min={units === 'metric' ? '1' : '0.0625'} step={units === 'metric' ? '1' : '0.125'} value={units === 'metric' ? parseFloat((cylHeight * 25.4).toFixed(2)) : parseFloat(cylHeight.toFixed(4))}
                                     onChange={e => {
-                                        const h = Math.max(0.0625, parseFloat(e.target.value) || 0.0625);
+                                        const val = parseFloat(e.target.value) || 0;
+                                        const h = units === 'metric' ? Math.max(1, val) / 25.4 : Math.max(0.0625, val);
                                         setDialog(p => ({ ...p, sizeY: h, position: [p.position[0], h / 2, p.position[2]] }));
                                     }}
                                     style={{ width: '100%', padding: '5px 8px', background: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '6px', outline: 'none', fontSize: '0.9rem' }}
                                 />
                             </div>
                             <p className="hint" style={{ gridColumn: '1 / -1', marginTop: '0' }}>
-                                AABB: {(cylRadius*2).toFixed(3)}" × {cylHeight.toFixed(3)}" × {(cylRadius*2).toFixed(3)}" — used unchanged by constraints.
+                                AABB: {units === 'metric'
+                                    ? `${(cylRadius*2*25.4).toFixed(1)}mm × ${(cylHeight*25.4).toFixed(1)}mm × ${(cylRadius*2*25.4).toFixed(1)}mm`
+                                    : `${(cylRadius*2).toFixed(3)}" × ${cylHeight.toFixed(3)}" × ${(cylRadius*2).toFixed(3)}"`
+                                } — used unchanged by constraints.
                             </p>
                         </div>
                     )}
@@ -177,21 +188,21 @@ const NewBoardDialog = () => {
                 </div>
 
                 <div className="inspector-card" style={{ margin: 0 }}>
-                    <h4>Size (in) — Bounding Box</h4>
+                    <h4>Size ({units === 'metric' ? 'mm' : 'in'}) — Bounding Box</h4>
                     <div className="vec3-inputs">
-                        <div style={{ backgroundColor: 'rgba(255, 60, 60, 0.15)' }} title="X: width">X<input type="number" step="0.5" value={dialog.sizeX} onChange={e => { const v = parseFloat(e.target.value) || 0; setDialog(p => ({ ...p, sizeX: v })) }} /></div>
-                        <div style={{ backgroundColor: 'rgba(60, 200, 90, 0.15)' }} title="Y: height">Y<input type="number" step="0.5" value={dialog.sizeY} onChange={e => { const v = parseFloat(e.target.value) || 0; setDialog(p => ({ ...p, sizeY: v })) }} /></div>
-                        <div style={{ backgroundColor: 'rgba(60, 150, 255, 0.15)' }} title="Z: depth">Z<input type="number" step="0.5" value={dialog.sizeZ} onChange={e => { const v = parseFloat(e.target.value) || 0; setDialog(p => ({ ...p, sizeZ: v })) }} /></div>
+                        <div style={{ backgroundColor: 'rgba(255, 60, 60, 0.15)' }} title="X: width">X<input type="number" step={units === 'metric' ? '1' : '0.5'} value={units === 'metric' ? parseFloat((dialog.sizeX * 25.4).toFixed(2)) : dialog.sizeX} onChange={e => { const v = parseFloat(e.target.value) || 0; setDialog(p => ({ ...p, sizeX: units === 'metric' ? v / 25.4 : v })) }} /></div>
+                        <div style={{ backgroundColor: 'rgba(60, 200, 90, 0.15)' }} title="Y: height">Y<input type="number" step={units === 'metric' ? '1' : '0.5'} value={units === 'metric' ? parseFloat((dialog.sizeY * 25.4).toFixed(2)) : dialog.sizeY} onChange={e => { const v = parseFloat(e.target.value) || 0; setDialog(p => ({ ...p, sizeY: units === 'metric' ? v / 25.4 : v })) }} /></div>
+                        <div style={{ backgroundColor: 'rgba(60, 150, 255, 0.15)' }} title="Z: depth">Z<input type="number" step={units === 'metric' ? '1' : '0.5'} value={units === 'metric' ? parseFloat((dialog.sizeZ * 25.4).toFixed(2)) : dialog.sizeZ} onChange={e => { const v = parseFloat(e.target.value) || 0; setDialog(p => ({ ...p, sizeZ: units === 'metric' ? v / 25.4 : v })) }} /></div>
                     </div>
                     <p className="hint" style={{ marginTop: '4px' }}>X = Red (left/right) · Y = Green (height) · Z = Blue (depth)</p>
                 </div>
 
                 <div className="inspector-card" style={{ margin: 0 }}>
-                    <h4>Spawn Position (in)</h4>
+                    <h4>Spawn Position ({units === 'metric' ? 'mm' : 'in'})</h4>
                     <div className="vec3-inputs">
-                        <div style={{ backgroundColor: 'rgba(255, 60, 60, 0.15)' }}>X<input type="number" step="1" value={dialog.position[0]} onChange={e => { const v = parseFloat(e.target.value) || 0; setDialog(p => ({ ...p, position: [v, p.position[1], p.position[2]] })) }} /></div>
-                        <div style={{ backgroundColor: 'rgba(60, 200, 90, 0.15)' }}>Y<input type="number" step="1" value={dialog.position[1]} onChange={e => { const v = parseFloat(e.target.value) || 0; setDialog(p => ({ ...p, position: [p.position[0], v, p.position[2]] })) }} /></div>
-                        <div style={{ backgroundColor: 'rgba(60, 150, 255, 0.15)' }}>Z<input type="number" step="1" value={dialog.position[2]} onChange={e => { const v = parseFloat(e.target.value) || 0; setDialog(p => ({ ...p, position: [p.position[0], p.position[1], v] })) }} /></div>
+                        <div style={{ backgroundColor: 'rgba(255, 60, 60, 0.15)' }}>X<input type="number" step={units === 'metric' ? '10' : '1'} value={units === 'metric' ? parseFloat((dialog.position[0] * 25.4).toFixed(2)) : dialog.position[0]} onChange={e => { const v = parseFloat(e.target.value) || 0; setDialog(p => ({ ...p, position: [units === 'metric' ? v / 25.4 : v, p.position[1], p.position[2]] })) }} /></div>
+                        <div style={{ backgroundColor: 'rgba(60, 200, 90, 0.15)' }}>Y<input type="number" step={units === 'metric' ? '10' : '1'} value={units === 'metric' ? parseFloat((dialog.position[1] * 25.4).toFixed(2)) : dialog.position[1]} onChange={e => { const v = parseFloat(e.target.value) || 0; setDialog(p => ({ ...p, position: [p.position[0], units === 'metric' ? v / 25.4 : v, p.position[2]] })) }} /></div>
+                        <div style={{ backgroundColor: 'rgba(60, 150, 255, 0.15)' }}>Z<input type="number" step={units === 'metric' ? '10' : '1'} value={units === 'metric' ? parseFloat((dialog.position[2] * 25.4).toFixed(2)) : dialog.position[2]} onChange={e => { const v = parseFloat(e.target.value) || 0; setDialog(p => ({ ...p, position: [p.position[0], p.position[1], units === 'metric' ? v / 25.4 : v] })) }} /></div>
                     </div>
                 </div>
 
