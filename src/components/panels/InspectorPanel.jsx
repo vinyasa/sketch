@@ -938,6 +938,11 @@ const InspectorPanel = () => {
                 <div className="inspector-card">
                     <h4>Parent Node:</h4>
                     <div style={{ fontSize: '0.85rem', color: 'var(--text-main)', marginBottom: '8px' }}><strong>{selectedBoard.parentId}</strong></div>
+                    {groups[selectedBoard.parentId]?.meta?.builder && (
+                        <div style={{ marginTop: '12px', borderTop: '1px dashed var(--border-color)', paddingTop: '12px' }}>
+                            <ParametricControls groupId={selectedBoard.parentId} meta={groups[selectedBoard.parentId].meta} />
+                        </div>
+                    )}
                 </div>
                 {/* ── Hardware ── */}
                 <div className="inspector-card">

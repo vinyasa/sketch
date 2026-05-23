@@ -996,6 +996,7 @@ export const createAssemblySlice = (set, get) => ({
       parseNum(cfg.offsetZ, 0)
     ];
     let rootParent = 'Workspace';
+    const oldIdMap = {};
     if (isEditing) {
       const childBoards = collectChildBoards(rootGroupId, boards, groups);
       if (childBoards.length > 0) {
@@ -1003,6 +1004,14 @@ export const createAssemblySlice = (set, get) => ({
         offset = [aabb.minX, aabb.minY, aabb.minZ];
       }
       rootParent = groups[rootGroupId]?.parentId || 'Workspace';
+      childBoards.forEach(b => {
+        const parts = b.parentId.split(' ');
+        const drawerNum = parseInt(parts[parts.length - 1], 10);
+        if (!isNaN(drawerNum)) {
+          const drawerIndex = drawerNum - 1;
+          oldIdMap[drawerIndex + '_' + b.name] = b.id;
+        }
+      });
     }
     const newBoards = [];
     const newGroups = {};
@@ -1059,35 +1068,35 @@ export const createAssemblySlice = (set, get) => ({
         fW = boxW - tBox;
       }
       const bLeft = {
-        id: baseId++,
+        id: oldIdMap[i + '_Box Left'] || baseId++,
         name: `Box Left`,
         parentId: drawerGroupId,
         size: [tBox, boxH, boxD],
         position: [slideWidth + tBox / 2, boxCenterY, boxD / 2]
       };
       const bRight = {
-        id: baseId++,
+        id: oldIdMap[i + '_Box Right'] || baseId++,
         name: `Box Right`,
         parentId: drawerGroupId,
         size: [tBox, boxH, boxD],
         position: [W - slideWidth - tBox / 2, boxCenterY, boxD / 2]
       };
       const bFront = {
-        id: baseId++,
+        id: oldIdMap[i + '_Box Front'] || baseId++,
         name: `Box Front`,
         parentId: drawerGroupId,
         size: [fW, boxH, tBox],
         position: [W / 2, boxCenterY, boxD - tBox / 2]
       };
       const bBack = {
-        id: baseId++,
+        id: oldIdMap[i + '_Box Back'] || baseId++,
         name: `Box Back`,
         parentId: drawerGroupId,
         size: [fW, boxH, tBox],
         position: [W / 2, boxCenterY, tBox / 2]
       };
       const bBot = {
-        id: baseId++,
+        id: oldIdMap[i + '_Box Bottom'] || baseId++,
         name: `Box Bottom`,
         parentId: drawerGroupId,
         size: [boxW - tBox, tBot, boxD - tBox],
@@ -1109,7 +1118,7 @@ export const createAssemblySlice = (set, get) => ({
         specificFaceH = slotH;
       }
       const bFace = {
-        id: baseId++,
+        id: oldIdMap[i + '_Face'] || baseId++,
         name: `Face`,
         parentId: drawerGroupId,
         size: [faceW, specificFaceH, tFace],
