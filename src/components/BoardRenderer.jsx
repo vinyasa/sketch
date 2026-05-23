@@ -202,11 +202,76 @@ const _buildMiterTool = (size, op) => {
   pivot[fenceAxis] = fenceSign * size[fenceAxis] / 2;
   const shiftToPivot = new THREE.Matrix4().makeTranslation(pivot[0], pivot[1], pivot[2]);
 
-  // Transform chain (right-to-left)
-  const m = new THREE.Matrix4();
-  m.multiply(shiftToPivot).multiply(miterMatrix).multiply(bevelMatrix).multiply(shiftToOrigin);
   geo.applyMatrix4(m);
   return geo;
+};
+
+const _buildEdgeProfileTool = (size, op) => {
+  const { profile = 'roundover', edge = 'y+z+', radius = 0.25, width = 0.25 } = op;
+  
+  const match = edge.match(/^([xyz])([+-])([xyz])([+-])$/);
+  if (!match) return new THREE.BoxGeometry(0.01, 0.01, 0.01);
+  
+  const a1 = match[1];
+  const s1 = match[2] === '+' ? 1 : -1;
+  const a2 = match[3];
+  const s2 = match[4] === '+' ? 1 : -1;
+  
+  const axes = ['x', 'y', 'z'];
+  const a1Idx = axes.indexOf(a1);
+  const a2Idx = axes.indexOf(a2);
+  const runIdx = [0, 1, 2].find(i => i !== a1Idx && i !== a2Idx);
+  
+  const p1Idx = a1Idx;
+  const p2Idx = a2Idx;
+  
+  const hw1 = size[p1Idx] / 2;
+  const hw2 = size[p2Idx] / 2;
+  const L = size[runIdx];
+  const R = profile === 'roundover' ? Math.max(0.01, radius) : Math.max(0.01, width);
+  
+  const shape = new THREE.Shape();
+  const Cx = s1 * hw1;
+  const Cy = s2 * hw2;
+  
+  const Ax = s1 * (hw1 - R);
+  const Ay = s2 * hw2;
+  
+  const Bx = s1 * hw1;
+  const By = s2 * (hw2 - R);
+  
+  shape.moveTo(Ax, Ay);
+  shape.lineTo(Cx, Cy);
+  shape.lineTo(Bx, By);
+  
+  if (profile === 'roundover') {
+    const Ox = s1 * (hw1 - R);
+    const Oy = s2 * (hw2 - R);
+    const startAngle = Math.atan2(By - Oy, Bx - Ox);
+    const endAngle = Math.atan2(Ay - Oy, Ax - Ox);
+    const clockwise = (s1 * s2) < 0;
+    shape.absarc(Ox, Oy, R, startAngle, endAngle, clockwise);
+  } else {
+    shape.lineTo(Ax, Ay);
+  }
+  
+  const geom = new THREE.ExtrudeGeometry(shape, { depth: L + 2, bevelEnabled: false, curveSegments: 16 });
+  geom.translate(0, 0, -(L + 2) / 2);
+  
+  const v_p1 = [0, 0, 0]; v_p1[p1Idx] = 1;
+  const v_p2 = [0, 0, 0]; v_p2[p2Idx] = 1;
+  const v_run = [0, 0, 0]; v_run[runIdx] = 1;
+  
+  const matrix = new THREE.Matrix4();
+  matrix.set(
+    v_p1[0], v_p2[0], v_run[0], 0,
+    v_p1[1], v_p2[1], v_run[1], 0,
+    v_p1[2], v_p2[2], v_run[2], 0,
+    0,       0,       0,       1
+  );
+  
+  geom.applyMatrix4(matrix);
+  return geom;
 };
 
 const CSGGeometry = ({ b }) => {
@@ -254,13 +319,13 @@ const CSGGeometry = ({ b }) => {
       const activeOps = b.operations.filter(op => op.enabled !== false);
       if (activeOps.length === 0) return baseGeo;
 
-      const subOps    = activeOps.filter(op => op.type === 'hole' || op.type === 'dado' || op.type === 'miter' || op.type === 'subtract');
+      const subOps    = activeOps.filter(op => op.type === 'hole' || op.type === 'dado' || op.type === 'miter' || op.type === 'subtract' || op.type === 'edge-profile' || op.type === 'pocket-holes' || op.type === 'dowel-holes');
       const intersOps = activeOps.filter(op => op.type === 'arc' || op.type === 'cove');
 
       let resultBrush = new Brush(baseGeo);
       resultBrush.updateMatrixWorld();
 
-      // ── 1. Subtractions (holes) ────────────────────────────────────────────
+      // ── 1. Subtractions (holes / dados / miter / profiles / fasteners) ──────
       for (const op of subOps) {
         try {
           let opBrush;
@@ -297,6 +362,178 @@ const CSGGeometry = ({ b }) => {
           } else if (op.type === 'dado') {
             opBrush = new Brush(_buildDadoTool(b.size, op));
             opBrush.updateMatrixWorld();
+          } else if (op.type === 'edge-profile') {
+            opBrush = new Brush(_buildEdgeProfileTool(b.size, op));
+            opBrush.updateMatrixWorld();
+          } else if (op.type === 'pocket-holes') {
+            const { face = 'bottom', edge = 'left', count = 2, spacing = 'auto' } = op;
+            const faceMap = {
+              top:    { idx: 1, sign: 1 },
+              bottom: { idx: 1, sign: -1 },
+              front:  { idx: 2, sign: 1 },
+              back:   { idx: 2, sign: -1 },
+              right:  { idx: 0, sign: 1 },
+              left:   { idx: 0, sign: -1 }
+            };
+            const f = faceMap[face] || faceMap.bottom;
+            const faceIdx = f.idx;
+            const faceSign = f.sign;
+
+            const edgeMap = {
+              top:    { idx: 1, sign: 1 },
+              bottom: { idx: 1, sign: -1 },
+              front:  { idx: 2, sign: 1 },
+              back:   { idx: 2, sign: -1 },
+              right:  { idx: 0, sign: 1 },
+              left:   { idx: 0, sign: -1 }
+            };
+            const e = edgeMap[edge] || edgeMap.left;
+            const edgeIdx = e.idx;
+            const edgeSign = e.sign;
+
+            const spaceIdx = [0, 1, 2].find(i => i !== faceIdx && i !== edgeIdx);
+            if (spaceIdx !== undefined) {
+              const thickness = b.size[faceIdx];
+              const width = b.size[spaceIdx];
+
+              const coords = [];
+              if (count === 1) {
+                coords.push(0);
+              } else {
+                if (spacing === 'auto') {
+                  const margin = Math.min(2.0, width / 4);
+                  const span = width - 2 * margin;
+                  for (let i = 0; i < count; i++) {
+                    coords.push(-span / 2 + i * (span / (count - 1)));
+                  }
+                } else {
+                  const s = Math.max(0.5, parseFloat(spacing) || 2);
+                  const span = (count - 1) * s;
+                  for (let i = 0; i < count; i++) {
+                    coords.push(-span / 2 + i * s);
+                  }
+                }
+              }
+
+              const theta = 15 * Math.PI / 180;
+              const u = new THREE.Vector3(0, Math.sin(theta), -Math.cos(theta));
+              const L_pilot = 0.8;
+              const L_pocket = 2.0;
+
+              for (const x_space of coords) {
+                const pilotCyl = new THREE.CylinderGeometry(0.08, 0.08, L_pilot, 16);
+                pilotCyl.rotateX(-75 * Math.PI / 180);
+                const P_exit = new THREE.Vector3(0, -thickness / 2, 0);
+                const pilotCenter = P_exit.clone().addScaledVector(u, L_pilot / 2);
+                pilotCyl.translate(pilotCenter.x, pilotCenter.y, pilotCenter.z);
+
+                const pocketCyl = new THREE.CylinderGeometry(0.1875, 0.1875, L_pocket, 16);
+                pocketCyl.rotateX(-75 * Math.PI / 180);
+                const pocketCenter = P_exit.clone().addScaledVector(u, L_pilot + L_pocket / 2);
+                pocketCyl.translate(pocketCenter.x, pocketCenter.y, pocketCenter.z);
+
+                const v_x = [0, 0, 0]; v_x[spaceIdx] = 1;
+                const v_y = [0, 0, 0]; v_y[faceIdx] = faceSign;
+                const v_z = [0, 0, 0]; v_z[edgeIdx] = edgeSign;
+
+                const matrix = new THREE.Matrix4();
+                matrix.set(
+                  v_x[0], v_y[0], v_z[0], 0,
+                  v_x[1], v_y[1], v_z[1], 0,
+                  v_x[2], v_y[2], v_z[2], 0,
+                  0,      0,      0,      1
+                );
+
+                pilotCyl.applyMatrix4(matrix);
+                pocketCyl.applyMatrix4(matrix);
+
+                const pos = [0, 0, 0];
+                pos[spaceIdx] = x_space;
+                pos[faceIdx] = faceSign * b.size[faceIdx] / 2;
+                pos[edgeIdx] = edgeSign * b.size[edgeIdx] / 2;
+
+                pilotCyl.translate(pos[0], pos[1], pos[2]);
+                pocketCyl.translate(pos[0], pos[1], pos[2]);
+
+                const pilotBrush = new Brush(pilotCyl);
+                pilotBrush.updateMatrixWorld();
+                const prevGeo1 = resultBrush.geometry;
+                resultBrush = csgEvaluator.evaluate(resultBrush, pilotBrush, SUBTRACTION);
+                resultBrush.updateMatrixWorld();
+                if (prevGeo1 !== baseGeo) prevGeo1?.dispose();
+                pilotBrush.geometry?.dispose();
+
+                const pocketBrush = new Brush(pocketCyl);
+                pocketBrush.updateMatrixWorld();
+                const prevGeo2 = resultBrush.geometry;
+                resultBrush = csgEvaluator.evaluate(resultBrush, pocketBrush, SUBTRACTION);
+                resultBrush.updateMatrixWorld();
+                if (prevGeo2 !== baseGeo) prevGeo2?.dispose();
+                pocketBrush.geometry?.dispose();
+              }
+            }
+            continue;
+          } else if (op.type === 'dowel-holes') {
+            const { face = 'top', count = 2, radius = 0.1875, depth = 0.75, spacing = 'auto' } = op;
+            const faceMap = {
+              top:    { idx: 1, sign: 1 },
+              bottom: { idx: 1, sign: -1 },
+              front:  { idx: 2, sign: 1 },
+              back:   { idx: 2, sign: -1 },
+              right:  { idx: 0, sign: 1 },
+              left:   { idx: 0, sign: -1 }
+            };
+            const f = faceMap[face] || faceMap.top;
+            const faceIdx = f.idx;
+            const faceSign = f.sign;
+
+            const fa1 = (faceIdx + 1) % 3;
+            const fa2 = (faceIdx + 2) % 3;
+            const thinIdx = b.size[fa1] < b.size[fa2] ? fa1 : fa2;
+            const wideIdx = thinIdx === fa1 ? fa2 : fa1;
+
+            const W = b.size[wideIdx];
+
+            const coords = [];
+            if (count === 1) {
+              coords.push(0);
+            } else {
+              if (spacing === 'auto') {
+                const margin = Math.min(2.0, W / 4);
+                const span = W - 2 * margin;
+                for (let i = 0; i < count; i++) {
+                  coords.push(-span / 2 + i * (span / (count - 1)));
+                }
+              } else {
+                const s = Math.max(0.5, parseFloat(spacing) || 2);
+                const span = (count - 1) * s;
+                for (let i = 0; i < count; i++) {
+                  coords.push(-span / 2 + i * s);
+                }
+              }
+            }
+
+            for (const x_wide of coords) {
+              const cyl = new THREE.CylinderGeometry(radius, radius, depth, 32);
+              if (faceIdx === 0) cyl.rotateZ(Math.PI / 2);
+              else if (faceIdx === 2) cyl.rotateX(Math.PI / 2);
+
+              const pos = [0, 0, 0];
+              pos[thinIdx] = 0;
+              pos[wideIdx] = x_wide;
+              pos[faceIdx] = faceSign * (b.size[faceIdx] / 2 - depth / 2);
+
+              cyl.translate(pos[0], pos[1], pos[2]);
+
+              const opBrush = new Brush(cyl);
+              opBrush.updateMatrixWorld();
+              const prevGeometry = resultBrush.geometry;
+              resultBrush = csgEvaluator.evaluate(resultBrush, opBrush, SUBTRACTION);
+              resultBrush.updateMatrixWorld();
+              if (prevGeometry !== baseGeo) prevGeometry?.dispose();
+              opBrush.geometry?.dispose();
+            }
+            continue;
           } else {
             // Hole
             const axis = op.axis || 'y';

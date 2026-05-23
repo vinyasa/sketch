@@ -372,7 +372,7 @@ const ToolsPanel = () => {
 
             {/* ── Tool Type Buttons ── */}
             {selectedBoard ? (
-                <div className="inspector-card" style={{ display: 'flex', gap: '6px' }}>
+                <div className="inspector-card" style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                     <button
                         onClick={() => handleAddTool({ id: Date.now(), type: 'hole', radius: 1, offsetX: 0, offsetY: 0, axis: 'y' })}
                         style={addToolBtnStyle}
@@ -403,6 +403,24 @@ const ToolsPanel = () => {
                         onMouseEnter={e => e.target.style.background = 'rgba(188,138,95,0.12)'}
                         onMouseLeave={e => e.target.style.background = 'var(--bg-color)'}
                     >⊿ Miter</button>
+                    <button
+                        onClick={() => handleAddTool({ id: Date.now() + 5, type: 'pocket-holes', face: 'bottom', edge: 'left', count: 2, spacing: 'auto' })}
+                        style={addToolBtnStyle}
+                        onMouseEnter={e => e.target.style.background = 'rgba(188,138,95,0.12)'}
+                        onMouseLeave={e => e.target.style.background = 'var(--bg-color)'}
+                    >✙ Pocket</button>
+                    <button
+                        onClick={() => handleAddTool({ id: Date.now() + 6, type: 'dowel-holes', face: 'top', count: 2, radius: 0.1875, depth: 0.75, spacing: 'auto' })}
+                        style={addToolBtnStyle}
+                        onMouseEnter={e => e.target.style.background = 'rgba(188,138,95,0.12)'}
+                        onMouseLeave={e => e.target.style.background = 'var(--bg-color)'}
+                    >⚎ Dowels</button>
+                    <button
+                        onClick={() => handleAddTool({ id: Date.now() + 7, type: 'edge-profile', profile: 'roundover', edge: 'y+z+', radius: 0.25, width: 0.25 })}
+                        style={addToolBtnStyle}
+                        onMouseEnter={e => e.target.style.background = 'rgba(188,138,95,0.12)'}
+                        onMouseLeave={e => e.target.style.background = 'var(--bg-color)'}
+                    >⌸ Profile</button>
                 </div>
             ) : !canShowedgeJoint && (
                 <div className="hint" style={{ marginBottom: '14px' }}>Select a board to add or edit tools.</div>
@@ -414,7 +432,7 @@ const ToolsPanel = () => {
                     <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px' }}>Applied Tools</div>
                     {allOps.map((op) => {
                         const isNew = pendingIds.has(op.id);
-                        const icon = { hole: '◎', cove: '◡', arc: '◠', dado: '✂', miter: '⊿', subtract: '🔪' }[op.type] || '●';
+                        const icon = { hole: '◎', cove: '◡', arc: '◠', dado: '✂', miter: '⊿', subtract: '🔪', 'pocket-holes': '✙', 'dowel-holes': '⚎', 'edge-profile': '⌸' }[op.type] || '●';
                         const summary = getToolSummary(op);
                         return (
                             <div key={op.id} style={{
@@ -530,7 +548,7 @@ const ToolsPanel = () => {
                     setEditingToolOpId(null);
                 };
 
-                const icon = { hole: '◎', cove: '◡', arc: '◠', dado: '✂', miter: '⊿', subtract: '🔪' }[op.type] || '●';
+                const icon = { hole: '◎', cove: '◡', arc: '◠', dado: '✂', miter: '⊿', subtract: '🔪', 'pocket-holes': '✙', 'dowel-holes': '⚎', 'edge-profile': '⌸' }[op.type] || '●';
 
                 return (
                     <div className="inspector-card" style={{
@@ -795,6 +813,177 @@ const ToolsPanel = () => {
                             );
                         })()}
 
+                        {/* ── Pocket Holes Editor ── */}
+                        {op.type === 'pocket-holes' && (() => {
+                            const currentFace = displayOp.face || 'bottom';
+                            const perpEdges = getPerpDirections(currentFace);
+                            const currentEdge = perpEdges.includes(displayOp.edge) ? displayOp.edge : perpEdges[0];
+                            const isAutoSpacing = displayOp.spacing === 'auto';
+                            
+                            return (
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                                    <div>
+                                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Face</div>
+                                        <select value={currentFace} onChange={e => {
+                                            const nextFace = e.target.value;
+                                            const nextPerps = getPerpDirections(nextFace);
+                                            upd({ face: nextFace, edge: nextPerps[0] });
+                                        }} style={{ ...inputStyle, cursor: 'pointer' }}>
+                                            <option value="top">Top</option>
+                                            <option value="bottom">Bottom</option>
+                                            <option value="left">Left</option>
+                                            <option value="right">Right</option>
+                                            <option value="front">Front</option>
+                                            <option value="back">Back</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Pointing Toward</div>
+                                        <select value={currentEdge} onChange={e => upd({ edge: e.target.value })} style={{ ...inputStyle, cursor: 'pointer' }}>
+                                            {perpEdges.map(pe => (
+                                                <option key={pe} value={pe}>{pe.charAt(0).toUpperCase() + pe.slice(1)}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Hole Count</div>
+                                        <input type="number" min="1" step="1" value={displayOp.count ?? 2} onChange={e => upd({ count: Math.max(1, parseInt(e.target.value) || 2) })} style={inputStyle} />
+                                    </div>
+                                    <div>
+                                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Spacing Mode</div>
+                                        <select value={isAutoSpacing ? 'auto' : 'custom'} onChange={e => upd({ spacing: e.target.value === 'auto' ? 'auto' : 2 })} style={{ ...inputStyle, cursor: 'pointer' }}>
+                                            <option value="auto">Auto (Even)</option>
+                                            <option value="custom">Custom Spacing</option>
+                                        </select>
+                                    </div>
+                                    {!isAutoSpacing && (
+                                        <div style={{ gridColumn: '1 / -1' }}>
+                                            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Custom Spacing (in)</div>
+                                            <input type="number" min="0.5" step="0.25" value={parseFloat((displayOp.spacing ?? 2).toFixed(4))} onChange={e => upd({ spacing: Math.max(0.5, parseFloat(e.target.value) || 2) })} style={inputStyle} />
+                                        </div>
+                                    )}
+                                    <p className="hint" style={{ gridColumn: '1 / -1', marginTop: '0' }}>
+                                        Pocket holes are drilled at a 15° angle into the selected face, exiting exactly at the center of the pointing edge.
+                                    </p>
+                                </div>
+                            );
+                        })()}
+
+                        {/* ── Dowel Holes Editor ── */}
+                        {op.type === 'dowel-holes' && (() => {
+                            const isAutoSpacing = displayOp.spacing === 'auto';
+                            return (
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                                    <div style={{ gridColumn: '1 / -1' }}>
+                                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Edge Face</div>
+                                        <select value={displayOp.face || 'top'} onChange={e => upd({ face: e.target.value })} style={{ ...inputStyle, cursor: 'pointer' }}>
+                                            <option value="top">Top</option>
+                                            <option value="bottom">Bottom</option>
+                                            <option value="left">Left</option>
+                                            <option value="right">Right</option>
+                                            <option value="front">Front</option>
+                                            <option value="back">Back</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Hole Count</div>
+                                        <input type="number" min="1" step="1" value={displayOp.count ?? 2} onChange={e => upd({ count: Math.max(1, parseInt(e.target.value) || 2) })} style={inputStyle} />
+                                    </div>
+                                    <div>
+                                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Hole Radius (in)</div>
+                                        <input type="number" min="0.05" step="0.0625" value={parseFloat((displayOp.radius ?? 0.1875).toFixed(4))} onChange={e => upd({ radius: Math.max(0.01, parseFloat(e.target.value) || 0.1875) })} style={inputStyle} />
+                                    </div>
+                                    <div>
+                                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Hole Depth (in)</div>
+                                        <input type="number" min="0.1" step="0.125" value={parseFloat((displayOp.depth ?? 0.75).toFixed(4))} onChange={e => upd({ depth: Math.max(0.01, parseFloat(e.target.value) || 0.75) })} style={inputStyle} />
+                                    </div>
+                                    <div>
+                                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Spacing Mode</div>
+                                        <select value={isAutoSpacing ? 'auto' : 'custom'} onChange={e => upd({ spacing: e.target.value === 'auto' ? 'auto' : 2 })} style={{ ...inputStyle, cursor: 'pointer' }}>
+                                            <option value="auto">Auto (Even)</option>
+                                            <option value="custom">Custom Spacing</option>
+                                        </select>
+                                    </div>
+                                    {!isAutoSpacing && (
+                                        <div style={{ gridColumn: '1 / -1' }}>
+                                            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Custom Spacing (in)</div>
+                                            <input type="number" min="0.5" step="0.25" value={parseFloat((displayOp.spacing ?? 2).toFixed(4))} onChange={e => upd({ spacing: Math.max(0.5, parseFloat(e.target.value) || 2) })} style={inputStyle} />
+                                        </div>
+                                    )}
+                                    <p className="hint" style={{ gridColumn: '1 / -1', marginTop: '0' }}>
+                                        Dowel holes are blind holes centered along the thin axis centerline of the selected face and spaced out along the wide axis.
+                                    </p>
+                                </div>
+                            );
+                        })()}
+
+                        {/* ── Edge Profile Editor ── */}
+                        {op.type === 'edge-profile' && (() => {
+                            const isRoundover = (displayOp.profile || 'roundover') === 'roundover';
+                            
+                            const edgesList = [
+                                { val: 'y+z+', label: 'Top-Front Edge (X)' },
+                                { val: 'y+z-', label: 'Top-Back Edge (X)' },
+                                { val: 'y-z+', label: 'Bottom-Front Edge (X)' },
+                                { val: 'y-z-', label: 'Bottom-Back Edge (X)' },
+                                { val: 'z+x+', label: 'Front-Right Edge (Y)' },
+                                { val: 'z+x-', label: 'Front-Left Edge (Y)' },
+                                { val: 'z-x+', label: 'Back-Right Edge (Y)' },
+                                { val: 'z-x-', label: 'Back-Left Edge (Y)' },
+                                { val: 'x+y+', label: 'Top-Right Edge (Z)' },
+                                { val: 'x+y-', label: 'Bottom-Right Edge (Z)' },
+                                { val: 'x-y+', label: 'Top-Left Edge (Z)' },
+                                { val: 'x-y-', label: 'Bottom-Left Edge (Z)' },
+                            ];
+                            
+                            return (
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                                    <div style={{ gridColumn: '1 / -1' }}>
+                                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Profile Type</div>
+                                        <div style={{ display: 'flex', gap: '2px' }}>
+                                            {['roundover', 'chamfer'].map(p => {
+                                                const isActive = (displayOp.profile || 'roundover') === p;
+                                                return (
+                                                    <button key={p} onClick={() => upd({ profile: p })} style={{
+                                                        flex: 1, padding: '5px', fontSize: '0.8rem', borderRadius: '4px',
+                                                        border: isActive ? '1px solid var(--accent-color)' : '1px solid var(--border-color)',
+                                                        background: isActive ? 'rgba(188,138,95,0.25)' : 'rgba(255,255,255,0.04)',
+                                                        color: isActive ? '#fff' : 'var(--text-muted)', cursor: 'pointer',
+                                                        fontWeight: isActive ? 700 : 400, transition: 'all 0.15s',
+                                                        textTransform: 'capitalize'
+                                                    }}>{p}</button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                    <div style={{ gridColumn: '1 / -1' }}>
+                                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Select Edge</div>
+                                        <select value={displayOp.edge || 'y+z+'} onChange={e => upd({ edge: e.target.value })} style={{ ...inputStyle, cursor: 'pointer' }}>
+                                            {edgesList.map(item => (
+                                                <option key={item.val} value={item.val}>{item.label}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    {isRoundover ? (
+                                        <div style={{ gridColumn: '1 / -1' }}>
+                                            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Roundover Radius (in)</div>
+                                            <input type="number" min="0.0625" step="0.0625" value={parseFloat((displayOp.radius ?? 0.25).toFixed(4))} onChange={e => upd({ radius: Math.max(0.01, parseFloat(e.target.value) || 0.25) })} style={inputStyle} />
+                                            <input type="range" min="0.0625" max="2" step="0.0625" value={displayOp.radius ?? 0.25} onChange={e => upd({ radius: parseFloat(e.target.value) })} style={{ width: '100%', marginTop: '4px', accentColor: 'var(--accent-color)' }} />
+                                        </div>
+                                    ) : (
+                                        <div style={{ gridColumn: '1 / -1' }}>
+                                            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Chamfer Width (in)</div>
+                                            <input type="number" min="0.0625" step="0.0625" value={parseFloat((displayOp.width ?? 0.25).toFixed(4))} onChange={e => upd({ width: Math.max(0.01, parseFloat(e.target.value) || 0.25) })} style={inputStyle} />
+                                            <input type="range" min="0.0625" max="2" step="0.0625" value={displayOp.width ?? 0.25} onChange={e => upd({ width: parseFloat(e.target.value) })} style={{ width: '100%', marginTop: '4px', accentColor: 'var(--accent-color)' }} />
+                                        </div>
+                                    )}
+                                    <p className="hint" style={{ gridColumn: '1 / -1', marginTop: '0' }}>
+                                        Edge profiles apply a non-destructive {isRoundover ? 'radius roundover' : '45° bevel chamfer'} along the selected panel edge.
+                                    </p>
+                                </div>
+                            );
+                        })()}
+
                         {/* ── Subtract Editor ── */}
                         {op.type === 'subtract' && (
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '8px' }}>
@@ -897,9 +1086,39 @@ function getToolSummary(op) {
         }
         case 'subtract':
             return `Subtracting "${op.cutterName || 'unknown'}" · ${op.cutterShape || 'box'}`;
+        case 'pocket-holes':
+            return `${op.face || 'bottom'} face · pointing ${op.edge || 'left'} · count=${op.count ?? 2} · spacing=${op.spacing || 'auto'}`;
+        case 'dowel-holes':
+            return `${op.face || 'top'} face · count=${op.count ?? 2} · r=${(op.radius ?? 0.1875).toFixed(4)}" · depth=${(op.depth ?? 0.75).toFixed(2)}"`;
+        case 'edge-profile':
+            return `${op.profile === 'roundover' ? 'Roundover' : 'Chamfer'} on ${getEdgeProfileLabel(op.edge || 'y+z+')} · size=${op.profile === 'roundover' ? op.radius ?? 0.25 : op.width ?? 0.25}"`;
         default:
             return op.type;
     }
+}
+
+function getPerpDirections(f) {
+    if (f === 'top' || f === 'bottom') return ['left', 'right', 'front', 'back'];
+    if (f === 'left' || f === 'right') return ['top', 'bottom', 'front', 'back'];
+    return ['left', 'right', 'top', 'bottom'];
+}
+
+function getEdgeProfileLabel(e) {
+    const labels = {
+        'y+z+': 'Top-Front (X)',
+        'y+z-': 'Top-Back (X)',
+        'y-z+': 'Bottom-Front (X)',
+        'y-z-': 'Bottom-Back (X)',
+        'z+x+': 'Front-Right (Y)',
+        'z+x-': 'Front-Left (Y)',
+        'z-x+': 'Back-Right (Y)',
+        'z-x-': 'Back-Left (Y)',
+        'x+y+': 'Top-Right (Z)',
+        'x+y-': 'Bottom-Right (Z)',
+        'x-y+': 'Top-Left (Z)',
+        'x-y-': 'Bottom-Left (Z)',
+    };
+    return labels[e] || e;
 }
 
 function faceLabel(f) {
