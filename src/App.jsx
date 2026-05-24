@@ -112,8 +112,8 @@ export default function App() {
         if (autosaveInterval === 'off') return;
         const ms = parseInt(autosaveInterval, 10) * 60 * 1000;
         const id = setInterval(() => {
-            const { boards, groups, constraints, theme, units, gridSnap, defaultMaterial, showEdges, showDimensions, showBoundingBox, globalBounds, lighting, recentColors, autosaveInterval: ai, cameraState, measurements, showMeasurements, panelLayoutMode, workspaceLayout, lumberyardSnapEnabled } = useStore.getState();
-            const payload = { boards, groups, constraints, theme, units, gridSnap, defaultMaterial, showEdges, showDimensions, showBoundingBox, globalBounds, lighting, recentColors, autosaveInterval: ai, cameraState, measurements, showMeasurements, panelLayoutMode, workspaceLayout, lumberyardSnapEnabled };
+            const { boards, groups, constraints, theme, units, gridSnap, defaultMaterial, showEdges, showDimensions, showBoundingBox, globalBounds, lighting, recentColors, autosaveInterval: ai, cameraState, measurements, showMeasurements, panelLayoutMode, workspaceLayout, lumberyardSnapEnabled, measurementStyle } = useStore.getState();
+            const payload = { boards, groups, constraints, theme, units, gridSnap, defaultMaterial, showEdges, showDimensions, showBoundingBox, globalBounds, lighting, recentColors, autosaveInterval: ai, cameraState, measurements, showMeasurements, panelLayoutMode, workspaceLayout, lumberyardSnapEnabled, measurementStyle };
             localStorage.setItem('lucey_save', JSON.stringify(payload));
         }, ms);
         return () => clearInterval(id);

@@ -6,6 +6,7 @@ import { formatUnit } from '../utils/units';
 
 export function MeasureSnapPreview({ boards, measureMode }) {
   const measureHoverSnap = useStore(s => s.measureHoverSnap);
+  const measurementStyle = useStore(s => s.measurementStyle) || 'arrows';
   if (!measureMode?.active) return null;
 
   // Helper: localOffset → world position
@@ -76,20 +77,73 @@ export function MeasureSnapPreview({ boards, measureMode }) {
             <Line points={[wB, oB]} color="#ff9f0a" lineWidth={1} depthTest={false} renderOrder={4} />
             {/* Dimension line */}
             <Line points={[oA, oB]} color="#ff9f0a" lineWidth={2.5} depthTest={false} renderOrder={4} />
-            {/* End ticks */}
+            {/* End treatment based on style */}
             {(() => {
-              const tickDir = new THREE.Vector3(...dir);
-              const tickLen = 0.4;
-              const tA1 = [oA[0]-tickDir.x*tickLen, oA[1]-tickDir.y*tickLen, oA[2]-tickDir.z*tickLen];
-              const tA2 = [oA[0]+tickDir.x*tickLen, oA[1]+tickDir.y*tickLen, oA[2]+tickDir.z*tickLen];
-              const tB1 = [oB[0]-tickDir.x*tickLen, oB[1]-tickDir.y*tickLen, oB[2]-tickDir.z*tickLen];
-              const tB2 = [oB[0]+tickDir.x*tickLen, oB[1]+tickDir.y*tickLen, oB[2]+tickDir.z*tickLen];
-              return (
-                <>
-                  <Line points={[tA1, tA2]} color="#ff9f0a" lineWidth={1.5} depthTest={false} renderOrder={4} />
-                  <Line points={[tB1, tB2]} color="#ff9f0a" lineWidth={1.5} depthTest={false} renderOrder={4} />
-                </>
-              );
+              const tickDir = new THREE.Vector3(...dir).normalize();
+              const lineDir = new THREE.Vector3(oB[0]-oA[0], oB[1]-oA[1], oB[2]-oA[2]);
+              const lineLen = lineDir.length();
+              if (lineLen < 0.05) return null;
+              lineDir.normalize();
+
+              if (measurementStyle === 'arrows') {
+                const coneHeight = 0.45;
+                const coneRadius = 0.12;
+                const cA = [oA[0] + lineDir.x * (coneHeight / 2), oA[1] + lineDir.y * (coneHeight / 2), oA[2] + lineDir.z * (coneHeight / 2)];
+                const qA = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), lineDir.clone().negate());
+                const cB = [oB[0] - lineDir.x * (coneHeight / 2), oB[1] - lineDir.y * (coneHeight / 2), oB[2] - lineDir.z * (coneHeight / 2)];
+                const qB = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), lineDir);
+
+                return (
+                  <>
+                    <mesh position={cA} quaternion={qA} renderOrder={5} raycast={() => null}>
+                      <coneGeometry args={[coneRadius, coneHeight, 8]} />
+                      <meshBasicMaterial color="#ff9f0a" depthTest={false} />
+                    </mesh>
+                    <mesh position={cB} quaternion={qB} renderOrder={5} raycast={() => null}>
+                      <coneGeometry args={[coneRadius, coneHeight, 8]} />
+                      <meshBasicMaterial color="#ff9f0a" depthTest={false} />
+                    </mesh>
+                  </>
+                );
+              } else if (measurementStyle === 'slashes') {
+                const slashLen = 0.35;
+                const slashVec = new THREE.Vector3().addVectors(lineDir, tickDir).normalize().multiplyScalar(slashLen);
+                return (
+                  <>
+                    <Line points={[
+                      [oA[0]-slashVec.x, oA[1]-slashVec.y, oA[2]-slashVec.z],
+                      [oA[0]+slashVec.x, oA[1]+slashVec.y, oA[2]+slashVec.z]
+                    ]} color="#ff9f0a" lineWidth={2.5} depthTest={false} renderOrder={4} />
+                    <Line points={[
+                      [oB[0]-slashVec.x, oB[1]-slashVec.y, oB[2]-slashVec.z],
+                      [oB[0]+slashVec.x, oB[1]+slashVec.y, oB[2]+slashVec.z]
+                    ]} color="#ff9f0a" lineWidth={2.5} depthTest={false} renderOrder={4} />
+                  </>
+                );
+              } else {
+                // Classic spheres with perpendicular ticks
+                const tickLen = 0.4;
+                return (
+                  <>
+                    <Line points={[
+                      [oA[0]-tickDir.x*tickLen, oA[1]-tickDir.y*tickLen, oA[2]-tickDir.z*tickLen],
+                      [oA[0]+tickDir.x*tickLen, oA[1]+tickDir.y*tickLen, oA[2]+tickDir.z*tickLen]
+                    ]} color="#ff9f0a" lineWidth={1.5} depthTest={false} renderOrder={4} />
+                    <Line points={[
+                      [oB[0]-tickDir.x*tickLen, oB[1]-tickDir.y*tickLen, oB[2]-tickDir.z*tickLen],
+                      [oB[0]+tickDir.x*tickLen, oB[1]+tickDir.y*tickLen, oB[2]+tickDir.z*tickLen]
+                    ]} color="#ff9f0a" lineWidth={1.5} depthTest={false} renderOrder={4} />
+                    <mesh position={oA} renderOrder={5} raycast={() => null}>
+                      <sphereGeometry args={[0.2, 8, 8]} />
+                      <meshBasicMaterial color="#ff9f0a" depthTest={false} />
+                    </mesh>
+                    <mesh position={oB} renderOrder={5} raycast={() => null}>
+                      <sphereGeometry args={[0.2, 8, 8]} />
+                      <meshBasicMaterial color="#ff9f0a" depthTest={false} />
+                    </mesh>
+                  </>
+                );
+              }
             })()}
             <Billboard position={mid}>
               <Text fontSize={0.9} color="#ff9f0a" anchorX="center" anchorY="bottom" renderOrder={5} material-depthTest={false} outlineWidth={0.04} outlineColor="#000000">

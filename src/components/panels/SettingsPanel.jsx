@@ -17,7 +17,8 @@ const SettingsPanel = () => {
         showToast,
         panelLayoutMode, setPanelLayoutMode,
         workspaceLayout, setWorkspaceLayout,
-        lumberyardSnapEnabled, setLumberyardSnapEnabled
+        lumberyardSnapEnabled, setLumberyardSnapEnabled,
+        measurementStyle, setMeasurementStyle
     } = useStore();
     const [confirmWipe, setConfirmWipe] = useState(false);
 
@@ -144,12 +145,22 @@ const SettingsPanel = () => {
                 <p className="hint" style={hintStyle}>Renders high-contrast boundary lines.</p>
             </div>
 
-            <div className="inspector-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+             <div className="inspector-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
                 <label style={checkboxLabelStyle}>
                     <input type="checkbox" checked={showMeasurements} onChange={(e) => setShowMeasurements(e.target.checked)} style={checkboxInputStyle} />
                     Show Dimensions
                 </label>
                 <p className="hint" style={hintStyle}>Renders 3D dimension lines in the viewport.</p>
+            </div>
+
+            <div className="inspector-card">
+                <label style={labelStyle}>Dimension End Style</label>
+                <select value={measurementStyle || 'arrows'} onChange={(e) => setMeasurementStyle(e.target.value)} style={selectStyle}>
+                    <option value="arrows" style={optionStyle}>Solid Arrowheads (Modern Drafting)</option>
+                    <option value="slashes" style={optionStyle}>Architectural Slashes (45° Ticks)</option>
+                    <option value="spheres" style={optionStyle}>Standard Balls (Classic spheres)</option>
+                </select>
+                <p className="hint" style={hintStyle}>End treatment for measurement lines.</p>
             </div>
 
             <div className="inspector-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>

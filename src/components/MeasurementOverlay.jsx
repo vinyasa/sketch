@@ -7,6 +7,7 @@ import { formatUnit } from '../utils/units';
 export function MeasurementOverlay({ boards, selectedItemIds, showMeasurements, measurements, units, theme }) {
   const printCapture = useStore(s => s.printCapture);
   const isPrinting = !!printCapture;
+  const measurementStyle = useStore(s => s.measurementStyle) || 'arrows';
 
   // During print: hide auto-dims always; show custom measurements only if showDims is checked
   if (!showMeasurements && !isPrinting) return null;
@@ -127,32 +128,79 @@ export function MeasurementOverlay({ boards, selectedItemIds, showMeasurements, 
             )}
             {/* Main dimension line (at offset position) */}
             <Line points={[oA, oB]} color={color} lineWidth={isActive ? 3.5 : 2.5} depthTest={false} renderOrder={4} />
-            {/* End ticks perpendicular to the line */}
+            {/* End treatment based on style */}
             {(() => {
-              const tickDir = new THREE.Vector3(...dir);
-              const tickLen = 0.4;
-              return (
-                <>
-                  <Line points={[
-                    [oA[0]-tickDir.x*tickLen, oA[1]-tickDir.y*tickLen, oA[2]-tickDir.z*tickLen],
-                    [oA[0]+tickDir.x*tickLen, oA[1]+tickDir.y*tickLen, oA[2]+tickDir.z*tickLen]
-                  ]} color={color} lineWidth={1.5} depthTest={false} renderOrder={4} />
-                  <Line points={[
-                    [oB[0]-tickDir.x*tickLen, oB[1]-tickDir.y*tickLen, oB[2]-tickDir.z*tickLen],
-                    [oB[0]+tickDir.x*tickLen, oB[1]+tickDir.y*tickLen, oB[2]+tickDir.z*tickLen]
-                  ]} color={color} lineWidth={1.5} depthTest={false} renderOrder={4} />
-                </>
-              );
+              const tickDir = new THREE.Vector3(...dir).normalize();
+              const lineDir = new THREE.Vector3(oB[0]-oA[0], oB[1]-oA[1], oB[2]-oA[2]);
+              const lineLen = lineDir.length();
+              if (lineLen < 0.05) return null;
+              lineDir.normalize();
+
+              if (measurementStyle === 'arrows') {
+                const coneHeight = 0.45;
+                const coneRadius = 0.12;
+                // At oA, cone points pointing towards oA (direction is -lineDir)
+                // Center is oA + lineDir * (coneHeight / 2)
+                const cA = [oA[0] + lineDir.x * (coneHeight / 2), oA[1] + lineDir.y * (coneHeight / 2), oA[2] + lineDir.z * (coneHeight / 2)];
+                const qA = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), lineDir.clone().negate());
+
+                // At oB, cone points pointing towards oB (direction is lineDir)
+                // Center is oB - lineDir * (coneHeight / 2)
+                const cB = [oB[0] - lineDir.x * (coneHeight / 2), oB[1] - lineDir.y * (coneHeight / 2), oB[2] - lineDir.z * (coneHeight / 2)];
+                const qB = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), lineDir);
+
+                return (
+                  <>
+                    <mesh position={cA} quaternion={qA} renderOrder={5} raycast={() => null}>
+                      <coneGeometry args={[coneRadius, coneHeight, 8]} />
+                      <meshBasicMaterial color={color} depthTest={false} />
+                    </mesh>
+                    <mesh position={cB} quaternion={qB} renderOrder={5} raycast={() => null}>
+                      <coneGeometry args={[coneRadius, coneHeight, 8]} />
+                      <meshBasicMaterial color={color} depthTest={false} />
+                    </mesh>
+                  </>
+                );
+              } else if (measurementStyle === 'slashes') {
+                const slashLen = 0.35;
+                const slashVec = new THREE.Vector3().addVectors(lineDir, tickDir).normalize().multiplyScalar(slashLen);
+                return (
+                  <>
+                    <Line points={[
+                      [oA[0]-slashVec.x, oA[1]-slashVec.y, oA[2]-slashVec.z],
+                      [oA[0]+slashVec.x, oA[1]+slashVec.y, oA[2]+slashVec.z]
+                    ]} color={color} lineWidth={2.5} depthTest={false} renderOrder={4} />
+                    <Line points={[
+                      [oB[0]-slashVec.x, oB[1]-slashVec.y, oB[2]-slashVec.z],
+                      [oB[0]+slashVec.x, oB[1]+slashVec.y, oB[2]+slashVec.z]
+                    ]} color={color} lineWidth={2.5} depthTest={false} renderOrder={4} />
+                  </>
+                );
+              } else {
+                // Classic spheres with perpendicular ticks
+                const tickLen = 0.4;
+                return (
+                  <>
+                    <Line points={[
+                      [oA[0]-tickDir.x*tickLen, oA[1]-tickDir.y*tickLen, oA[2]-tickDir.z*tickLen],
+                      [oA[0]+tickDir.x*tickLen, oA[1]+tickDir.y*tickLen, oA[2]+tickDir.z*tickLen]
+                    ]} color={color} lineWidth={1.5} depthTest={false} renderOrder={4} />
+                    <Line points={[
+                      [oB[0]-tickDir.x*tickLen, oB[1]-tickDir.y*tickLen, oB[2]-tickDir.z*tickLen],
+                      [oB[0]+tickDir.x*tickLen, oB[1]+tickDir.y*tickLen, oB[2]+tickDir.z*tickLen]
+                    ]} color={color} lineWidth={1.5} depthTest={false} renderOrder={4} />
+                    <mesh position={oA} renderOrder={5} raycast={() => null}>
+                      <sphereGeometry args={[0.2, 8, 8]} />
+                      <meshBasicMaterial color={color} depthTest={false} />
+                    </mesh>
+                    <mesh position={oB} renderOrder={5} raycast={() => null}>
+                      <sphereGeometry args={[0.2, 8, 8]} />
+                      <meshBasicMaterial color={color} depthTest={false} />
+                    </mesh>
+                  </>
+                );
+              }
             })()}
-            {/* Endpoint spheres */}
-            <mesh position={oA} renderOrder={5} raycast={() => null}>
-              <sphereGeometry args={[0.2, 8, 8]} />
-              <meshBasicMaterial color={color} depthTest={false} />
-            </mesh>
-            <mesh position={oB} renderOrder={5} raycast={() => null}>
-              <sphereGeometry args={[0.2, 8, 8]} />
-              <meshBasicMaterial color={color} depthTest={false} />
-            </mesh>
             {/* Label at offset midpoint */}
             <Billboard position={mid}>
               <Text fontSize={textSize * 1.1} color={color} anchorX="center" anchorY="bottom" renderOrder={5} material-depthTest={false} outlineWidth={0.04} outlineColor="#000000">

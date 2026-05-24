@@ -427,6 +427,19 @@ const useStore = create((set, get) => ({
     showMeasurements: loadState('showMeasurements', true),
     setShowMeasurements: (v) => set({ showMeasurements: typeof v === 'function' ? v(get().showMeasurements) : v }),
 
+    // Measurement line end style ('arrows', 'slashes', or 'spheres')
+    measurementStyle: loadState('measurementStyle', 'arrows'),
+    setMeasurementStyle: (v) => {
+        const next = typeof v === 'function' ? v(get().measurementStyle) : v;
+        set({ measurementStyle: next });
+        try {
+            const s = localStorage.getItem('lucey_save');
+            const p = s ? JSON.parse(s) : {};
+            p.measurementStyle = next;
+            localStorage.setItem('lucey_save', JSON.stringify(p));
+        } catch (e) {}
+    },
+
     // Which measurement is selected (for deletion)
     selectedMeasurementId: null,
     setSelectedMeasurementId: (v) => set({ selectedMeasurementId: v }),
