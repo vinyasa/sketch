@@ -54,7 +54,7 @@ const ParametricControls = ({ groupId, meta }) => {
 
     const renderInput = (key, label, customStep, customMin) => {
         const step = customStep !== undefined ? customStep : defaultStep;
-        const min = customMin !== undefined ? customMin : (units === 'metric' ? 1.5 : 0.0625);
+        const min = customMin !== undefined ? customMin : 0;
         
         let displayVal = params[key] ?? '';
         if (units === 'metric' && key !== 'count' && displayVal !== '') {

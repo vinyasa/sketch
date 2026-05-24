@@ -1,7 +1,9 @@
 import React, { useMemo, useEffect, Suspense, useState } from 'react';
+import { useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useTexture, useGLTF, Edges, Html, Line } from '@react-three/drei';
 import useStore from '../store/useStore';
+import { checkConstraintConflict } from '../utils/constraintSolver';
 import { computeWorldAABB, collectChildBoards, calculateGroupAABB } from '../utils/sceneGraph';
 import { formatUnit, getGridStep } from '../utils/units';
 import { WOOD_CATALOGUE, WOOD_TEXTURE_URLS, normalizeMaterial } from '../utils/materialCatalogue';
@@ -432,16 +434,22 @@ const CSGGeometry = ({ b }) => {
                 const pocketCenter = P_exit.clone().addScaledVector(u, L_pilot + L_pocket / 2);
                 pocketCyl.translate(pocketCenter.x, pocketCenter.y, pocketCenter.z);
 
-                const v_x = [0, 0, 0]; v_x[spaceIdx] = 1;
-                const v_y = [0, 0, 0]; v_y[faceIdx] = faceSign;
-                const v_z = [0, 0, 0]; v_z[edgeIdx] = edgeSign;
+                const v_y_vec = new THREE.Vector3();
+                v_y_vec.setComponent(faceIdx, faceSign);
+
+                const v_z_vec = new THREE.Vector3();
+                v_z_vec.setComponent(edgeIdx, edgeSign);
+
+                // Use cross product to ensure a right-handed coordinate system (determinant = +1).
+                // This prevents mirror reflection rendering issues and CSG subtraction bugs when directions change.
+                const v_x_vec = new THREE.Vector3().crossVectors(v_y_vec, v_z_vec);
 
                 const matrix = new THREE.Matrix4();
                 matrix.set(
-                  v_x[0], v_y[0], v_z[0], 0,
-                  v_x[1], v_y[1], v_z[1], 0,
-                  v_x[2], v_y[2], v_z[2], 0,
-                  0,      0,      0,      1
+                  v_x_vec.x, v_y_vec.x, v_z_vec.x, 0,
+                  v_x_vec.y, v_y_vec.y, v_z_vec.y, 0,
+                  v_x_vec.z, v_y_vec.z, v_z_vec.z, 0,
+                  0,         0,         0,         1
                 );
 
                 pilotCyl.applyMatrix4(matrix);
@@ -474,7 +482,9 @@ const CSGGeometry = ({ b }) => {
             }
             continue;
           } else if (op.type === 'dowel-holes') {
-            const { face = 'top', count = 2, radius = 0.1875, depth = 0.75, spacing = 'auto' } = op;
+            const { face = 'top', count = 2, depth = 0.75, spacing = 'auto' } = op;
+            const diameter = op.diameter ?? (op.radius ? op.radius * 2 : 0.375);
+            const radius = diameter / 2;
             const faceMap = {
               top:    { idx: 1, sign: 1 },
               bottom: { idx: 1, sign: -1 },
@@ -778,6 +788,224 @@ const HardwareAttachment = ({ hw, boardSize, boardId }) => {
 const BoardMesh = ({ b, selectedItemIds, toggleSelection, textures, showEdges, constraintTargetMode, hoveredFaceData, setHoveredFaceData, modifierActive }) => {
   if (b.visible === false) return null;
   const isSelected = selectedItemIds.includes(b.id.toString());
+  
+  const boards = useStore(s => s.boards);
+  const dKeyPressed = useStore(s => s.dKeyPressed);
+  const [draggingInfo, setDraggingInfo] = useState(null);
+  const [snappedAxes, setSnappedAxes] = useState({ x: false, y: false, z: false });
+  const isSnapped = snappedAxes.x || snappedAxes.y || snappedAxes.z;
+  const { camera, gl } = useThree();
+
+  useEffect(() => {
+    if (draggingInfo) {
+      document.body.style.cursor = 'grabbing';
+    } else if (dKeyPressed && isSelected) {
+      document.body.style.cursor = 'grab';
+    } else {
+      document.body.style.cursor = 'auto';
+    }
+    return () => {
+      document.body.style.cursor = 'auto';
+    };
+  }, [dKeyPressed, isSelected, draggingInfo]);
+
+  useEffect(() => {
+    if (!draggingInfo) return;
+
+    const raycaster = new THREE.Raycaster();
+
+    const onMove = (e) => {
+      const rect = gl.domElement.getBoundingClientRect();
+      const ndc = new THREE.Vector2(
+        ((e.clientX - rect.left) / rect.width) * 2 - 1,
+        -((e.clientY - rect.top) / rect.height) * 2 + 1
+      );
+      raycaster.setFromCamera(ndc, camera);
+
+      const intersection = new THREE.Vector3();
+      if (raycaster.ray.intersectPlane(draggingInfo.plane, intersection)) {
+        const delta = intersection.clone().sub(draggingInfo.startPoint);
+
+        const newPos = [
+          draggingInfo.initialPosition[0] + delta.x,
+          draggingInfo.initialPosition[1] + delta.y,
+          draggingInfo.initialPosition[2] + delta.z
+        ];
+
+        const snapThreshold = 1.0; // 1 inch snapping threshold
+        let snappedPos = [...newPos];
+        const activeSnaps = { x: false, y: false, z: false };
+
+        for (let axis = 0; axis < 3; axis++) {
+          let closestSnapDelta = Infinity;
+          let targetSnapVal = null;
+
+          const b_size = b.size[axis];
+          const b_pos = newPos[axis];
+
+          const b_faces = [
+            { name: 'min', val: b_pos - b_size / 2, offset: b_size / 2 },
+            { name: 'center', val: b_pos, offset: 0 },
+            { name: 'max', val: b_pos + b_size / 2, offset: -b_size / 2 }
+          ];
+
+          for (const other of boards) {
+            if (other.id === b.id) continue;
+            if (other.visible === false) continue;
+
+            const o_size = other.size[axis];
+            const o_pos = other.position[axis];
+
+            const o_faces = [
+              { name: 'min', val: o_pos - o_size / 2 },
+              { name: 'center', val: o_pos },
+              { name: 'max', val: o_pos + o_size / 2 }
+            ];
+
+            for (const bf of b_faces) {
+              for (const ofc of o_faces) {
+                const diff = bf.val - ofc.val;
+                if (Math.abs(diff) < snapThreshold && Math.abs(diff) < Math.abs(closestSnapDelta)) {
+                  closestSnapDelta = diff;
+                  targetSnapVal = ofc.val + bf.offset;
+                }
+              }
+            }
+          }
+
+          if (targetSnapVal !== null) {
+            snappedPos[axis] = targetSnapVal;
+            if (axis === 0) activeSnaps.x = true;
+            if (axis === 1) activeSnaps.y = true;
+            if (axis === 2) activeSnaps.z = true;
+          }
+        }
+
+        setSnappedAxes(activeSnaps);
+
+        const { setBoards } = useStore.getState();
+        setBoards(boards.map(bd => {
+          if (bd.id === b.id) {
+            return { ...bd, position: snappedPos };
+          }
+          return bd;
+        }));
+      }
+    };
+
+    const onUp = (e) => {
+      try { gl.domElement.releasePointerCapture(draggingInfo.pointerId); } catch (_) {}
+
+      const { constraints, setConstraints, showToast, pushHistory } = useStore.getState();
+      let addedConstraintCount = 0;
+
+      const axisFaces = [
+        { min: 'x-', center: 'center', max: 'x+' },
+        { min: 'y-', center: 'center', max: 'y+' },
+        { min: 'z-', center: 'center', max: 'z+' }
+      ];
+
+      let newConstraints = { ...constraints };
+
+      for (let axis = 0; axis < 3; axis++) {
+        const b_size = b.size[axis];
+        const b_pos = b.position[axis];
+
+        for (const other of boards) {
+          if (other.id === b.id) continue;
+          if (other.visible === false) continue;
+
+          const o_size = other.size[axis];
+          const o_pos = other.position[axis];
+
+          const b_min = b_pos - b_size / 2;
+          const b_max = b_pos + b_size / 2;
+          const o_min = o_pos - o_size / 2;
+          const o_max = o_pos + o_size / 2;
+
+          let faceA = null;
+          let faceB = null;
+
+          if (Math.abs(b_min - o_max) < 0.005) {
+            faceA = axisFaces[axis].min;
+            faceB = axisFaces[axis].max;
+          } else if (Math.abs(b_max - o_min) < 0.005) {
+            faceA = axisFaces[axis].max;
+            faceB = axisFaces[axis].min;
+          } else if (Math.abs(b_min - o_min) < 0.005) {
+            faceA = axisFaces[axis].min;
+            faceB = axisFaces[axis].min;
+          } else if (Math.abs(b_max - o_max) < 0.005) {
+            faceA = axisFaces[axis].max;
+            faceB = axisFaces[axis].max;
+          }
+
+          if (faceA && faceB) {
+            const proposed = {
+              type: 'Flush',
+              boardAId: b.id.toString(),
+              boardBId: other.id.toString(),
+              faceA,
+              faceB,
+              axis,
+              enabled: true
+            };
+
+            const exists = Object.values(newConstraints).some(c =>
+              c.type === 'Flush' &&
+              c.boardAId === proposed.boardAId &&
+              c.boardBId === proposed.boardBId &&
+              c.axis === proposed.axis
+            );
+
+            if (!exists) {
+              const conflict = checkConstraintConflict(proposed, newConstraints, boards);
+              if (!conflict) {
+                const cId = 'flush_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
+                newConstraints[cId] = proposed;
+                addedConstraintCount++;
+              }
+            }
+          }
+        }
+      }
+
+      if (addedConstraintCount > 0) {
+        pushHistory();
+        setConstraints(newConstraints);
+        showToast(`🧲 Virtual Glue: Added ${addedConstraintCount} relational alignment constraints.`);
+      }
+
+      setDraggingInfo(null);
+      setSnappedAxes({ x: false, y: false, z: false });
+    };
+
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+  }, [draggingInfo, boards, b, gl, camera]);
+
+  const handleDragPointerDown = (e) => {
+    if (!dKeyPressed) return;
+    e.stopPropagation();
+    gl.domElement.setPointerCapture(e.pointerId);
+
+    const dragPlane = new THREE.Plane();
+    const normal = new THREE.Vector3();
+    e.camera.getWorldDirection(normal);
+    normal.negate(); // face the camera
+    dragPlane.setFromNormalAndCoplanarPoint(normal, e.point);
+
+    setDraggingInfo({
+      initialPosition: [...b.position],
+      startPoint: e.point.clone(),
+      plane: dragPlane,
+      pointerId: e.pointerId
+    });
+  };
 
   // Pivot offset in LOCAL board space (default [0,0,0] = center)
   const pivot = b.pivot || [0, 0, 0];
@@ -844,6 +1072,10 @@ const BoardMesh = ({ b, selectedItemIds, toggleSelection, textures, showEdges, c
           toggleSelection(b.id.toString(), e.shiftKey || e.ctrlKey || e.metaKey, faceStr);
         }}
         onPointerDown={(e) => {
+          if (dKeyPressed) {
+            handleDragPointerDown(e);
+            return;
+          }
           // ── Measure Mode: second point starts drag ──
           const { measureMode, setMeasureMode } = useStore.getState();
           if (measureMode?.active && measureMode.firstPoint && !measureMode.dragging) {
@@ -967,6 +1199,7 @@ const BoardMesh = ({ b, selectedItemIds, toggleSelection, textures, showEdges, c
           }
         }}
         onPointerOut={(e) => {
+          if (draggingInfo) return; // skip pointer out when dragging
           // Clear measure and pivot hover snap when leaving this board
           const { measureMode: mm, setMeasureHoverSnap, pivotMode, setPivotHoverSnap } = useStore.getState();
           if (mm?.active) setMeasureHoverSnap(null);
@@ -975,14 +1208,15 @@ const BoardMesh = ({ b, selectedItemIds, toggleSelection, textures, showEdges, c
             setHoveredFaceData(null);
           }
         }}
+        onPointerUp={null}
       >
         <CSGGeometry b={b} />
         {(() => {
           const matDesc = normalizeMaterial(b.material);
           const matKey = matDesc.type === 'color' ? `color-${matDesc.hex}` : `wood-${matDesc.id}`;
           const commonProps = {
-            emissive: isSelected ? '#bc8a5f' : '#000000',
-            emissiveIntensity: isSelected ? 0.4 : 0,
+            emissive: isSelected ? (dKeyPressed ? (isSnapped ? '#22c55e' : '#00f3ff') : '#bc8a5f') : '#000000',
+            emissiveIntensity: isSelected ? (dKeyPressed ? 0.75 : 0.4) : 0,
           };
           if (matDesc.type === 'color') {
             return (
@@ -1005,7 +1239,7 @@ const BoardMesh = ({ b, selectedItemIds, toggleSelection, textures, showEdges, c
             />
           );
         })()}
-        {showEdges && <Edges scale={1} threshold={15} color={isSelected ? '#ffffff' : '#222222'} />}
+        {showEdges && <Edges scale={1} threshold={15} color={isSelected ? (dKeyPressed ? (isSnapped ? '#22c55e' : '#00f3ff') : '#ffffff') : '#222222'} />}
         {/* Axes helper on the mesh (at board center, not pivot) */}
         {isSelected && <axesHelper args={[Math.max(...b.size) * 0.75 + 2.25]} />}
         {((isSelected || (constraintTargetMode && constraintTargetMode.active)) && hoveredFaceData && hoveredFaceData.id === b.id.toString()) && (() => {

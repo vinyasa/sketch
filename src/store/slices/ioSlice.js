@@ -52,8 +52,10 @@ export const createIoSlice = (set, get) => ({
       showMeasurements,
       recentFiles,
       setRecentFiles,
-      setCurrentFileName,
-      showToast
+      showToast,
+      panelLayoutMode,
+      workspaceLayout,
+      lumberyardSnapEnabled
     } = get();
     let name = "My Design";
     if (customName) {
@@ -78,7 +80,10 @@ export const createIoSlice = (set, get) => ({
       autosaveInterval,
       cameraState,
       measurements,
-      showMeasurements
+      showMeasurements,
+      panelLayoutMode,
+      workspaceLayout,
+      lumberyardSnapEnabled
     };
     localStorage.setItem('lucey_save_' + name, JSON.stringify(payload));
     // Also update the active autosave buffer so manual saves survive page reloads immediately
@@ -113,7 +118,10 @@ export const createIoSlice = (set, get) => ({
       setAutosaveInterval,
       setCurrentFileName,
       setMeasurements,
-      setShowMeasurements
+      setShowMeasurements,
+      setPanelLayoutMode,
+      setWorkspaceLayout,
+      setLumberyardSnapEnabled
     } = get();
     const key = name ? 'lucey_save_' + name : 'lucey_save';
     const s = localStorage.getItem(key);
@@ -149,6 +157,9 @@ export const createIoSlice = (set, get) => ({
           if (p.cameraState) get().setCameraState(p.cameraState);
           if (p.measurements) setMeasurements(p.measurements);
           if (p.showMeasurements !== undefined) setShowMeasurements(p.showMeasurements);
+          if (p.panelLayoutMode && setPanelLayoutMode) setPanelLayoutMode(p.panelLayoutMode);
+          if (p.workspaceLayout && setWorkspaceLayout) setWorkspaceLayout(p.workspaceLayout);
+          if (p.lumberyardSnapEnabled !== undefined && setLumberyardSnapEnabled) setLumberyardSnapEnabled(p.lumberyardSnapEnabled);
           if (name) setCurrentFileName(name);
         }
       } catch (e) {}

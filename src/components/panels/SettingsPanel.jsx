@@ -14,147 +14,238 @@ const SettingsPanel = () => {
         globalBounds, setGlobalBounds,
         theme, setTheme,
         autosaveInterval, setAutosaveInterval,
-        showToast
+        showToast,
+        panelLayoutMode, setPanelLayoutMode,
+        workspaceLayout, setWorkspaceLayout,
+        lumberyardSnapEnabled, setLumberyardSnapEnabled
     } = useStore();
     const [confirmWipe, setConfirmWipe] = useState(false);
+
+    const labelStyle = {
+        fontSize: '0.64rem',
+        fontWeight: '700',
+        textTransform: 'uppercase',
+        letterSpacing: '0.5px',
+        color: 'var(--text-muted, #888)',
+        display: 'block',
+        marginBottom: '2px',
+    };
+
+    const selectStyle = {
+        width: '100%',
+        padding: '3px 6px',
+        background: 'var(--bg-color, #1a1a1a)',
+        color: 'var(--text-main, #ffffff)',
+        border: '1px solid var(--border-color, rgba(255,255,255,0.15))',
+        borderRadius: '6px',
+        outline: 'none',
+        fontSize: '0.72rem',
+        cursor: 'pointer',
+    };
+
+    const optionStyle = {
+        background: 'var(--menu-bg, #0d0f12)',
+        color: 'var(--text-main, #f0f0f0)',
+    };
+
+    const checkboxLabelStyle = {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '6px',
+        cursor: 'pointer',
+        fontWeight: '600',
+        fontSize: '0.72rem',
+        color: 'var(--text-main)',
+    };
+
+    const checkboxInputStyle = {
+        width: '12px',
+        height: '12px',
+        cursor: 'pointer',
+        accentColor: 'var(--accent-color)',
+    };
+
+    const hintStyle = {
+        fontSize: '0.62rem',
+        marginTop: '2px',
+        lineHeight: '1.2',
+    };
+
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', padding: '8px', color: 'var(--text-main)' }}>
+        <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(2, 1fr)',
+            gap: '6px',
+            padding: '2px',
+            color: 'var(--text-main)'
+        }}>
 
             <div className="inspector-card">
-                <label style={{ fontWeight: '600', opacity: 0.85, display: 'block', marginBottom: '8px' }}>Measurement System</label>
-                <select className="nav-btn" value={units} onChange={(e) => setUnits(e.target.value)} style={{ width: '100%', outline: 'none' }}>
-                    <option value="imperial">Imperial (Inches / Fractions)</option>
-                    <option value="metric">Metric (Millimeters)</option>
+                <label style={labelStyle}>Measurement System</label>
+                <select value={units} onChange={(e) => setUnits(e.target.value)} style={selectStyle}>
+                    <option value="imperial" style={optionStyle}>Imperial (Inches / Fractions)</option>
+                    <option value="metric" style={optionStyle}>Metric (Millimeters)</option>
                 </select>
-                <p className="hint" style={{ marginTop: '4px' }}>Viewport vectors will automatically convert to your selected unit standard.</p>
+                <p className="hint" style={hintStyle}>Viewport vectors automatically convert to your selected system.</p>
             </div>
 
             <div className="inspector-card">
-                <label style={{ fontWeight: '600', opacity: 0.85, display: 'block', marginBottom: '8px' }}>Global Grid Snapping</label>
-                <select className="nav-btn" value={gridSnap} onChange={(e) => setGridSnap(e.target.value)} style={{ width: '100%', outline: 'none' }}>
+                <label style={labelStyle}>Global Grid Snapping</label>
+                <select value={gridSnap} onChange={(e) => setGridSnap(e.target.value)} style={selectStyle}>
                     {units === 'metric' ? (
                         <>
-                            <option value="off">Off (Free floating)</option>
-                            <option value="1 mm">1 mm (Extreme)</option>
-                            <option value="2 mm">2 mm (Fine)</option>
-                            <option value="5 mm">5 mm (Standard)</option>
-                            <option value="10 mm">10 mm (Rough)</option>
+                            <option value="off" style={optionStyle}>Off (Free floating)</option>
+                            <option value="1 mm" style={optionStyle}>1 mm (Extreme)</option>
+                            <option value="2 mm" style={optionStyle}>2 mm (Fine)</option>
+                            <option value="5 mm" style={optionStyle}>5 mm (Standard)</option>
+                            <option value="10 mm" style={optionStyle}>10 mm (Rough)</option>
                         </>
                     ) : (
                         <>
-                            <option value="off">Off (Free floating)</option>
-                            <option value="1/16 in">1/16 Inch (Extreme)</option>
-                            <option value="1/8 in">1/8 Inch (Fine)</option>
-                            <option value="1/4 in">1/4 Inch (Standard)</option>
-                            <option value="1/2 in">1/2 Inch (Rough)</option>
-                            <option value="1 in">1 Inch (Very Rough)</option>
+                            <option value="off" style={optionStyle}>Off (Free floating)</option>
+                            <option value="1/16 in" style={optionStyle}>1/16 Inch (Extreme)</option>
+                            <option value="1/8 in" style={optionStyle}>1/8 Inch (Fine)</option>
+                            <option value="1/4 in" style={optionStyle}>1/4 Inch (Standard)</option>
+                            <option value="1/2 in" style={optionStyle}>1/2 Inch (Rough)</option>
+                            <option value="1 in" style={optionStyle}>1 Inch (Very Rough)</option>
                         </>
                     )}
                 </select>
-                <p className="hint" style={{ marginTop: '4px' }}>Controls the bounding lock when nudging components via the AI or inspector.</p>
+                <p className="hint" style={hintStyle}>Controls the bounding lock when nudging components.</p>
             </div>
 
             <div className="inspector-card">
-                <label style={{ fontWeight: '600', opacity: 0.85, display: 'block', marginBottom: '8px' }}>Workspace Scale (Grid Size)</label>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <input type="number" step="1" min="1" max="100" className="nav-btn" style={{ flex: 1, padding: '4px 8px' }} value={(useStore(s => s.workspaceSize) || 120) / 12} onChange={(e) => useStore.getState().setWorkspaceSize((parseFloat(e.target.value) || 10) * 12)} />
-                    <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>feet</span>
+                <label style={labelStyle}>Workspace Scale (Grid Size)</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <input type="number" step="1" min="1" max="100" style={{
+                        flex: 1, padding: '3px 6px',
+                        background: 'var(--bg-color, #1e1e1e)', color: 'var(--text-main, #ffffff)',
+                        border: '1px solid var(--border-color, rgba(255,255,255,0.15))', borderRadius: '6px',
+                        outline: 'none', fontSize: '0.72rem'
+                    }} value={(useStore(s => s.workspaceSize) || 120) / 12} onChange={(e) => useStore.getState().setWorkspaceSize((parseFloat(e.target.value) || 10) * 12)} />
+                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>feet</span>
                 </div>
-                <p className="hint" style={{ marginTop: '4px' }}>Defines the total length/width of the 3D grid plane in feet. Grid snapping will automatically scale based on this size.</p>
+                <p className="hint" style={hintStyle}>Defines total width/length of the 3D grid plane.</p>
             </div>
 
             <div className="inspector-card">
-                <label style={{ fontWeight: '600', opacity: 0.85, display: 'block', marginBottom: '8px' }}>Default Board Material</label>
-                <select className="nav-btn" value={defaultMaterial} onChange={(e) => setDefaultMaterial(e.target.value)} style={{ width: '100%', outline: 'none', textTransform: 'capitalize' }}>
-                    {['pine', 'cherry', 'walnut', 'red-oak', 'white-oak'].map(m => <option key={m} value={m}>{m.replace('-', ' ')}</option>)}
+                <label style={labelStyle}>Default Board Lumber</label>
+                <select value={defaultMaterial} onChange={(e) => setDefaultMaterial(e.target.value)} style={{ ...selectStyle, textTransform: 'capitalize' }}>
+                    {['pine', 'cherry', 'walnut', 'red-oak', 'white-oak'].map(m => <option key={m} value={m} style={optionStyle}>{m.replace('-', ' ')}</option>)}
                 </select>
-                <p className="hint" style={{ marginTop: '4px' }}>Default lumber allocated when generating new boards or assemblies.</p>
+                <p className="hint" style={hintStyle}>Default wood allocated when generating new boards.</p>
             </div>
 
-            <div className="inspector-card">
-                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: '600', opacity: 0.85 }}>
-                    <input type="checkbox" checked={showEdges} onChange={(e) => setShowEdges(e.target.checked)} style={{ width: '18px', height: '18px' }} />
-                    Show Architectural Edges
+            <div className="inspector-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                <label style={checkboxLabelStyle}>
+                    <input type="checkbox" checked={showEdges} onChange={(e) => setShowEdges(e.target.checked)} style={checkboxInputStyle} />
+                    Architectural Edges
                 </label>
-                <p className="hint" style={{ marginTop: '4px' }}>Renders high-contrast boundary lines around all structural components.</p>
+                <p className="hint" style={hintStyle}>Renders high-contrast boundary lines.</p>
             </div>
 
-            <div className="inspector-card">
-                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: '600', opacity: 0.85 }}>
-                    <input type="checkbox" checked={showMeasurements} onChange={(e) => setShowMeasurements(e.target.checked)} style={{ width: '18px', height: '18px' }} />
+            <div className="inspector-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                <label style={checkboxLabelStyle}>
+                    <input type="checkbox" checked={showMeasurements} onChange={(e) => setShowMeasurements(e.target.checked)} style={checkboxInputStyle} />
                     Show Dimensions
                 </label>
-                <p className="hint" style={{ marginTop: '4px' }}>Renders 3D bounding dimension lines and text in the viewport.</p>
+                <p className="hint" style={hintStyle}>Renders 3D dimension lines in the viewport.</p>
             </div>
 
-            <div className="inspector-card">
-                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: '600', opacity: 0.85 }}>
-                    <input type="checkbox" checked={showBoundingBox} onChange={(e) => setShowBoundingBox(e.target.checked)} style={{ width: '18px', height: '18px' }} />
-                    Show Selection Envelope
+            <div className="inspector-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                <label style={checkboxLabelStyle}>
+                    <input type="checkbox" checked={showBoundingBox} onChange={(e) => setShowBoundingBox(e.target.checked)} style={checkboxInputStyle} />
+                    Selection Envelope
                 </label>
-                <p className="hint" style={{ marginTop: '4px' }}>Renders an absolute 3D bounding box indicating total geometric size of selected components.</p>
+                <p className="hint" style={hintStyle}>Renders an absolute 3D boundary envelope.</p>
             </div>
 
-            <div className="inspector-card">
-                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: '600', opacity: 0.85 }}>
-                    <input type="checkbox" checked={enableCollisions} onChange={(e) => setEnableCollisions(e.target.checked)} style={{ width: '18px', height: '18px' }} />
-                    Enable Physics / Collision Warnings
+            <div className="inspector-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                <label style={checkboxLabelStyle}>
+                    <input type="checkbox" checked={enableCollisions} onChange={(e) => setEnableCollisions(e.target.checked)} style={checkboxInputStyle} />
+                    Collision Warnings
                 </label>
-                <p className="hint" style={{ marginTop: '4px' }}>Visually flag overlapping geometry or illegal structural intersections in the viewport.</p>
+                <p className="hint" style={hintStyle}>Visually flag overlapping geometry intersections.</p>
             </div>
 
             <div className="inspector-card">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <label style={{ fontWeight: '600', opacity: 0.85, margin: 0 }}>Project Volume Bounds</label>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: 'normal', fontSize: '0.8rem', color: 'var(--accent-color)' }}>
-                        <input type="checkbox" checked={globalBounds.enabled} onChange={(e) => setGlobalBounds(prev => ({ ...prev, enabled: e.target.checked }))} style={{ width: '16px', height: '16px', cursor: 'pointer' }} />
+                    <label style={{ ...labelStyle, marginBottom: 0 }}>Project Volume Bounds</label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontWeight: 'normal', fontSize: '0.72rem', color: 'var(--accent-color)' }}>
+                        <input type="checkbox" checked={globalBounds.enabled} onChange={(e) => setGlobalBounds(prev => ({ ...prev, enabled: e.target.checked }))} style={checkboxInputStyle} />
                     </label>
                 </div>
-                <p className="hint" style={{ marginTop: '8px' }}>Forces Top generation AI to strictly adhere to maximum limit dimensions, automatically shrinking structural elements down to specified hardware tolerances!</p>
+                <p className="hint" style={hintStyle}>Forces Top generation AI to strictly shrink boards to tolerances.</p>
                 {globalBounds.enabled && (
-                    <div className="vec3-inputs" style={{ marginTop: '12px' }}>
-                        <div>W<input type="number" step="1" value={globalBounds.x} onChange={e => setGlobalBounds(prev => ({ ...prev, x: parseFloat(e.target.value) || 0 }))} title="Max Width" /></div>
-                        <div style={{ borderColor: 'var(--accent-color)' }}>H<input type="number" step="1" value={globalBounds.y} onChange={e => setGlobalBounds(prev => ({ ...prev, y: parseFloat(e.target.value) || 0 }))} title="Max Height" /></div>
-                        <div>D<input type="number" step="1" value={globalBounds.z} onChange={e => setGlobalBounds(prev => ({ ...prev, z: parseFloat(e.target.value) || 0 }))} title="Max Depth" /></div>
+                    <div className="vec3-inputs" style={{ marginTop: '4px' }}>
+                        <div>W<input type="number" step="1" value={globalBounds.x} onChange={e => setGlobalBounds(prev => ({ ...prev, x: parseFloat(e.target.value) || 0 }))} title="Max Width" style={{ padding: '2px 4px', fontSize: '0.7rem' }} /></div>
+                        <div style={{ borderColor: 'var(--accent-color)' }}>H<input type="number" step="1" value={globalBounds.y} onChange={e => setGlobalBounds(prev => ({ ...prev, y: parseFloat(e.target.value) || 0 }))} title="Max Height" style={{ padding: '2px 4px', fontSize: '0.7rem' }} /></div>
+                        <div>D<input type="number" step="1" value={globalBounds.z} onChange={e => setGlobalBounds(prev => ({ ...prev, z: parseFloat(e.target.value) || 0 }))} title="Max Depth" style={{ padding: '2px 4px', fontSize: '0.7rem' }} /></div>
                     </div>
                 )}
             </div>
 
-            <div className="inspector-card">
-                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: 'bold' }}>
-                    <input type="checkbox" checked={theme === 'dark'} onChange={(e) => setTheme(e.target.checked ? 'dark' : 'light')} style={{ width: '18px', height: '18px' }} />
-                    Enable Dark Mode
+            <div className="inspector-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                <label style={checkboxLabelStyle}>
+                    <input type="checkbox" checked={theme === 'dark'} onChange={(e) => setTheme(e.target.checked ? 'dark' : 'light')} style={checkboxInputStyle} />
+                    Dark Mode Enabled
                 </label>
-                <p className="hint" style={{ marginTop: '4px' }}>Toggle between high-contrast layout and daylight drafting theme.</p>
+                <p className="hint" style={hintStyle}>Toggle between dark theme and daylight drafting mode.</p>
             </div>
 
             <div className="inspector-card">
-                <label style={{ fontWeight: '600', opacity: 0.85, display: 'block', marginBottom: '8px' }}>Autosave</label>
-                <select className="nav-btn" value={autosaveInterval} onChange={(e) => setAutosaveInterval(e.target.value)} style={{ width: '100%', outline: 'none' }}>
-                    <option value="off">Off</option>
-                    <option value="1">Every 1 minute</option>
-                    <option value="5">Every 5 minutes</option>
-                    <option value="10">Every 10 minutes</option>
-                    <option value="30">Every 30 minutes</option>
+                <label style={labelStyle}>Interface Mode</label>
+                <select value={panelLayoutMode || 'standard'} onChange={(e) => setPanelLayoutMode(e.target.value)} style={selectStyle}>
+                    <option value="standard" style={optionStyle}>Standard (Simplified Woodworking)</option>
+                    <option value="advanced" style={optionStyle}>Advanced (All Features)</option>
                 </select>
-                <p className="hint" style={{ marginTop: '4px' }}>Silently saves to local storage on the selected schedule. Does not prompt or show a toast.</p>
+                <p className="hint" style={hintStyle}>Hides lighting, materials, library, animation in standard.</p>
             </div>
 
-            <div className="inspector-card" style={{ borderColor: 'rgba(255,59,48,0.3)', background: 'rgba(255,59,48,0.05)' }}>
-                <strong style={{ color: '#ff3b30' }}>System Storage Cache</strong>
-                <p className="hint" style={{ marginTop: '4px', marginBottom: '8px' }}>Permanently destroy the browser's local memory reserve.</p>
+            <div className="inspector-card">
+                <label style={labelStyle}>Autosave Schedule</label>
+                <select value={autosaveInterval} onChange={(e) => setAutosaveInterval(e.target.value)} style={selectStyle}>
+                    <option value="off" style={optionStyle}>Off</option>
+                    <option value="1" style={optionStyle}>Every 1 minute</option>
+                    <option value="5" style={optionStyle}>Every 5 minutes</option>
+                    <option value="10" style={optionStyle}>Every 10 minutes</option>
+                    <option value="30" style={optionStyle}>Every 30 minutes</option>
+                </select>
+                <p className="hint" style={hintStyle}>Silently saves workspace locally on schedule.</p>
+            </div>
+
+            <div className="inspector-card">
+                <label style={labelStyle}>Workspace Layout</label>
+                <select value={workspaceLayout || 'docked'} onChange={(e) => setWorkspaceLayout(e.target.value)} style={selectStyle}>
+                    <option value="docked" style={optionStyle}>Docked Sidebar (Recommended)</option>
+                    <option value="floating" style={optionStyle}>Classic Floating Panels</option>
+                </select>
+                <p className="hint" style={hintStyle}>Lock all panel sheets on the right side or let them float.</p>
+            </div>
+
+            <div className="inspector-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                <label style={checkboxLabelStyle}>
+                    <input type="checkbox" checked={lumberyardSnapEnabled} onChange={(e) => setLumberyardSnapEnabled(e.target.checked)} style={checkboxInputStyle} />
+                    Lumberyard Snapping
+                </label>
+                <p className="hint" style={hintStyle}>Auto-convert standard names like "2x4" into actual lumber size.</p>
+            </div>
+
+            <div className="inspector-card" style={{ borderColor: 'rgba(255,59,48,0.3)', background: 'rgba(255,59,48,0.05)', gridColumn: 'span 2' }}>
+                <strong style={{ color: '#ff3b30', fontSize: '0.72rem' }}>System Storage Cache</strong>
+                <p className="hint" style={{ ...hintStyle, marginBottom: '4px' }}>Permanently destroy the browser's local memory reserve.</p>
                 {!confirmWipe ? (
-                    <button className="nav-btn" style={{ color: '#ff3b30', borderColor: 'rgba(255, 59, 48, 0.3)' }} onClick={() => setConfirmWipe(true)}>Wipe Local Cache</button>
+                    <button className="nav-btn" style={{ color: '#ff3b30', borderColor: 'rgba(255, 59, 48, 0.3)', padding: '3px 10px', fontSize: '0.72rem' }} onClick={() => setConfirmWipe(true)}>Wipe Local Cache</button>
                 ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '10px', background: 'rgba(255,59,48,0.08)', borderRadius: '8px', border: '1px solid rgba(255,59,48,0.3)' }}>
-                        <p style={{ margin: 0, fontSize: '0.85rem', color: '#ff3b30', fontWeight: '600' }}>⚠️ Are you sure? This cannot be undone.</p>
-                        <div style={{ display: 'flex', gap: '8px' }}>
-                            <button className="primary-btn" style={{ flex: 1, background: '#ff3b30', borderColor: '#ff3b30' }} onClick={() => {
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', padding: '6px', background: 'rgba(255,59,48,0.08)', borderRadius: '8px', border: '1px solid rgba(255,59,48,0.3)' }}>
+                        <p style={{ margin: 0, fontSize: '0.7rem', color: '#ff3b30', fontWeight: '600' }}>⚠️ Are you sure? This cannot be undone.</p>
+                        <div style={{ display: 'flex', gap: '6px' }}>
+                            <button className="primary-btn" style={{ flex: 1, background: '#ff3b30', borderColor: '#ff3b30', padding: '3px', fontSize: '0.7rem' }} onClick={() => {
                                 localStorage.removeItem('lucey_save');
                                 showToast('✅ Cache wiped! Reloading...');
                                 setTimeout(() => window.location.reload(), 1500);
                             }}>Yes, wipe it</button>
-                            <button className="nav-btn" style={{ flex: 1 }} onClick={() => setConfirmWipe(false)}>Cancel</button>
+                            <button className="nav-btn" style={{ flex: 1, padding: '3px', fontSize: '0.7rem' }} onClick={() => setConfirmWipe(false)}>Cancel</button>
                         </div>
                     </div>
                 )}

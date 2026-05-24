@@ -107,6 +107,45 @@ const useStore = create((set, get) => ({
     autosaveInterval: loadState('autosaveInterval', '10'),
     setAutosaveInterval: (v) => set({ autosaveInterval: typeof v === 'function' ? v(get().autosaveInterval) : v }),
 
+    panelLayoutMode: loadState('panelLayoutMode', 'standard'),
+    setPanelLayoutMode: (v) => {
+        const next = typeof v === 'function' ? v(get().panelLayoutMode) : v;
+        set({ panelLayoutMode: next });
+        try {
+            const s = localStorage.getItem('lucey_save');
+            const p = s ? JSON.parse(s) : {};
+            p.panelLayoutMode = next;
+            localStorage.setItem('lucey_save', JSON.stringify(p));
+        } catch (e) {}
+    },
+
+    workspaceLayout: loadState('workspaceLayout', 'docked'),
+    setWorkspaceLayout: (v) => {
+        const next = typeof v === 'function' ? v(get().workspaceLayout) : v;
+        set({ workspaceLayout: next });
+        try {
+            const s = localStorage.getItem('lucey_save');
+            const p = s ? JSON.parse(s) : {};
+            p.workspaceLayout = next;
+            localStorage.setItem('lucey_save', JSON.stringify(p));
+        } catch (e) {}
+    },
+
+    lumberyardSnapEnabled: loadState('lumberyardSnapEnabled', true),
+    setLumberyardSnapEnabled: (v) => {
+        const next = typeof v === 'function' ? v(get().lumberyardSnapEnabled) : v;
+        set({ lumberyardSnapEnabled: next });
+        try {
+            const s = localStorage.getItem('lucey_save');
+            const p = s ? JSON.parse(s) : {};
+            p.lumberyardSnapEnabled = next;
+            localStorage.setItem('lucey_save', JSON.stringify(p));
+        } catch (e) {}
+    },
+
+    dKeyPressed: false,
+    setDKeyPressed: (v) => set({ dKeyPressed: typeof v === 'function' ? v(get().dKeyPressed) : v }),
+
     showSettingsPanel: false,
     setShowSettingsPanel: (v) => set({ showSettingsPanel: typeof v === 'function' ? v(get().showSettingsPanel) : v }),
 

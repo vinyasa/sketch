@@ -68,7 +68,38 @@ export default function App() {
         setOverlappingBoardIds,
         overlappingBoardIds,
         enableCollisions,
+        panelLayoutMode,
+        workspaceLayout,
     } = useStore();
+
+    const isDocked = workspaceLayout === 'docked';
+    const isAdvanced = panelLayoutMode !== 'standard';
+
+    // Inspector title computed helper
+    const inspectorTitle = (() => {
+        if (selectedItemIds.length === 0) return '';
+        if (selectedItemIds.length > 1) return `${selectedItemIds.length} Selected`;
+        const id = selectedItemIds[0];
+        const board = boards.find(b => b.id.toString() === id);
+        if (board) return board.name;
+        const group = Object.entries(groups || {}).find(([gid]) => gid === id);
+        if (group) return group[1].name || group[0];
+        return 'Selection';
+    })();
+
+    const hasDockedPanels = 
+        showOutlinerPanel ||
+        (selectedItemIds.length > 0) ||
+        showAddComponentPanel ||
+        showAssembliesPanel ||
+        showToolsPanel ||
+        showHardwarePanel ||
+        (isAdvanced && showAssemblyLibrary) ||
+        (isAdvanced && showMaterialsPanel) ||
+        (isAdvanced && showLightingPanel) ||
+        (isAdvanced && showAnimationPanel);
+
+    const showSidebar = isDocked && hasDockedPanels;
 
     // Apply theme on initial mount (store handles subsequent changes via setTheme)
     useEffect(() => {
@@ -81,8 +112,8 @@ export default function App() {
         if (autosaveInterval === 'off') return;
         const ms = parseInt(autosaveInterval, 10) * 60 * 1000;
         const id = setInterval(() => {
-            const { boards, groups, constraints, theme, units, gridSnap, defaultMaterial, showEdges, showDimensions, showBoundingBox, globalBounds, lighting, recentColors, autosaveInterval: ai, cameraState, measurements, showMeasurements } = useStore.getState();
-            const payload = { boards, groups, constraints, theme, units, gridSnap, defaultMaterial, showEdges, showDimensions, showBoundingBox, globalBounds, lighting, recentColors, autosaveInterval: ai, cameraState, measurements, showMeasurements };
+            const { boards, groups, constraints, theme, units, gridSnap, defaultMaterial, showEdges, showDimensions, showBoundingBox, globalBounds, lighting, recentColors, autosaveInterval: ai, cameraState, measurements, showMeasurements, panelLayoutMode, workspaceLayout, lumberyardSnapEnabled } = useStore.getState();
+            const payload = { boards, groups, constraints, theme, units, gridSnap, defaultMaterial, showEdges, showDimensions, showBoundingBox, globalBounds, lighting, recentColors, autosaveInterval: ai, cameraState, measurements, showMeasurements, panelLayoutMode, workspaceLayout, lumberyardSnapEnabled };
             localStorage.setItem('lucey_save', JSON.stringify(payload));
         }, ms);
         return () => clearInterval(id);
@@ -113,7 +144,7 @@ export default function App() {
 
     return (
         <ErrorBoundary>
-        <div className="app-container">
+        <div className={`app-container ${showSidebar ? 'layout-docked' : ''}`}>
             {toast && (
                 <div style={{ position: 'fixed', bottom: '24px', left: '50%', transform: 'translateX(-50%)', background: 'var(--accent-color)', color: '#fff', padding: '12px 24px', borderRadius: '24px', boxShadow: '0 4px 12px rgba(0,0,0,0.3)', zIndex: 10000, fontWeight: 'bold' }}>
                     {toast}
@@ -146,37 +177,10 @@ export default function App() {
                 )}
 
                 <main className="main-workspace">
-                    {/* Temporarily disabled AI Assistant
-                    {isRightPanelOpen && (
-                        <DraggablePanel title="AI Assistant" defaultPosition={getSmartPosition(350, 600, 'left', headerBottom)} defaultSize={{ width: 350 }} topMargin={headerBottom} onClose={() => setIsRightPanelOpen(false)}>
-                            <AIChatPanel />
-                        </DraggablePanel>
-                    )}
-                    */}
-
+                    {/* Settings and Cut List always remain floating for width reasons */}
                     {showSettingsPanel && (
-                        <DraggablePanel title="Settings" defaultPosition={getSmartPosition(500, 500, 'center', headerBottom)} defaultSize={{ width: 500 }} topMargin={headerBottom} onClose={() => setShowSettingsPanel(false)}>
+                        <DraggablePanel title="Settings" defaultPosition={getSmartPosition(780, 500, 'center', headerBottom)} defaultSize={{ width: 780 }} topMargin={headerBottom} onClose={() => setShowSettingsPanel(false)}>
                             <SettingsPanel />
-                        </DraggablePanel>
-                    )}
-
-                    {showOutlinerPanel && (
-                        <DraggablePanel title="Outliner" defaultPosition={getSmartPosition(200, 400, 'right', headerBottom)} defaultSize={{ width: 200 }} topMargin={headerBottom} onClose={() => setShowOutlinerPanel(false)}>
-                            <OutlinerPanel />
-                        </DraggablePanel>
-                    )}
-
-                    {selectedItemIds.length > 0 && (
-                        <DraggablePanel title={`Inspector — ${(() => {
-                            if (selectedItemIds.length > 1) return `${selectedItemIds.length} Selected`;
-                            const id = selectedItemIds[0];
-                            const board = boards.find(b => b.id.toString() === id);
-                            if (board) return board.name;
-                            const group = Object.entries(groups || {}).find(([gid]) => gid === id);
-                            if (group) return group[1].name || group[0];
-                            return 'Selection';
-                        })()}`} defaultPosition={getSmartPosition(300, 600, 'inspector', headerBottom)} defaultSize={{ width: 300 }} topMargin={headerBottom} onFocusCapture={(e) => { if (e.target.tagName === 'INPUT') pushHistory(); }}>
-                            <InspectorPanel />
                         </DraggablePanel>
                     )}
 
@@ -186,49 +190,62 @@ export default function App() {
                         </DraggablePanel>
                     )}
 
-                    {showAssemblyLibrary && (
-                        <DraggablePanel title="📦 Assembly Library" defaultPosition={getSmartPosition(330, 400, 'left', headerBottom)} defaultSize={{ width: 330 }} topMargin={headerBottom} onClose={() => setShowAssemblyLibrary(false)}>
-                            <AssemblyLibraryPanel />
+                    {/* Draggable overlays are only rendered if NOT in docked mode */}
+                    {!isDocked && showOutlinerPanel && (
+                        <DraggablePanel title="Outliner" defaultPosition={getSmartPosition(200, 400, 'right', headerBottom)} defaultSize={{ width: 200 }} topMargin={headerBottom} onClose={() => setShowOutlinerPanel(false)}>
+                            <OutlinerPanel />
                         </DraggablePanel>
                     )}
 
-                    {showLightingPanel && (
-                        <DraggablePanel title="💡 Lighting" defaultPosition={getSmartPosition(310, 400, 'left', headerBottom)} defaultSize={{ width: 310 }} topMargin={headerBottom} onClose={() => setShowLightingPanel(false)}>
-                            <LightingPanel />
+                    {!isDocked && selectedItemIds.length > 0 && (
+                        <DraggablePanel title={`Inspector — ${inspectorTitle}`} defaultPosition={getSmartPosition(300, 600, 'inspector', headerBottom)} defaultSize={{ width: 300 }} topMargin={headerBottom} onFocusCapture={(e) => { if (e.target.tagName === 'INPUT') pushHistory(); }}>
+                            <InspectorPanel />
                         </DraggablePanel>
                     )}
 
-                    {showMaterialsPanel && (
-                        <DraggablePanel title="🎨 Materials" defaultPosition={getSmartPosition(290, 400, 'left', headerBottom)} defaultSize={{ width: 290 }} topMargin={headerBottom} onClose={() => setShowMaterialsPanel(false)}>
-                            <MaterialsPanel />
-                        </DraggablePanel>
-                    )}
-
-                    {showAddComponentPanel && (
+                    {!isDocked && showAddComponentPanel && (
                         <DraggablePanel title="＋ Add Component" defaultPosition={getSmartPosition(260, 300, 'left', headerBottom)} defaultSize={{ width: 260 }} topMargin={headerBottom} onClose={() => setShowAddComponentPanel(false)}>
                             <AddComponentPanel />
                         </DraggablePanel>
                     )}
 
-                    {showAssembliesPanel && (
+                    {!isDocked && showAssembliesPanel && (
                         <DraggablePanel title="🧱 Builders" defaultPosition={getSmartPosition(260, 300, 'left', headerBottom)} defaultSize={{ width: 260 }} topMargin={headerBottom} onClose={() => setShowAssembliesPanel(false)}>
                             <AssembliesPanel />
                         </DraggablePanel>
                     )}
 
-                    {showToolsPanel && (
-                        <DraggablePanel title="🛠 Tools" defaultPosition={getSmartPosition(340, 250, 'left', headerBottom)} defaultSize={{ width: 340 }} topMargin={headerBottom} onClose={() => setShowToolsPanel(false)} onFocusCapture={(e) => { if (e.target.tagName === 'INPUT') pushHistory(); }}>
+                    {!isDocked && showToolsPanel && (
+                        <DraggablePanel title="🧰 Tools" defaultPosition={getSmartPosition(340, 250, 'left', headerBottom)} defaultSize={{ width: 340 }} topMargin={headerBottom} onClose={() => setShowToolsPanel(false)} onFocusCapture={(e) => { if (e.target.tagName === 'INPUT') pushHistory(); }}>
                             <ToolsPanel />
                         </DraggablePanel>
                     )}
 
-                    {showHardwarePanel && (
+                    {!isDocked && showHardwarePanel && (
                         <DraggablePanel title="🔩 Hardware" defaultPosition={getSmartPosition(280, 450, 'left', headerBottom)} defaultSize={{ width: 280 }} topMargin={headerBottom} onClose={() => setShowHardwarePanel(false)}>
                             <HardwarePanel />
                         </DraggablePanel>
                     )}
 
-                    {showAnimationPanel && (
+                    {!isDocked && isAdvanced && showAssemblyLibrary && (
+                        <DraggablePanel title="📦 Assembly Library" defaultPosition={getSmartPosition(330, 400, 'left', headerBottom)} defaultSize={{ width: 330 }} topMargin={headerBottom} onClose={() => setShowAssemblyLibrary(false)}>
+                            <AssemblyLibraryPanel />
+                        </DraggablePanel>
+                    )}
+
+                    {!isDocked && isAdvanced && showLightingPanel && (
+                        <DraggablePanel title="💡 Lighting" defaultPosition={getSmartPosition(310, 400, 'left', headerBottom)} defaultSize={{ width: 310 }} topMargin={headerBottom} onClose={() => setShowLightingPanel(false)}>
+                            <LightingPanel />
+                        </DraggablePanel>
+                    )}
+
+                    {!isDocked && isAdvanced && showMaterialsPanel && (
+                        <DraggablePanel title="🎨 Materials" defaultPosition={getSmartPosition(290, 400, 'left', headerBottom)} defaultSize={{ width: 290 }} topMargin={headerBottom} onClose={() => setShowMaterialsPanel(false)}>
+                            <MaterialsPanel />
+                        </DraggablePanel>
+                    )}
+
+                    {!isDocked && isAdvanced && showAnimationPanel && (
                         <DraggablePanel title="🎬 Animation" defaultPosition={getSmartPosition(320, 500, 'left', headerBottom)} defaultSize={{ width: 320 }} topMargin={headerBottom} onClose={() => setShowAnimationPanel(false)}>
                             <AnimationPanel />
                         </DraggablePanel>
@@ -306,6 +323,140 @@ export default function App() {
                 <PrintDialog />
                 <SavePromptDialog />
             </div>
+
+            {/* Right docked sidebar layout when active and panels are open */}
+            {showSidebar && (
+                <div className="docked-sidebar">
+                    <div style={{
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                        padding: '16px', borderBottom: '1px solid var(--border-color)',
+                        background: 'rgba(0,0,0,0.1)'
+                    }}>
+                        <h3 style={{ margin: 0, fontSize: '0.8rem', textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '1px' }}>Workspace Panels</h3>
+                    </div>
+                    <div className="docked-sidebar-content">
+                        {showOutlinerPanel && (
+                            <div className="sidebar-panel-card">
+                                <div className="sidebar-panel-header">
+                                    <span>🗂️ Outliner</span>
+                                    <button className="sidebar-close-btn" onClick={() => setShowOutlinerPanel(false)}>✕</button>
+                                </div>
+                                <div className="sidebar-panel-body">
+                                    <OutlinerPanel />
+                                </div>
+                            </div>
+                        )}
+                        
+                        {selectedItemIds.length > 0 && (
+                            <div className="sidebar-panel-card">
+                                <div className="sidebar-panel-header">
+                                    <span>Inspector — {inspectorTitle}</span>
+                                    <button className="sidebar-close-btn" onClick={() => useStore.getState().setSelectedItemIds([])}>✕</button>
+                                </div>
+                                <div className="sidebar-panel-body">
+                                    <InspectorPanel />
+                                </div>
+                            </div>
+                        )}
+                        
+                        {showAddComponentPanel && (
+                            <div className="sidebar-panel-card">
+                                <div className="sidebar-panel-header">
+                                    <span>＋ Add Component</span>
+                                    <button className="sidebar-close-btn" onClick={() => setShowAddComponentPanel(false)}>✕</button>
+                                </div>
+                                <div className="sidebar-panel-body">
+                                    <AddComponentPanel />
+                                </div>
+                            </div>
+                        )}
+
+                        {showAssembliesPanel && (
+                            <div className="sidebar-panel-card">
+                                <div className="sidebar-panel-header">
+                                    <span>🧱 Builders</span>
+                                    <button className="sidebar-close-btn" onClick={() => setShowAssembliesPanel(false)}>✕</button>
+                                </div>
+                                <div className="sidebar-panel-body">
+                                    <AssembliesPanel />
+                                </div>
+                            </div>
+                        )}
+
+                        {showToolsPanel && (
+                            <div className="sidebar-panel-card">
+                                <div className="sidebar-panel-header">
+                                    <span>🧰 Tools</span>
+                                    <button className="sidebar-close-btn" onClick={() => setShowToolsPanel(false)}>✕</button>
+                                </div>
+                                <div className="sidebar-panel-body">
+                                    <ToolsPanel />
+                                </div>
+                            </div>
+                        )}
+
+                        {showHardwarePanel && (
+                            <div className="sidebar-panel-card">
+                                <div className="sidebar-panel-header">
+                                    <span>🔩 Hardware</span>
+                                    <button className="sidebar-close-btn" onClick={() => setShowHardwarePanel(false)}>✕</button>
+                                </div>
+                                <div className="sidebar-panel-body">
+                                    <HardwarePanel />
+                                </div>
+                            </div>
+                        )}
+
+                        {isAdvanced && showAssemblyLibrary && (
+                            <div className="sidebar-panel-card">
+                                <div className="sidebar-panel-header">
+                                    <span>📦 Assembly Library</span>
+                                    <button className="sidebar-close-btn" onClick={() => setShowAssemblyLibrary(false)}>✕</button>
+                                </div>
+                                <div className="sidebar-panel-body">
+                                    <AssemblyLibraryPanel />
+                                </div>
+                            </div>
+                        )}
+
+                        {isAdvanced && showMaterialsPanel && (
+                            <div className="sidebar-panel-card">
+                                <div className="sidebar-panel-header">
+                                    <span>🎨 Materials</span>
+                                    <button className="sidebar-close-btn" onClick={() => setShowMaterialsPanel(false)}>✕</button>
+                                </div>
+                                <div className="sidebar-panel-body">
+                                    <MaterialsPanel />
+                                </div>
+                            </div>
+                        )}
+
+                        {isAdvanced && showLightingPanel && (
+                            <div className="sidebar-panel-card">
+                                <div className="sidebar-panel-header">
+                                    <span>💡 Lighting</span>
+                                    <button className="sidebar-close-btn" onClick={() => setShowLightingPanel(false)}>✕</button>
+                                </div>
+                                <div className="sidebar-panel-body">
+                                    <LightingPanel />
+                                </div>
+                            </div>
+                        )}
+
+                        {isAdvanced && showAnimationPanel && (
+                            <div className="sidebar-panel-card">
+                                <div className="sidebar-panel-header">
+                                    <span>🎬 Animation</span>
+                                    <button className="sidebar-close-btn" onClick={() => setShowAnimationPanel(false)}>✕</button>
+                                </div>
+                                <div className="sidebar-panel-body">
+                                    <AnimationPanel />
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
         </div>
         </ErrorBoundary>
     )

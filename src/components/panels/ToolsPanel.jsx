@@ -372,7 +372,7 @@ const ToolsPanel = () => {
 
             {/* ── Tool Type Buttons ── */}
             {selectedBoard ? (
-                <div className="inspector-card" style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                <div className="inspector-card" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px' }}>
                     <button
                         onClick={() => handleAddTool({ id: Date.now(), type: 'hole', radius: 1, offsetX: 0, offsetY: 0, axis: 'y' })}
                         style={addToolBtnStyle}
@@ -408,9 +408,9 @@ const ToolsPanel = () => {
                         style={addToolBtnStyle}
                         onMouseEnter={e => e.target.style.background = 'rgba(188,138,95,0.12)'}
                         onMouseLeave={e => e.target.style.background = 'var(--bg-color)'}
-                    >✙ Pocket</button>
-                    <button
-                        onClick={() => handleAddTool({ id: Date.now() + 6, type: 'dowel-holes', face: 'top', count: 2, radius: 0.1875, depth: 0.75, spacing: 'auto' })}
+                    >🧰 Pocket</button>
+                     <button
+                        onClick={() => handleAddTool({ id: Date.now() + 6, type: 'dowel-holes', face: 'top', count: 2, diameter: 0.375, depth: 0.75, spacing: 'auto' })}
                         style={addToolBtnStyle}
                         onMouseEnter={e => e.target.style.background = 'rgba(188,138,95,0.12)'}
                         onMouseLeave={e => e.target.style.background = 'var(--bg-color)'}
@@ -872,6 +872,7 @@ const ToolsPanel = () => {
                         {/* ── Dowel Holes Editor ── */}
                         {op.type === 'dowel-holes' && (() => {
                             const isAutoSpacing = displayOp.spacing === 'auto';
+                            const diameter = displayOp.diameter ?? (displayOp.radius ? displayOp.radius * 2 : 0.375);
                             return (
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                                     <div style={{ gridColumn: '1 / -1' }}>
@@ -890,8 +891,8 @@ const ToolsPanel = () => {
                                         <input type="number" min="1" step="1" value={displayOp.count ?? 2} onChange={e => upd({ count: Math.max(1, parseInt(e.target.value) || 2) })} style={inputStyle} />
                                     </div>
                                     <div>
-                                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Hole Radius (in)</div>
-                                        <input type="number" min="0.05" step="0.0625" value={parseFloat((displayOp.radius ?? 0.1875).toFixed(4))} onChange={e => upd({ radius: Math.max(0.01, parseFloat(e.target.value) || 0.1875) })} style={inputStyle} />
+                                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Hole Diameter (in)</div>
+                                        <input type="number" min="0.02" step="0.0625" value={parseFloat(diameter.toFixed(4))} onChange={e => upd({ diameter: Math.max(0.01, parseFloat(e.target.value) || 0.375) })} style={inputStyle} />
                                     </div>
                                     <div>
                                         <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Hole Depth (in)</div>
@@ -1088,8 +1089,10 @@ function getToolSummary(op) {
             return `Subtracting "${op.cutterName || 'unknown'}" · ${op.cutterShape || 'box'}`;
         case 'pocket-holes':
             return `${op.face || 'bottom'} face · pointing ${op.edge || 'left'} · count=${op.count ?? 2} · spacing=${op.spacing || 'auto'}`;
-        case 'dowel-holes':
-            return `${op.face || 'top'} face · count=${op.count ?? 2} · r=${(op.radius ?? 0.1875).toFixed(4)}" · depth=${(op.depth ?? 0.75).toFixed(2)}"`;
+        case 'dowel-holes': {
+            const diameter = op.diameter ?? (op.radius ? op.radius * 2 : 0.375);
+            return `${op.face || 'top'} face · count=${op.count ?? 2} · ø=${diameter.toFixed(4)}" · depth=${(op.depth ?? 0.75).toFixed(2)}"`;
+        }
         case 'edge-profile':
             return `${op.profile === 'roundover' ? 'Roundover' : 'Chamfer'} on ${getEdgeProfileLabel(op.edge || 'y+z+')} · size=${op.profile === 'roundover' ? op.radius ?? 0.25 : op.width ?? 0.25}"`;
         default:

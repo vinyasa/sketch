@@ -30,7 +30,10 @@ const AppHeader = () => {
         isRightPanelOpen, setIsRightPanelOpen,
         currentFileName,
         setHeaderBottom,
+        panelLayoutMode,
     } = useStore();
+
+    const isAdvanced = panelLayoutMode !== 'standard';
 
     const [isNavOpen, setIsNavOpen] = useState(true);
     const headerRef = useRef(null);
@@ -108,46 +111,42 @@ const AppHeader = () => {
                 <div className={`nav-drawer glass-panel ${isNavOpen ? 'open' : 'collapsed'}`}>
                     <nav className="top-nav">
                         
-                        {/* Col 1 */}
-                        <button className={`nav-btn ${showAddComponentPanel ? 'active' : ''}`} onClick={() => setShowAddComponentPanel(!showAddComponentPanel)} title="Add shapes">🔷 Components</button>
-                        <button className={`nav-btn ${showAssembliesPanel ? 'active' : ''}`} onClick={() => setShowAssembliesPanel(!showAssembliesPanel)} title="Parametric builders">🧱 Builders</button>
-                        <button className={`nav-btn ${showToolsPanel ? 'active' : ''}`} onClick={() => setShowToolsPanel(!showToolsPanel)} title="CSG modifiers">🛠 Tools</button>
-
-                        {/* Col 2 */}
-                        <button className={`nav-btn ${showAssemblyLibrary ? 'active' : ''}`} onClick={() => setShowAssemblyLibrary(!showAssemblyLibrary)}>📦 Library</button>
-                        <button className={`nav-btn ${showMaterialsPanel ? 'active' : ''}`} onClick={() => setShowMaterialsPanel(!showMaterialsPanel)}>🎨 Materials</button>
-                        <button className={`nav-btn ${showLightingPanel ? 'active' : ''}`} onClick={() => setShowLightingPanel(!showLightingPanel)}>💡 Lighting</button>
-
-                        {/* Col 3 */}
+                        {/* Row 1 */}
+                        <button className={`nav-btn ${showAddComponentPanel ? 'active' : ''}`} onClick={() => setShowAddComponentPanel(!showAddComponentPanel)} title="Add shapes" style={{ gridColumn: 1, gridRow: 1 }}>🔷 Components</button>
+                        <button className={`nav-btn ${isOrtho ? 'active' : ''}`} onClick={() => setIsOrtho(!isOrtho)} title="Camera Mode" style={{ gridColumn: 2, gridRow: 1 }}>
+                            {isOrtho ? '📐 Parallel' : '📷 Perspective'}
+                        </button>
                         <button className={`nav-btn ${measureMode?.active ? 'active' : ''}`} onClick={() => {
                             if (measureMode?.active) setMeasureMode(null);
                             else setMeasureMode({ active: true, firstPoint: null });
-                        }} title="Measure distances">📏 Measure</button>
-                        <button className={`nav-btn ${showAnimationPanel ? 'active' : ''}`} onClick={() => setShowAnimationPanel(!showAnimationPanel)} title="Animate">🎬 Animate</button>
-                        <button className={`nav-btn ${isOrtho ? 'active' : ''}`} onClick={() => setIsOrtho(!isOrtho)} title="Camera Mode">
-                            {isOrtho ? '📐 Parallel' : '📷 Perspective'}
-                        </button>
+                        }} title="Measure distances" style={{ gridColumn: 3, gridRow: 1 }}>📏 Measure</button>
+                        <button className={`nav-btn ${showOutlinerPanel ? 'active' : ''}`} onClick={() => setShowOutlinerPanel(!showOutlinerPanel)} title="Toggle Outliner" style={{ gridColumn: 4, gridRow: 1 }}>🗂️ Outliner</button>
 
-                        {/* Col 4 */}
-                        <button className={`nav-btn ${showOutlinerPanel ? 'active' : ''}`} onClick={() => setShowOutlinerPanel(!showOutlinerPanel)} title="Toggle Outliner">🗂️ Outliner</button>
-                        <button className={`nav-btn ${showCutlistPanel ? 'active' : ''}`} onClick={() => setShowCutlistPanel(!showCutlistPanel)}>📋 Cut List</button>
-                        <button className={`nav-btn ${showSettingsPanel ? 'active' : ''}`} onClick={() => setShowSettingsPanel(!showSettingsPanel)}>⚙️ Settings</button>
+                        {/* Row 2 */}
+                        <button className={`nav-btn ${showAssembliesPanel ? 'active' : ''}`} onClick={() => setShowAssembliesPanel(!showAssembliesPanel)} title="Parametric builders" style={{ gridColumn: 1, gridRow: 2 }}>🧱 Builders</button>
+                        <button className={`nav-btn ${showToolsPanel ? 'active' : ''}`} onClick={() => setShowToolsPanel(!showToolsPanel)} title="CSG modifiers" style={{ gridColumn: 2, gridRow: 2 }}>🧰 Tools</button>
+                        <button className={`nav-btn ${showCutlistPanel ? 'active' : ''}`} onClick={() => setShowCutlistPanel(!showCutlistPanel)} style={{ gridColumn: 3, gridRow: 2 }}>📋 Cut List</button>
+                        <button className={`nav-btn ${showSettingsPanel ? 'active' : ''}`} onClick={() => setShowSettingsPanel(!showSettingsPanel)} style={{ gridColumn: 4, gridRow: 2 }}>⚙️ Settings</button>
 
-                        {/* Col 5 */}
-                        <label className="nav-btn" style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', fontSize: '0.71rem', userSelect: 'none', margin: 0, padding: '3px 8px' }}>
+                        {/* Row 3 (Advanced Only) */}
+                        {isAdvanced && (
+                            <>
+                                <button className={`nav-btn ${showAssemblyLibrary ? 'active' : ''}`} onClick={() => setShowAssemblyLibrary(!showAssemblyLibrary)} style={{ gridColumn: 1, gridRow: 3 }}>📦 Library</button>
+                                <button className={`nav-btn ${showMaterialsPanel ? 'active' : ''}`} onClick={() => setShowMaterialsPanel(!showMaterialsPanel)} style={{ gridColumn: 2, gridRow: 3 }}>🎨 Materials</button>
+                                <button className={`nav-btn ${showLightingPanel ? 'active' : ''}`} onClick={() => setShowLightingPanel(!showLightingPanel)} style={{ gridColumn: 3, gridRow: 3 }}>💡 Lighting</button>
+                                <button className={`nav-btn ${showAnimationPanel ? 'active' : ''}`} onClick={() => setShowAnimationPanel(!showAnimationPanel)} title="Animate" style={{ gridColumn: 4, gridRow: 3 }}>🎬 Animate</button>
+                            </>
+                        )}
+
+                        {/* Col 5 (Fixed) */}
+                        <label className="nav-btn" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', cursor: 'pointer', fontSize: '0.71rem', userSelect: 'none', margin: 0, padding: '3px 8px', gridColumn: 5, gridRow: 1 }}>
                             <input type="checkbox" checked={showGrid} onChange={e => setShowGrid(e.target.checked)} style={{ accentColor: 'var(--accent-color)', width: '12px', height: '12px', cursor: 'pointer' }} />
                             Grid
                         </label>
-                        <label className="nav-btn" style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', fontSize: '0.71rem', userSelect: 'none', margin: 0, padding: '3px 8px' }}>
+                        <label className="nav-btn" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', cursor: 'pointer', fontSize: '0.71rem', userSelect: 'none', margin: 0, padding: '3px 8px', gridColumn: 5, gridRow: 2 }}>
                             <input type="checkbox" checked={showMeasurements} onChange={e => setShowMeasurements(e.target.checked)} style={{ accentColor: 'var(--accent-color)', width: '12px', height: '12px', cursor: 'pointer' }} />
                             Dims
                         </label>
-                        <div /> {/* Empty slot for Col 5 Row 3 */}
-                        
-                        {/* Hidden/Disabled Buttons
-                        <button className={`nav-btn ${isRightPanelOpen ? 'active' : ''}`} onClick={() => setIsRightPanelOpen(!isRightPanelOpen)}>🤖 AI Assistant</button>
-                        <button className={`nav-btn ${showHardwarePanel ? 'active' : ''}`} onClick={() => setShowHardwarePanel(!showHardwarePanel)} title="Attach hardware">🔩 Hardware</button> 
-                        */}
 
                     </nav>
                 </div>

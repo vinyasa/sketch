@@ -1,9 +1,10 @@
 import React from 'react';
 import { taperValidation, normalizeTaper } from '../../utils/geometryBuilders';
 import useStore from '../../store/useStore';
+import { parseLumberyardNominal } from '../../utils/lumberyard';
 
 const NewBoardDialog = () => {
-    const { newBoardDialog: dialog, setNewBoardDialog: setDialog, groups, handleNewBoardConfirm: onConfirm, units } = useStore();
+    const { newBoardDialog: dialog, setNewBoardDialog: setDialog, groups, handleNewBoardConfirm: onConfirm, units, lumberyardSnapEnabled } = useStore();
     if (!dialog) return null;
 
     const shape = dialog.shape ?? 'box';
@@ -98,7 +99,23 @@ const NewBoardDialog = () => {
                     <h4>Component Name</h4>
                     <input
                         type="text" value={dialog.name}
-                        onChange={e => setDialog(p => ({ ...p, name: e.target.value }))}
+                        onChange={e => {
+                            const val = e.target.value;
+                            setDialog(p => {
+                                const next = { ...p, name: val };
+                                if (lumberyardSnapEnabled) {
+                                    const parsed = parseLumberyardNominal(val);
+                                    if (parsed) {
+                                        next.sizeY = parsed.thickness;
+                                        next.sizeX = parsed.width;
+                                        if (parsed.length !== undefined) {
+                                            next.sizeZ = parsed.length;
+                                        }
+                                    }
+                                }
+                                return next;
+                            });
+                        }}
                         style={{ width: '100%', padding: '8px 12px', background: 'rgba(0,0,0,0.15)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '6px', fontSize: '0.9rem', outline: 'none' }}
                     />
                 </div>

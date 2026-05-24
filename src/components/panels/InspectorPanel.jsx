@@ -5,6 +5,7 @@ import { taperValidation, normalizeTaper } from '../../utils/geometryBuilders';
 
 import useStore from '../../store/useStore';
 import ParametricControls from './ParametricControls';
+import { parseLumberyardNominal } from '../../utils/lumberyard';
 
 // ── Build a compact summary string for each tool type ────────────────────────
 function getToolSummary(op) {
@@ -56,6 +57,7 @@ const InspectorPanel = () => {
         removeHardware, updateHardware,
         selectedHardwareId, setSelectedHardwareId,
         setCabinetDialog, setShakerDoorDialog, setDrawerDialog, cloneAssembly,
+        lumberyardSnapEnabled,
     } = useStore();
 
     const selectedBoardId = selectedItemIds?.[0];
@@ -561,7 +563,23 @@ const InspectorPanel = () => {
                         value={selectedBoard.name || ''}
                         onChange={(e) => {
                             const newName = e.target.value;
-                            setBoards(boards.map(b => b.id === selectedBoard.id ? { ...b, name: newName } : b));
+                            setBoards(boards.map(b => {
+                                if (b.id !== selectedBoard.id) return b;
+                                const next = { ...b, name: newName };
+                                if (lumberyardSnapEnabled) {
+                                    const parsed = parseLumberyardNominal(newName);
+                                    if (parsed) {
+                                        const newSize = [...b.size];
+                                        newSize[1] = parsed.thickness; // thickness (Y)
+                                        newSize[0] = parsed.width;     // width (X)
+                                        if (parsed.length !== undefined) {
+                                            newSize[2] = parsed.length; // length (Z)
+                                        }
+                                        next.size = newSize;
+                                    }
+                                }
+                                return next;
+                            }));
                         }}
                         style={{ flex: 1, width: '100%', background: 'rgba(128,128,128,0.15)', padding: '6px 12px', borderRadius: '6px', border: '1px solid var(--border-color)', color: 'var(--accent-color)', fontSize: 'inherit', fontWeight: 'inherit', outline: 'none' }}
                     />
@@ -720,15 +738,15 @@ const InspectorPanel = () => {
                                         ))}
                                     </optgroup>
                                 </select>
-                                <div style={{ display: 'flex', gap: '4px', marginTop: '6px' }}>
-                                    <div style={{ flex: 1, backgroundColor: 'rgba(255, 60, 60, 0.15)', display: 'flex', alignItems: 'center', padding: '0 4px', borderRadius: '4px', fontSize: '0.75rem', border: '1px solid rgba(255, 60, 60, 0.3)' }}>
-                                        X<input type="number" step={units === 'metric' ? '1' : '0.125'} value={units === 'metric' ? fmt4(pivot[0] * 25.4) : fmt4(pivot[0])} onChange={e => { const v = parseFloat(e.target.value); if (!isNaN(v)) useStore.getState().setCustomPivot(selectedBoard.id, [units === 'metric' ? v / 25.4 : v, pivot[1], pivot[2]]); }} style={{ width: '100%', background: 'transparent', border: 'none', color: 'inherit', textAlign: 'right', outline: 'none' }} />
+                                <div className="vec3-inputs" style={{ marginTop: '6px' }}>
+                                    <div style={{ flex: 1, backgroundColor: 'rgba(255, 60, 60, 0.15)', border: '1px solid rgba(255, 60, 60, 0.3)' }}>
+                                        X<input type="number" step={units === 'metric' ? '1' : '0.125'} value={units === 'metric' ? fmt4(pivot[0] * 25.4) : fmt4(pivot[0])} onChange={e => { const v = parseFloat(e.target.value); if (!isNaN(v)) useStore.getState().setCustomPivot(selectedBoard.id, [units === 'metric' ? v / 25.4 : v, pivot[1], pivot[2]]); }} />
                                     </div>
-                                    <div style={{ flex: 1, backgroundColor: 'rgba(60, 200, 90, 0.15)', display: 'flex', alignItems: 'center', padding: '0 4px', borderRadius: '4px', fontSize: '0.75rem', border: '1px solid rgba(60, 200, 90, 0.3)' }}>
-                                        Y<input type="number" step={units === 'metric' ? '1' : '0.125'} value={units === 'metric' ? fmt4(pivot[1] * 25.4) : fmt4(pivot[1])} onChange={e => { const v = parseFloat(e.target.value); if (!isNaN(v)) useStore.getState().setCustomPivot(selectedBoard.id, [pivot[0], units === 'metric' ? v / 25.4 : v, pivot[2]]); }} style={{ width: '100%', background: 'transparent', border: 'none', color: 'inherit', textAlign: 'right', outline: 'none' }} />
+                                    <div style={{ flex: 1, backgroundColor: 'rgba(60, 200, 90, 0.15)', border: '1px solid rgba(60, 200, 90, 0.3)' }}>
+                                        Y<input type="number" step={units === 'metric' ? '1' : '0.125'} value={units === 'metric' ? fmt4(pivot[1] * 25.4) : fmt4(pivot[1])} onChange={e => { const v = parseFloat(e.target.value); if (!isNaN(v)) useStore.getState().setCustomPivot(selectedBoard.id, [pivot[0], units === 'metric' ? v / 25.4 : v, pivot[2]]); }} />
                                     </div>
-                                    <div style={{ flex: 1, backgroundColor: 'rgba(60, 150, 255, 0.15)', display: 'flex', alignItems: 'center', padding: '0 4px', borderRadius: '4px', fontSize: '0.75rem', border: '1px solid rgba(60, 150, 255, 0.3)' }}>
-                                        Z<input type="number" step={units === 'metric' ? '1' : '0.125'} value={units === 'metric' ? fmt4(pivot[2] * 25.4) : fmt4(pivot[2])} onChange={e => { const v = parseFloat(e.target.value); if (!isNaN(v)) useStore.getState().setCustomPivot(selectedBoard.id, [pivot[0], pivot[1], units === 'metric' ? v / 25.4 : v]); }} style={{ width: '100%', background: 'transparent', border: 'none', color: 'inherit', textAlign: 'right', outline: 'none' }} />
+                                    <div style={{ flex: 1, backgroundColor: 'rgba(60, 150, 255, 0.15)', border: '1px solid rgba(60, 150, 255, 0.3)' }}>
+                                        Z<input type="number" step={units === 'metric' ? '1' : '0.125'} value={units === 'metric' ? fmt4(pivot[2] * 25.4) : fmt4(pivot[2])} onChange={e => { const v = parseFloat(e.target.value); if (!isNaN(v)) useStore.getState().setCustomPivot(selectedBoard.id, [pivot[0], pivot[1], units === 'metric' ? v / 25.4 : v]); }} />
                                     </div>
                                 </div>
                                 <div style={{ display: 'flex', gap: '6px', marginTop: '6px' }}>
@@ -772,7 +790,7 @@ const InspectorPanel = () => {
                         <h4>Local Orientation</h4>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                             <span style={{ fontSize: '0.65rem', color: 'var(--text-color)', opacity: 0.8 }}>Step:</span>
-                            <input type="number" step="1" value={rotationStep} onChange={e => setRotationStep(parseFloat(e.target.value) || 0)} style={{ width: '40px', padding: '2px', fontSize: '0.7rem' }} />
+                            <input type="number" step="1" value={rotationStep} onChange={e => setRotationStep(parseFloat(e.target.value) || 0)} style={{ width: '40px', height: '26px', padding: '2px 4px', fontSize: '0.7rem', background: 'rgba(0, 0, 0, 0.25)', border: '1px solid var(--border-color)', borderRadius: '4px', color: 'var(--text-main)', outline: 'none', textAlign: 'center' }} />
                             <span style={{ fontSize: '0.65rem', color: 'var(--text-color)', opacity: 0.8 }}>°</span>
                         </div>
                     </div>
@@ -821,7 +839,7 @@ const InspectorPanel = () => {
                             <button
                                 onClick={() => setShowToolsPanel(true)}
                                 style={{ background: 'none', border: 'none', color: 'var(--accent-color)', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600 }}
-                            >{(selectedBoard.operations || []).length > 0 ? '🛠 Open Tools Panel' : '+ Add'}</button>
+                            >{(selectedBoard.operations || []).length > 0 ? '🧰 Open Tools Panel' : '+ Add'}</button>
                         </div>
                         {(selectedBoard.operations || []).length === 0 ? (
                             <div className="hint" style={{ marginTop: '6px' }}>No tools applied.</div>

@@ -49,6 +49,7 @@ export function PersistentControls() {
   }, [camera, cameraState]);
 
   const isDraggingMeasure = useStore(s => s.measureMode?.dragging);
+  const dKeyPressed = useStore(s => s.dKeyPressed);
 
-  return <OrbitControls ref={initRef} makeDefault onEnd={handleEnd} enabled={!isDraggingMeasure} />;
+  return <OrbitControls ref={initRef} makeDefault onEnd={handleEnd} enabled={!isDraggingMeasure && !dKeyPressed} />;
 }

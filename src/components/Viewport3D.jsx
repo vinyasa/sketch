@@ -16,6 +16,7 @@ import { BoundingBoxVisualizer } from './BoundingBoxVisualizer';
 import { MeasurementOverlay } from './MeasurementOverlay';
 import { MeasureSnapPreview } from './MeasureSnapPreview';
 import { MeasureDragHandler } from './MeasureDragHandler';
+import BuilderPreviewRenderer from './BuilderPreviewRenderer';
 
 // ── Custom Pivot Snapping Preview ───────────────────────────────────────────
 function PivotSnapPreview() {
@@ -66,8 +67,24 @@ export default function Viewport3D() {
   useEffect(() => {
     const handleKey = (e) => {
       setModifierActive(e.shiftKey || e.altKey);
+      
+      const isInput = e.target.closest('input, textarea, select');
+      if (!isInput) {
+        if (e.key.toLowerCase() === 'd') {
+          if (e.type === 'keydown') {
+            const wasPressed = useStore.getState().dKeyPressed;
+            if (!wasPressed) {
+              useStore.getState().setDKeyPressed(true);
+              useStore.getState().showToast('🧲 Smart Snapping: Click and drag any selected board to position it.');
+            }
+          } else if (e.type === 'keyup') {
+            useStore.getState().setDKeyPressed(false);
+          }
+        }
+      }
+
       if (e.key === 'Escape' && measureMode?.active) setMeasureMode(null);
-      if ((e.key === 'Delete' || e.key === 'Backspace') && !e.target.closest('input, textarea')) {
+      if ((e.key === 'Delete' || e.key === 'Backspace') && !isInput) {
         const { selectedMeasurementId, removeMeasurement, setSelectedMeasurementId } = useStore.getState();
         if (selectedMeasurementId) {
           e.preventDefault();
@@ -76,7 +93,10 @@ export default function Viewport3D() {
         }
       }
     };
-    const handleBlur = () => setModifierActive(false);   // reset if focus lost while Shift held
+    const handleBlur = () => {
+      setModifierActive(false);
+      useStore.getState().setDKeyPressed(false);
+    };
     window.addEventListener('keydown', handleKey);
     window.addEventListener('keyup', handleKey);
     window.addEventListener('blur', handleBlur);
@@ -157,6 +177,7 @@ export default function Viewport3D() {
         <MeasurementOverlay boards={boards} selectedItemIds={selectedItemIds} showMeasurements={showMeasurements} measurements={measurements} units={units} theme={theme} />
         <MeasureSnapPreview boards={boards} measureMode={measureMode} />
         <PivotSnapPreview />
+        <BuilderPreviewRenderer />
       </Canvas>
     </div>
   );

@@ -50,7 +50,7 @@ const AiHelpDialog = () => {
                             <li style={{ marginBottom: '8px' }}><b>Overrides:</b> <span style={{ color: '#d14' }}>flip</span> (180°), <span style={{ color: '#d14' }}>reset rotation</span><br/><i style={{ color: '#666' }}>"Flip on Z"</i></li>
                         </ul>
 
-                        <h3 style={{ color: 'var(--accent-color)', borderBottom: '1px solid var(--border-color)', margin: '20px 0 10px 0', paddingBottom: '4px' }}>🛠️ Tool Modifiers</h3>
+                        <h3 style={{ color: 'var(--accent-color)', borderBottom: '1px solid var(--border-color)', margin: '20px 0 10px 0', paddingBottom: '4px' }}>🧰 Tool Modifiers</h3>
                         <p style={{ fontSize: '0.85rem', color: '#888', marginTop: 0 }}>Quickly apply CSG cuts via text.</p>
                         <ul style={{ paddingLeft: '20px', margin: 0, fontSize: '0.9rem' }}>
                             <li style={{ marginBottom: '8px' }}><b>Holes:</b> <span style={{ color: '#d14' }}>drill, bore, hole...</span><br/><i style={{ color: '#666' }}>"Drill a 2 inch hole along X"</i></li>

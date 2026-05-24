@@ -327,3 +327,98 @@ select {
 .context-panel .close-btn:hover {
   color: var(--accent-color);
 }
+
+/* ── Docked Sidebar Layout ── */
+.canvas-area {
+  transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.app-overlay {
+  transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.app-container.layout-docked .canvas-area {
+  right: 340px;
+}
+
+.app-container.layout-docked .app-overlay {
+  right: 340px;
+}
+
+.docked-sidebar {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 340px;
+  height: 100vh;
+  z-index: 15;
+  background: var(--panel-bg);
+  backdrop-filter: var(--panel-blur);
+  -webkit-backdrop-filter: var(--panel-blur);
+  border-left: 1px solid var(--border-color);
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-sizing: border-box;
+  pointer-events: auto;
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.docked-sidebar-content {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+}
+
+.sidebar-panel-card {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: all 0.2s ease;
+}
+
+.sidebar-panel-card:hover {
+  border-color: rgba(188, 138, 95, 0.4);
+}
+
+.sidebar-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 600;
+  font-size: 0.85rem;
+  padding: 8px 12px;
+  background-color: var(--title-bg);
+  color: var(--accent-color);
+  border-bottom: 1px solid var(--border-color);
+  user-select: none;
+}
+
+.sidebar-panel-body {
+  padding: 10px;
+  overflow-y: auto;
+  max-height: 450px;
+}
+
+.sidebar-close-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0 2px;
+  transition: color 0.15s;
+}
+
+.sidebar-close-btn:hover {
+  color: #ff3b30;
+}
+
