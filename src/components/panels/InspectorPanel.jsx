@@ -51,7 +51,6 @@ const InspectorPanel = () => {
         constraintTargetMode, setConstraintTargetMode,
         updateProceduralBox,
         removeOperation, updateOperation,
-        setComputingMessage,
         showToolsPanel, setShowToolsPanel, setEditingToolOpId,
         toggleEdgeJoint, removeEdgeJoint,
         removeHardware, updateHardware,

@@ -17,7 +17,6 @@ const ToolsPanel = () => {
         boards, selectedItemIds,
         setBoards, pushHistory,
         removeOperation, updateOperation,
-        setComputingMessage,
         editingToolOpId, setEditingToolOpId,
         applyEdgeJoint, toggleEdgeJoint, removeEdgeJoint, switchEdgeJointType,
         applyBulkEdgeJoints, removeBulkEdgeJoints,
@@ -506,28 +505,24 @@ const ToolsPanel = () => {
 
                 const applyStaged = () => {
                     if (!hasPending) return;
-                    setComputingMessage('Performing 3D calculations… please wait.');
-                    requestAnimationFrame(() => {
-                        pushHistory();
-                        if (isNew) {
-                            const finalOp = { ...op, ...staged };
-                            setBoards(prev => prev.map(b =>
-                                b.id.toString() === selectedBoard.id.toString()
-                                    ? { ...b, operations: [...(b.operations || []), finalOp] }
-                                    : b
-                            ));
-                            setPendingNewOps(prev => prev.filter(p => p.id !== op.id));
-                        } else {
-                            setBoards(prev => prev.map(b =>
-                                b.id.toString() === selectedBoard.id.toString()
-                                    ? { ...b, operations: (b.operations || []).map(o => o.id === op.id ? { ...o, ...staged } : o) }
-                                    : b
-                            ));
-                        }
-                        setStagedOps(prev => { const next = { ...prev }; delete next[op.id]; return next; });
-                        setEditingToolOpId(null);
-                        setTimeout(() => setComputingMessage(null), 2000);
-                    });
+                    pushHistory();
+                    if (isNew) {
+                        const finalOp = { ...op, ...staged };
+                        setBoards(prev => prev.map(b =>
+                            b.id.toString() === selectedBoard.id.toString()
+                                ? { ...b, operations: [...(b.operations || []), finalOp] }
+                                : b
+                        ));
+                        setPendingNewOps(prev => prev.filter(p => p.id !== op.id));
+                    } else {
+                        setBoards(prev => prev.map(b =>
+                            b.id.toString() === selectedBoard.id.toString()
+                                ? { ...b, operations: (b.operations || []).map(o => o.id === op.id ? { ...o, ...staged } : o) }
+                                : b
+                        ));
+                    }
+                    setStagedOps(prev => { const next = { ...prev }; delete next[op.id]; return next; });
+                    setEditingToolOpId(null);
                 };
 
                 const cancelEdit = () => {
