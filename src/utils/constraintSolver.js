@@ -1,4 +1,4 @@
-import { Box3, Euler, Matrix4, Vector3 } from 'three';
+import { Box3, Euler, Matrix4, Vector3, Quaternion } from 'three';
 
 /**
  * Constraint Solver — Central Index Edition
@@ -41,16 +41,33 @@ export const getRotatedBoardAABB = (board) => {
     );
 
     const [rx, ry, rz] = board.orientation || [0, 0, 0];
+    const piv = board.pivot || [0, 0, 0];
+    const hasPivot = piv[0] !== 0 || piv[1] !== 0 || piv[2] !== 0;
+
     if (rx === 0 && ry === 0 && rz === 0) {
-        // Fast path — just translate
-        box.translate(new Vector3(px, py, pz));
+        // Fast path — just translate, accounting for pivot shifting the center
+        box.translate(new Vector3(px - piv[0], py - piv[1], pz - piv[2]));
         return box;
     }
 
-    // Build orientation + translation matrix (Three.js XYZ Euler order)
+    // Build orientation + translation matrix using Three.js YXZ Euler order and pivot offset
     const matrix = new Matrix4();
-    matrix.makeRotationFromEuler(new Euler(rx, ry, rz, 'XYZ'));
-    matrix.setPosition(px, py, pz);
+    const euler = new Euler(rx, ry, rz, 'YXZ');
+    const quaternion = new Quaternion().setFromEuler(euler);
+    const position = new Vector3(px, py, pz);
+
+    if (hasPivot) {
+        const pivotPos = new Vector3(...piv);
+        const rotationMatrix = new Matrix4().makeRotationFromQuaternion(quaternion);
+        const invPivotMatrix = new Matrix4().makeTranslation(-pivotPos.x, -pivotPos.y, -pivotPos.z);
+        const translationMatrix = new Matrix4().makeTranslation(position.x, position.y, position.z);
+        
+        matrix.multiply(translationMatrix)
+              .multiply(rotationMatrix)
+              .multiply(invPivotMatrix);
+    } else {
+        matrix.compose(position, quaternion, new Vector3(1, 1, 1));
+    }
 
     // applyMatrix4 transforms all 8 corners and recomputes the enclosing AABB
     box.applyMatrix4(matrix);
@@ -70,8 +87,6 @@ export const getFaceWorldPos = (board, faceStr) => {
     const [rx, ry, rz] = board.orientation || [0, 0, 0];
     if (rx !== 0 || ry !== 0 || rz !== 0) {
         const aabb  = getRotatedBoardAABB(board);
-        const extent = aabb.toArray(); // [minX,minY,minZ, maxX,maxY,maxZ]
-        // min is indices 0-2, max is 3-5
         const pos = [...board.position];
         pos[axis] = sign === 1 ? aabb.max.getComponent(axis) : aabb.min.getComponent(axis);
         return pos;
@@ -79,7 +94,8 @@ export const getFaceWorldPos = (board, faceStr) => {
 
     // Fast path for unrotated boards
     const pos = [...board.position];
-    pos[axis] += (board.size[axis] / 2) * sign;
+    const piv = board.pivot || [0, 0, 0];
+    pos[axis] += (board.size[axis] / 2) * sign - piv[axis];
     return pos;
 };
 
@@ -101,39 +117,15 @@ export const checkConstraintConflict = (proposed, constraints, boards) => {
 
     const existing = Object.values(constraints);
 
-    // Rule: no exact duplicate
+    // Rule: no exact duplicate (for Flush, only duplicate on the same axis)
     const isDupe = existing.some(c =>
         c.enabled !== false &&
         ((c.boardAId === boardAId && c.boardBId === boardBId) ||
          (c.boardAId === boardBId && c.boardBId === boardAId)) &&
-        c.type === type
+        c.type === type &&
+        (type !== 'Flush' || c.axis === proposed.axis)
     );
-    if (isDupe) return `A ${type} constraint between these two boards already exists.`;
-
-    if (type === 'Flush') {
-        const newAxis = faceToAxis(proposed.faceA);
-
-        // Rule: a board may only have one Flush per axis
-        const conflictForA = existing.find(c =>
-            c.enabled !== false && c.type === 'Flush' && c.axis === newAxis &&
-            (c.boardAId === boardAId || c.boardBId === boardAId)
-        );
-        if (conflictForA) {
-            const partnerId = conflictForA.boardAId === boardAId ? conflictForA.boardBId : conflictForA.boardAId;
-            const partner = boards.find(b => b.id.toString() === partnerId);
-            return `Conflict: Board A already has a Flush on the ${['X','Y','Z'][newAxis]} axis with "${partner?.name ?? partnerId}".`;
-        }
-
-        const conflictForB = existing.find(c =>
-            c.enabled !== false && c.type === 'Flush' && c.axis === newAxis &&
-            (c.boardAId === boardBId || c.boardBId === boardBId)
-        );
-        if (conflictForB) {
-            const partnerId = conflictForB.boardAId === boardBId ? conflictForB.boardBId : conflictForB.boardAId;
-            const partner = boards.find(b => b.id.toString() === partnerId);
-            return `Conflict: Board B already has a Flush on the ${['X','Y','Z'][newAxis]} axis with "${partner?.name ?? partnerId}".`;
-        }
-    }
+    if (isDupe) return `A ${type} constraint between these two boards on this axis already exists.`;
 
     if (type === 'Glue') {
         // Note: no single-glue-per-board restriction. A board may be glued to
@@ -231,26 +223,6 @@ export const propagateMove = (movingIds, delta, constraints) => {
     glueSet.forEach(id => {
         result.set(id, [...delta]);
     });
-
-    // ── Flush: per-axis propagation from the entire glue set ─────────────────
-    for (let axis = 0; axis < 3; axis++) {
-        if (delta[axis] === 0) continue;
-
-        // Collect all boards that are flush-connected to any member of glueSet on this axis
-        const flushSet = new Set(glueSet);
-        glueSet.forEach(id => {
-            getFlushConnectedSet(id, axis, constraints).forEach(fid => flushSet.add(fid));
-        });
-
-        // Only apply flush delta to boards that aren't already moving.
-        // Boards already in result (primary movers + glue partners) have the full
-        // delta; adding again would double-count and cause the "half as far" bug.
-        flushSet.forEach(id => {
-            if (result.has(id)) return;  // already covered — don't double-add
-            result.set(id, [0, 0, 0]);
-            result.get(id)[axis] = delta[axis];
-        });
-    }
 
     return result;
 };

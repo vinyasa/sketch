@@ -267,18 +267,8 @@ const AddComponentPanel = () => {
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
             <div style={{
-                fontSize: '0.6rem', color: 'var(--text-muted)', textTransform: 'uppercase',
+                fontSize: '0.6rem', color: 'var(--accent-color)', textTransform: 'uppercase',
                 letterSpacing: '0.6px', fontWeight: 700, marginBottom: '2px',
-            }}>
-                Smart Generators
-            </div>
-
-            <DimensionalLumberCard expanded={openGenerator === 'lumber'} onToggle={() => setOpenGenerator(openGenerator === 'lumber' ? null : 'lumber')} />
-            <PlywoodCard expanded={openGenerator === 'plywood'} onToggle={() => setOpenGenerator(openGenerator === 'plywood' ? null : 'plywood')} />
-
-            <div style={{
-                fontSize: '0.6rem', color: 'var(--text-muted)', textTransform: 'uppercase',
-                letterSpacing: '0.6px', fontWeight: 700, marginBottom: '2px', marginTop: '12px'
             }}>
                 Custom Shapes
             </div>
@@ -286,6 +276,16 @@ const AddComponentPanel = () => {
             {SHAPES.map(shape => (
                 <ShapeCard key={shape.id} shape={shape} onAdd={handleAdd} />
             ))}
+
+            <div style={{
+                fontSize: '0.6rem', color: 'var(--accent-color)', textTransform: 'uppercase',
+                letterSpacing: '0.6px', fontWeight: 700, marginBottom: '2px', marginTop: '12px'
+            }}>
+                Smart Generators
+            </div>
+
+            <DimensionalLumberCard expanded={openGenerator === 'lumber'} onToggle={() => setOpenGenerator(openGenerator === 'lumber' ? null : 'lumber')} />
+            <PlywoodCard expanded={openGenerator === 'plywood'} onToggle={() => setOpenGenerator(openGenerator === 'plywood' ? null : 'plywood')} />
 
             <p style={{
                 fontSize: '0.62rem', color: 'var(--text-muted)', textAlign: 'center',

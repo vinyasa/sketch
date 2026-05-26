@@ -6,6 +6,8 @@ import { generateFaceFrame } from '../../utils/generators/faceFrameGenerator';
 import { generateShelving } from '../../utils/generators/shelvingGenerator';
 import { generateShakerDoor } from '../../utils/generators/shakerDoorGenerator';
 import { generateDrawers } from '../../utils/generators/drawerGenerator';
+import { generateTableBase } from '../../utils/generators/tableBaseGenerator';
+import { generateTableTop } from '../../utils/generators/tableTopGenerator';
 
 export const createAssemblySlice = (set, get) => ({
   cloneAssembly: selectedGroupId => {
@@ -566,6 +568,210 @@ export const createAssemblySlice = (set, get) => ({
       return [...filtered, ...newBoards];
     });
     setSelectedItemIds([rootGroupId]);
+  },
+  // ─── Table Base Builder ───────────────────────────────────────────────────
+  buildTableBase: cfg => {
+    const { pushHistory, boards, groups, setBoards, setGroups, setConstraints, setSelectedItemIds, defaultMaterial } = get();
+    pushHistory();
+
+    const {
+      groupId,
+      savedParams,
+      newBoards,
+      newConstraints,
+      newGroups,
+      isEditing
+    } = generateTableBase(cfg, boards, groups, defaultMaterial);
+
+    setGroups(prev => {
+      const next = { ...prev };
+      if (isEditing) {
+        // Delete any sub-groups belonging recursively to this table base
+        Object.keys(next).forEach(k => {
+          let pid = next[k].parentId;
+          while (pid) {
+            if (pid === groupId) {
+              delete next[k];
+              break;
+            }
+            pid = next[pid]?.parentId;
+          }
+        });
+        next[groupId] = {
+          ...prev[groupId],
+          meta: { builder: 'table-base', params: savedParams }
+        };
+      } else {
+        next[groupId] = {
+          parentId: 'Workspace',
+          isExpanded: true,
+          visible: true,
+          name: 'Table Base',
+          meta: { builder: 'table-base', params: savedParams }
+        };
+      }
+      return {
+        ...next,
+        ...newGroups
+      };
+    });
+
+    setBoards(prev => {
+      const childBoards = collectChildBoards(groupId, prev, groups);
+      const childBoardIds = new Set(childBoards.map(b => b.id.toString()));
+      const newBoardIds = new Set(newBoards.map(nb => nb.id.toString()));
+      
+      const filtered = prev.filter(b => 
+        !childBoardIds.has(b.id.toString()) && 
+        !newBoardIds.has(b.id.toString()) && 
+        b.parentId !== groupId
+      );
+      return [...filtered, ...newBoards];
+    });
+
+    if (isEditing) {
+      const childBoards = collectChildBoards(groupId, boards, groups);
+      const childBoardIds = new Set(childBoards.map(b => b.id.toString()));
+      setConstraints(prev => {
+        const next = { ...prev };
+        Object.keys(next).forEach(cId => {
+          const c = next[cId];
+          if (childBoardIds.has(c.boardAId) || childBoardIds.has(c.boardBId)) {
+            delete next[cId];
+          }
+        });
+        return { ...next, ...newConstraints };
+      });
+    } else {
+      setConstraints(prev => ({ ...prev, ...newConstraints }));
+    }
+
+    setSelectedItemIds([groupId]);
+  },
+  // ─── Table Top Builder ────────────────────────────────────────────────────
+  buildTableTop: cfg => {
+    const { pushHistory, boards, groups, setBoards, setGroups, setConstraints, setSelectedItemIds, defaultMaterial, showToast } = get();
+    pushHistory();
+
+    const {
+      groupId,
+      savedParams,
+      newBoards,
+      isEditing,
+      hasBase,
+      baseGroupId
+    } = generateTableTop(cfg, boards, groups, defaultMaterial);
+
+    if (isEditing) {
+      setGroups(prev => ({
+        ...prev,
+        [groupId]: { ...prev[groupId], meta: { builder: 'table-top', params: savedParams } }
+      }));
+    } else {
+      setGroups(prev => ({
+        ...prev,
+        [groupId]: {
+          parentId: 'Workspace', isExpanded: true, visible: true, name: 'Table Top',
+          meta: { builder: 'table-top', params: savedParams }
+        }
+      }));
+    }
+
+    setBoards(prev => {
+      const newBoardIds = new Set(newBoards.map(nb => nb.id));
+      const filtered = prev.filter(b => !newBoardIds.has(b.id) && b.parentId !== groupId);
+      return [...filtered, ...newBoards];
+    });
+    setSelectedItemIds([groupId]);
+
+    // If there is an active base, automatically establish structural rigid glue constraints
+    if (hasBase && baseGroupId) {
+      setTimeout(() => {
+        const latestBoards = get().boards;
+        const baseBoards = collectChildBoards(baseGroupId, latestBoards, get().groups);
+        const topBoards = latestBoards.filter(b => b.parentId === groupId);
+        
+        const frontApron = baseBoards.find(b => b.name === 'Apron Front');
+        const backApron = baseBoards.find(b => b.name === 'Apron Back');
+        const leftApron = baseBoards.find(b => b.name === 'Apron Left');
+        const rightApron = baseBoards.find(b => b.name === 'Apron Right');
+        const baseStringers = baseBoards.filter(b => b.name.startsWith('Stringer '));
+
+        const newConstraints = {};
+        let cIndex = 0;
+
+        // Glue first slat to front apron
+        const firstSlat = topBoards.find(b => b.name === 'Top Slat 1');
+        if (firstSlat && frontApron) {
+          const cId = `glue_top_base_${Date.now()}_${cIndex++}`;
+          newConstraints[cId] = {
+            type: 'Glue',
+            boardAId: firstSlat.id.toString(),
+            boardBId: frontApron.id.toString(),
+            offset: [firstSlat.position[0] - frontApron.position[0], firstSlat.position[1] - frontApron.position[1], firstSlat.position[2] - frontApron.position[2]],
+            enabled: true
+          };
+        }
+
+        // Glue last slat to back apron
+        const topSlats = topBoards.filter(b => b.name.startsWith('Top Slat '));
+        if (topSlats.length > 0 && backApron) {
+          const lastSlat = topSlats[topSlats.length - 1];
+          const cId = `glue_top_base_${Date.now()}_${cIndex++}`;
+          newConstraints[cId] = {
+            type: 'Glue',
+            boardAId: lastSlat.id.toString(),
+            boardBId: backApron.id.toString(),
+            offset: [lastSlat.position[0] - backApron.position[0], lastSlat.position[1] - backApron.position[1], lastSlat.position[2] - backApron.position[2]],
+            enabled: true
+          };
+        }
+
+        // Glue breadboards to side aprons if present
+        const leftBB = topBoards.find(b => b.name === 'Left Breadboard');
+        if (leftBB && leftApron) {
+          const cId = `glue_top_base_${Date.now()}_${cIndex++}`;
+          newConstraints[cId] = {
+            type: 'Glue',
+            boardAId: leftBB.id.toString(),
+            boardBId: leftApron.id.toString(),
+            offset: [leftBB.position[0] - leftApron.position[0], leftBB.position[1] - leftApron.position[1], leftBB.position[2] - leftApron.position[2]],
+            enabled: true
+          };
+        }
+        const rightBB = topBoards.find(b => b.name === 'Right Breadboard');
+        if (rightBB && rightApron) {
+          const cId = `glue_top_base_${Date.now()}_${cIndex++}`;
+          newConstraints[cId] = {
+            type: 'Glue',
+            boardAId: rightBB.id.toString(),
+            boardBId: rightApron.id.toString(),
+            offset: [rightBB.position[0] - rightApron.position[0], rightBB.position[1] - rightApron.position[1], rightBB.position[2] - rightApron.position[2]],
+            enabled: true
+          };
+        }
+
+        // Glue intermediate slats to stringers
+        if (baseStringers.length > 0 && topSlats.length > 2) {
+          baseStringers.forEach((stringer, sIdx) => {
+            const closeSlat = topSlats[Math.min(topSlats.length - 1, Math.max(0, Math.floor(topSlats.length * ((sIdx + 1) / (baseStringers.length + 1)))))];
+            if (closeSlat) {
+              const cId = `glue_top_base_${Date.now()}_${cIndex++}`;
+              newConstraints[cId] = {
+                type: 'Glue',
+                boardAId: closeSlat.id.toString(),
+                boardBId: stringer.id.toString(),
+                offset: [closeSlat.position[0] - stringer.position[0], closeSlat.position[1] - stringer.position[1], closeSlat.position[2] - stringer.position[2]],
+                enabled: true
+              };
+            }
+          });
+        }
+
+        setConstraints(prev => ({ ...prev, ...newConstraints }));
+        showToast('✅ Table top snap-aligned on base. Glue constraints generated.');
+      }, 50);
+    }
   },
   manualAddAssembly: () => {
     const {

@@ -4,6 +4,8 @@ import { loadLibrarySync, loadLibraryFromDiskIfNeeded, loadStoredHandle } from '
 import { loadHardwareLibrarySync, loadHardwareLibraryFromDiskIfNeeded, loadStoredHardwareHandle, persistHardwareLibrary } from '../utils/hardwareLibraryPersistence';
 import { DEFAULT_LIGHTING } from '../utils/lightingPresets';
 
+import { checkConstraintConflict, getFaceWorldPos } from '../utils/constraintSolver';
+
 const _initialHardwareLibrary = loadHardwareLibrarySync();
 
 // ─── Fresh-start flag: append ?fresh to the URL to skip localStorage ─────────
@@ -273,6 +275,10 @@ const useStore = create((set, get) => ({
     setFaceFrameDialog: (v) => set({ faceFrameDialog: typeof v === 'function' ? v(get().faceFrameDialog) : v }),
     shelvingDialog: null,
     setShelvingDialog: (v) => set({ shelvingDialog: typeof v === 'function' ? v(get().shelvingDialog) : v }),
+    tableBaseDialog: null,
+    setTableBaseDialog: (v) => set({ tableBaseDialog: typeof v === 'function' ? v(get().tableBaseDialog) : v }),
+    tableTopDialog: null,
+    setTableTopDialog: (v) => set({ tableTopDialog: typeof v === 'function' ? v(get().tableTopDialog) : v }),
 
     recentFiles: loadRecentFiles(),
     setRecentFiles: (v) => set({ recentFiles: typeof v === 'function' ? v(get().recentFiles) : v }),
@@ -487,7 +493,110 @@ const useStore = create((set, get) => ({
         { id: 4, name: 'Leg C',     parentId: 'Table Base', size: [1.5, 12, 1.5], position: [16.5, 6, -10.5],  material: 'white-oak', joint: 'Butt 1', shape: 'box', operations: [] },
         { id: 5, name: 'Leg D',     parentId: 'Table Base', size: [1.5, 12, 1.5], position: [-16.5, 6, -10.5], material: 'white-oak', joint: 'Butt 1', shape: 'box', operations: [] },
     ]),
-    setBoards: (v) => set({ boards: typeof v === 'function' ? v(get().boards) : v }),
+    setBoards: (v) => {
+        const nextBoards = typeof v === 'function' ? v(get().boards) : v;
+        const constraints = get().constraints || {};
+        let newConstraints = { ...constraints };
+        let changed = false;
+
+        const axisFaces = [
+            { min: 'x-', center: 'center', max: 'x+' },
+            { min: 'y-', center: 'center', max: 'y+' },
+            { min: 'z-', center: 'center', max: 'z+' }
+        ];
+
+        // 1. Audit existing Flush constraints: remove if misaligned > 0.01"
+        Object.entries(constraints).forEach(([cId, c]) => {
+            if (c.type === 'Flush' && c.enabled !== false) {
+                const boardA = nextBoards.find(bd => bd.id.toString() === c.boardAId);
+                const boardB = nextBoards.find(bd => bd.id.toString() === c.boardBId);
+                if (boardA && boardB && c.faceA && c.faceB) {
+                    const posA = getFaceWorldPos(boardA, c.faceA);
+                    const posB = getFaceWorldPos(boardB, c.faceB);
+                    if (posA && posB && typeof c.axis === 'number') {
+                        const dev = Math.abs(posA[c.axis] - posB[c.axis]);
+                        if (dev > 0.01) {
+                            delete newConstraints[cId];
+                            changed = true;
+                        }
+                    }
+                }
+            }
+        });
+
+        // 2. Auto-detect new Flush alignments: add if aligned < 0.005"
+        for (let axis = 0; axis < 3; axis++) {
+            for (let i = 0; i < nextBoards.length; i++) {
+                const b = nextBoards[i];
+                if (b.visible === false) continue;
+                const b_size = b.size[axis];
+                const b_pos = b.position[axis];
+
+                for (let j = i + 1; j < nextBoards.length; j++) {
+                    const other = nextBoards[j];
+                    if (other.visible === false) continue;
+                    const o_size = other.size[axis];
+                    const o_pos = other.position[axis];
+
+                    const b_min = b_pos - b_size / 2;
+                    const b_max = b_pos + b_size / 2;
+                    const o_min = o_pos - o_size / 2;
+                    const o_max = o_pos + o_size / 2;
+
+                    let faceA = null;
+                    let faceB = null;
+
+                    if (Math.abs(b_min - o_max) < 0.005) {
+                        faceA = axisFaces[axis].min;
+                        faceB = axisFaces[axis].max;
+                    } else if (Math.abs(b_max - o_min) < 0.005) {
+                        faceA = axisFaces[axis].max;
+                        faceB = axisFaces[axis].min;
+                    } else if (Math.abs(b_min - o_min) < 0.005) {
+                        faceA = axisFaces[axis].min;
+                        faceB = axisFaces[axis].min;
+                    } else if (Math.abs(b_max - o_max) < 0.005) {
+                        faceA = axisFaces[axis].max;
+                        faceB = axisFaces[axis].max;
+                    }
+
+                    if (faceA && faceB) {
+                        const proposed = {
+                            type: 'Flush',
+                            boardAId: b.id.toString(),
+                            boardBId: other.id.toString(),
+                            faceA,
+                            faceB,
+                            axis,
+                            enabled: true
+                        };
+
+                        const exists = Object.values(newConstraints).some(c =>
+                            c.type === 'Flush' &&
+                            ((c.boardAId === proposed.boardAId && c.boardBId === proposed.boardBId) ||
+                             (c.boardAId === proposed.boardBId && c.boardBId === proposed.boardAId)) &&
+                            c.axis === proposed.axis
+                        );
+
+                        if (!exists) {
+                            const conflict = checkConstraintConflict(proposed, newConstraints, nextBoards);
+                            if (!conflict) {
+                                const cId = 'flush_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
+                                newConstraints[cId] = proposed;
+                                changed = true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (changed) {
+            set({ boards: nextBoards, constraints: newConstraints });
+        } else {
+            set({ boards: nextBoards });
+        }
+    },
 
     // Groups: Purely organizational. No position or rotation.
     groups: loadState('groups', {

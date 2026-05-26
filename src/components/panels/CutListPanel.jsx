@@ -20,10 +20,58 @@ const CutListPanel = () => {
     const { boards } = useStore();
     const [mode, setMode] = useState('detail'); // 'detail' | 'grouped'
 
+    // ─── Virtually Merge Split Legs ─────────────────────────────────────────
+    const visibleBoards = useMemo(() => {
+        const mergedList = [];
+        const lowerLegs = new Map(); // key: parentId + leg index -> lower board
+        const upperLegs = new Map(); // key: parentId + leg index -> upper board
+
+        boards.forEach(b => {
+            const matchUpper = b.name.match(/^Leg (\d+) Upper$/);
+            const matchLower = b.name.match(/^Leg (\d+) Lower$/);
+            if (matchUpper) {
+                const index = matchUpper[1];
+                const key = `${b.parentId || 'Workspace'}|||${index}`;
+                upperLegs.set(key, b);
+            } else if (matchLower) {
+                const index = matchLower[1];
+                const key = `${b.parentId || 'Workspace'}|||${index}`;
+                lowerLegs.set(key, b);
+            } else {
+                mergedList.push({ ...b });
+            }
+        });
+
+        upperLegs.forEach((upperBoard, key) => {
+            const lowerBoard = lowerLegs.get(key);
+            if (lowerBoard) {
+                const index = key.split('|||')[1];
+                const fullHeight = upperBoard.size[1] + lowerBoard.size[1];
+                mergedList.push({
+                    id: `merged_leg_${key}`,
+                    name: `Leg ${index}`,
+                    material: upperBoard.material,
+                    size: [upperBoard.size[0], fullHeight, upperBoard.size[2]],
+                    parentId: upperBoard.parentId
+                });
+            } else {
+                mergedList.push({ ...upperBoard });
+            }
+        });
+
+        lowerLegs.forEach((lowerBoard, key) => {
+            if (!upperLegs.has(key)) {
+                mergedList.push({ ...lowerBoard });
+            }
+        });
+
+        return mergedList;
+    }, [boards]);
+
     // ── Grouped data ─────────────────────────────────────────────────────────
     const grouped = useMemo(() => {
         const map = new Map();
-        boards.forEach(b => {
+        visibleBoards.forEach(b => {
             const label = matLabel(b.material);
             const dims = [...b.size].sort((a, c) => c - a).map(fmt4); // L × W × T
             const key = `${label}|||${dims.join('|')}`;
@@ -38,7 +86,7 @@ const CutListPanel = () => {
         return [...map.values()].sort((a, b) =>
             a.label.localeCompare(b.label) || b.dims[0] - a.dims[0]
         );
-    }, [boards]);
+    }, [visibleBoards]);
 
     const btnBase = {
         padding: '5px 14px', borderRadius: '5px', fontSize: '0.75rem',
@@ -60,7 +108,7 @@ const CutListPanel = () => {
                     Grouped
                 </button>
                 <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: 'var(--text-muted)', alignSelf: 'center' }}>
-                    {boards.length} piece{boards.length !== 1 ? 's' : ''}
+                    {visibleBoards.length} piece{visibleBoards.length !== 1 ? 's' : ''}
                     {mode === 'grouped' && ` → ${grouped.length} line${grouped.length !== 1 ? 's' : ''}`}
                 </span>
             </div>
@@ -79,7 +127,7 @@ const CutListPanel = () => {
                             </tr>
                         </thead>
                         <tbody>
-                            {boards.map(b => {
+                            {visibleBoards.map(b => {
                                 const dims = [...b.size].sort((a, c) => c - a).map(fmt4);
                                 return (
                                     <tr key={b.id} style={{ borderBottom: '1px solid var(--border-color)' }}>

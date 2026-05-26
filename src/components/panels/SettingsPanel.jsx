@@ -27,7 +27,7 @@ const SettingsPanel = () => {
         fontWeight: '700',
         textTransform: 'uppercase',
         letterSpacing: '0.5px',
-        color: 'var(--text-muted, #888)',
+        color: 'var(--accent-color, #ff7a00)', // Changed to orange; change back to var(--text-muted, #888) if desired
         display: 'block',
         marginBottom: '2px',
     };

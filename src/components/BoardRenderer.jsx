@@ -3,7 +3,7 @@ import { useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useTexture, useGLTF, Edges, Html, Line } from '@react-three/drei';
 import useStore from '../store/useStore';
-import { checkConstraintConflict } from '../utils/constraintSolver';
+import { checkConstraintConflict, propagateMove, getFaceWorldPos } from '../utils/constraintSolver';
 import { computeWorldAABB, collectChildBoards, calculateGroupAABB } from '../utils/sceneGraph';
 import { formatUnit, getGridStep } from '../utils/units';
 import { WOOD_CATALOGUE, WOOD_TEXTURE_URLS, normalizeMaterial } from '../utils/materialCatalogue';
@@ -122,6 +122,35 @@ const _buildDadoTool = (size, op) => {
   const geo = new THREE.BoxGeometry(boxSize[0], boxSize[1], boxSize[2]);
   geo.translate(pos[0], pos[1], pos[2]);
   return geo;
+};
+
+const _buildBlindHoleTool = (size, op) => {
+  const face = _FACE_MAP[op.face || 'top'];
+  const { depthAxis, sign, faceAxes } = face;
+
+  const depth = Math.max(0.01, op.depth ?? 1.0);
+  const radius = Math.max(0.01, op.radius ?? 0.1875);
+  const offset = op.offset ?? 0;
+  const offsetY = op.offsetY ?? 0;
+
+  // Identify which face axis is the "span" (longer) and which is "thickness" (shorter)
+  const fa0 = faceAxes[0];
+  const fa1 = faceAxes[1];
+  const spanFaceAxis = size[fa0] >= size[fa1] ? fa0 : fa1;
+  const thicknessFaceAxis = spanFaceAxis === fa0 ? fa1 : fa0;
+
+  const cyl = new THREE.CylinderGeometry(radius, radius, depth, 32);
+
+  if (depthAxis === 0) cyl.rotateZ(Math.PI / 2);
+  else if (depthAxis === 2) cyl.rotateX(Math.PI / 2);
+
+  const pos = [0, 0, 0];
+  pos[depthAxis] = sign * (size[depthAxis] / 2 - depth / 2);
+  pos[spanFaceAxis] = offset;
+  pos[thicknessFaceAxis] = offsetY;
+
+  cyl.translate(pos[0], pos[1], pos[2]);
+  return cyl;
 };
 
 // ── Miter Saw Cut tool builder ───────────────────────────────────────────────
@@ -545,19 +574,26 @@ const CSGGeometry = ({ b }) => {
             }
             continue;
           } else {
-            // Hole
-            const axis = op.axis || 'y';
-            const r = Math.max(0.01, op.radius || 1);
-            const hLength = Math.max(...b.size) + 10;
-            const cyl = new THREE.CylinderGeometry(r, r, hLength, 32);
-            opBrush = new Brush(cyl);
-            if (axis === 'x') opBrush.rotation.z = Math.PI / 2;
-            else if (axis === 'z') opBrush.rotation.x = Math.PI / 2;
-            const ox = op.offsetX || 0;
-            const oy = op.offsetY || 0;
-            if (axis === 'z') opBrush.position.set(ox, oy, 0);
-            else if (axis === 'x') opBrush.position.set(0, oy, ox);
-            else opBrush.position.set(ox, 0, oy);
+            // Hole (supports both blind face-aligned holes and standard through-holes)
+            let cylGeo;
+            if (op.depth !== undefined && op.face !== undefined) {
+              cylGeo = _buildBlindHoleTool(b.size, op);
+            } else {
+              const axis = op.axis || 'y';
+              const r = Math.max(0.01, op.radius || 1);
+              const hLength = Math.max(...b.size) + 10;
+              cylGeo = new THREE.CylinderGeometry(r, r, hLength, 32);
+              if (axis === 'x') cylGeo.rotateZ(Math.PI / 2);
+              else if (axis === 'z') cylGeo.rotateX(Math.PI / 2);
+              const ox = op.offsetX || 0;
+              const oy = op.offsetY || 0;
+              const pos = [0, 0, 0];
+              if (axis === 'z') { pos[0] = ox; pos[1] = oy; }
+              else if (axis === 'x') { pos[1] = oy; pos[2] = ox; }
+              else { pos[0] = ox; pos[2] = oy; }
+              cylGeo.translate(pos[0], pos[1], pos[2]);
+            }
+            opBrush = new Brush(cylGeo);
             opBrush.updateMatrixWorld();
           }
 
@@ -836,6 +872,8 @@ const BoardMesh = ({ b, selectedItemIds, toggleSelection, textures, showEdges, c
         let snappedPos = [...newPos];
         const activeSnaps = { x: false, y: false, z: false };
 
+        const { setBoards, constraints, boards: latestBoards } = useStore.getState();
+
         for (let axis = 0; axis < 3; axis++) {
           let closestSnapDelta = Infinity;
           let targetSnapVal = null;
@@ -849,7 +887,7 @@ const BoardMesh = ({ b, selectedItemIds, toggleSelection, textures, showEdges, c
             { name: 'max', val: b_pos + b_size / 2, offset: -b_size / 2 }
           ];
 
-          for (const other of boards) {
+          for (const other of latestBoards) {
             if (other.id === b.id) continue;
             if (other.visible === false) continue;
 
@@ -883,10 +921,29 @@ const BoardMesh = ({ b, selectedItemIds, toggleSelection, textures, showEdges, c
 
         setSnappedAxes(activeSnaps);
 
-        const { setBoards } = useStore.getState();
-        setBoards(boards.map(bd => {
-          if (bd.id === b.id) {
-            return { ...bd, position: snappedPos };
+        const glueConstraints = Object.fromEntries(
+          Object.entries(constraints).filter(([_, c]) => c.type === 'Glue')
+        );
+        const deltaVec = [
+          snappedPos[0] - draggingInfo.initialPosition[0],
+          snappedPos[1] - draggingInfo.initialPosition[1],
+          snappedPos[2] - draggingInfo.initialPosition[2]
+        ];
+        const moveMap = propagateMove([b.id.toString()], deltaVec, glueConstraints);
+
+        setBoards(latestBoards.map(bd => {
+          const bdIdStr = bd.id.toString();
+          if (moveMap.has(bdIdStr)) {
+            const initialPos = draggingInfo.allInitialPositions?.get(bdIdStr) || bd.position;
+            const d = moveMap.get(bdIdStr);
+            return {
+              ...bd,
+              position: [
+                initialPos[0] + d[0],
+                initialPos[1] + d[1],
+                initialPos[2] + d[2]
+              ]
+            };
           }
           return bd;
         }));
@@ -896,84 +953,15 @@ const BoardMesh = ({ b, selectedItemIds, toggleSelection, textures, showEdges, c
     const onUp = (e) => {
       try { gl.domElement.releasePointerCapture(draggingInfo.pointerId); } catch (_) {}
 
-      const { constraints, setConstraints, showToast, pushHistory } = useStore.getState();
-      let addedConstraintCount = 0;
+      const { pushHistory } = useStore.getState();
+      const currentPos = b.position;
+      const initialPos = draggingInfo.initialPosition;
+      const moved = Math.abs(currentPos[0] - initialPos[0]) > 0.001 ||
+                    Math.abs(currentPos[1] - initialPos[1]) > 0.001 ||
+                    Math.abs(currentPos[2] - initialPos[2]) > 0.001;
 
-      const axisFaces = [
-        { min: 'x-', center: 'center', max: 'x+' },
-        { min: 'y-', center: 'center', max: 'y+' },
-        { min: 'z-', center: 'center', max: 'z+' }
-      ];
-
-      let newConstraints = { ...constraints };
-
-      for (let axis = 0; axis < 3; axis++) {
-        const b_size = b.size[axis];
-        const b_pos = b.position[axis];
-
-        for (const other of boards) {
-          if (other.id === b.id) continue;
-          if (other.visible === false) continue;
-
-          const o_size = other.size[axis];
-          const o_pos = other.position[axis];
-
-          const b_min = b_pos - b_size / 2;
-          const b_max = b_pos + b_size / 2;
-          const o_min = o_pos - o_size / 2;
-          const o_max = o_pos + o_size / 2;
-
-          let faceA = null;
-          let faceB = null;
-
-          if (Math.abs(b_min - o_max) < 0.005) {
-            faceA = axisFaces[axis].min;
-            faceB = axisFaces[axis].max;
-          } else if (Math.abs(b_max - o_min) < 0.005) {
-            faceA = axisFaces[axis].max;
-            faceB = axisFaces[axis].min;
-          } else if (Math.abs(b_min - o_min) < 0.005) {
-            faceA = axisFaces[axis].min;
-            faceB = axisFaces[axis].min;
-          } else if (Math.abs(b_max - o_max) < 0.005) {
-            faceA = axisFaces[axis].max;
-            faceB = axisFaces[axis].max;
-          }
-
-          if (faceA && faceB) {
-            const proposed = {
-              type: 'Flush',
-              boardAId: b.id.toString(),
-              boardBId: other.id.toString(),
-              faceA,
-              faceB,
-              axis,
-              enabled: true
-            };
-
-            const exists = Object.values(newConstraints).some(c =>
-              c.type === 'Flush' &&
-              c.boardAId === proposed.boardAId &&
-              c.boardBId === proposed.boardBId &&
-              c.axis === proposed.axis
-            );
-
-            if (!exists) {
-              const conflict = checkConstraintConflict(proposed, newConstraints, boards);
-              if (!conflict) {
-                const cId = 'flush_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
-                newConstraints[cId] = proposed;
-                addedConstraintCount++;
-              }
-            }
-          }
-        }
-      }
-
-      if (addedConstraintCount > 0) {
+      if (moved) {
         pushHistory();
-        setConstraints(newConstraints);
-        showToast(`🧲 Virtual Glue: Added ${addedConstraintCount} relational alignment constraints.`);
       }
 
       setDraggingInfo(null);
@@ -1001,6 +989,7 @@ const BoardMesh = ({ b, selectedItemIds, toggleSelection, textures, showEdges, c
 
     setDraggingInfo({
       initialPosition: [...b.position],
+      allInitialPositions: new Map(boards.map(bd => [bd.id.toString(), [...bd.position]])),
       startPoint: e.point.clone(),
       plane: dragPlane,
       pointerId: e.pointerId
@@ -1072,6 +1061,27 @@ const BoardMesh = ({ b, selectedItemIds, toggleSelection, textures, showEdges, c
           toggleSelection(b.id.toString(), e.shiftKey || e.ctrlKey || e.metaKey, faceStr);
         }}
         onPointerDown={(e) => {
+          // ── Pivot Mode Click Snapping ──
+          const { pivotMode, setPivotMode, gridSnap, setCustomPivot, setPivotHoverSnap, units } = useStore.getState();
+          if (pivotMode?.active && pivotMode.boardId === b.id.toString()) {
+            e.stopPropagation();
+            const gridStep = getGridStep(gridSnap, units) || 0.125;
+            const pt = e.point.clone();
+            const euler = new THREE.Euler(...(b.orientation || [0, 0, 0]), 'YXZ');
+            pt.sub(new THREE.Vector3(...b.position));
+            pt.applyEuler(new THREE.Euler(-euler.x, -euler.y, -euler.z, 'ZXY'));
+
+            const snx = Math.round(pt.x / gridStep) * gridStep;
+            const sny = Math.round(pt.y / gridStep) * gridStep;
+            const snz = Math.round(pt.z / gridStep) * gridStep;
+
+            setCustomPivot(b.id, [snx, sny, snz]);
+            setPivotMode(null);
+            setPivotHoverSnap(null);
+            useStore.getState().showToast('Pivot point set successfully.');
+            return;
+          }
+
           if (dKeyPressed) {
             handleDragPointerDown(e);
             return;

@@ -232,14 +232,23 @@
 /* Semantic card — used for Shape, Material, Joint, Constraints, etc.
    Gives visual lift without overwhelming the data sections above. */
 .inspector-card {
-  margin-bottom: 0;
+  margin-bottom: 8px;
   padding: 6px 8px;
   border-radius: 7px;
-  border: 2px solid rgba(255,255,255,0.12);
-  background: rgba(255,255,255,0.03);
+  border: 2px solid rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.03);
+}
+.light-mode .inspector-card {
+  border: 2px solid rgba(0, 0, 0, 0.16);
+  background: rgba(0, 0, 0, 0.02);
 }
 .inspector-card h4 {
-  font-size: 0.65rem; text-transform: uppercase; color: var(--text-muted); margin-bottom: 4px;
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  color: var(--accent-color);
+  font-weight: 750;
+  letter-spacing: 0.6px;
+  margin-bottom: 4px;
 }
 
 /* Flash-confirm animation for capture buttons */

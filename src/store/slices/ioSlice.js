@@ -31,6 +31,9 @@ export const createIoSlice = (set, get) => ({
     if (setHardwareInstances) setHardwareInstances([]);
     setCurrentFileName(null);
     if (resetHistory) resetHistory();
+    
+    // Clear active page-reload cache to prevent the deleted/cleared design from returning
+    localStorage.removeItem('lucey_save');
   },
   saveWorkspace: (customName = null) => {
     const {
@@ -51,20 +54,34 @@ export const createIoSlice = (set, get) => ({
       cameraState,
       measurements,
       showMeasurements,
+      currentFileName,
       recentFiles,
       setRecentFiles,
       showToast,
       panelLayoutMode,
       workspaceLayout,
       lumberyardSnapEnabled,
-      measurementStyle
+      measurementStyle,
+      setCurrentFileName
     } = get();
-    let name = "My Design";
-    if (customName) {
-      name = customName;
-    } else if (recentFiles.length > 0) {
-      name = recentFiles[0].name;
+
+    const name = customName || currentFileName || "My Design";
+
+    if (boards.length === 0) {
+      if (currentFileName && !customName) {
+        localStorage.removeItem('lucey_save_' + name);
+        const newRecents = recentFiles.filter(r => r.name !== name);
+        setRecentFiles(newRecents);
+        localStorage.setItem('lucey_recent_files', JSON.stringify(newRecents));
+        setCurrentFileName(newRecents.length > 0 ? newRecents[0].name : 'Untitled');
+        localStorage.removeItem('lucey_save');
+        showToast(`Removed "${name}" file`);
+        return true;
+      }
+      showToast("Cannot save empty workspace");
+      return false;
     }
+
     const payload = {
       boards,
       groups,
@@ -91,18 +108,18 @@ export const createIoSlice = (set, get) => ({
     localStorage.setItem('lucey_save_' + name, JSON.stringify(payload));
     // Also update the active autosave buffer so manual saves survive page reloads immediately
     localStorage.setItem('lucey_save', JSON.stringify(payload));
-    if (customName) {
-      let newRecents = recentFiles.filter(r => r.name !== name);
-      newRecents.unshift({
-        name,
-        timestamp: Date.now()
-      });
-      if (newRecents.length > 5) newRecents = newRecents.slice(0, 5);
-      setRecentFiles(newRecents);
-      localStorage.setItem('lucey_recent_files', JSON.stringify(newRecents));
-      setCurrentFileName(name);
-    }
-    showToast(customName ? `Saved as "${name}"` : 'Workspace saved');
+    
+    let newRecents = recentFiles.filter(r => r.name !== name);
+    newRecents.unshift({
+      name,
+      timestamp: Date.now()
+    });
+    if (newRecents.length > 5) newRecents = newRecents.slice(0, 5);
+    setRecentFiles(newRecents);
+    localStorage.setItem('lucey_recent_files', JSON.stringify(newRecents));
+    setCurrentFileName(name);
+    
+    showToast(customName ? `Saved as "${name}"` : `Saved "${name}"`);
     return true;
   },
   loadWorkspace: name => {
@@ -166,6 +183,9 @@ export const createIoSlice = (set, get) => ({
           if (p.lumberyardSnapEnabled !== undefined && setLumberyardSnapEnabled) setLumberyardSnapEnabled(p.lumberyardSnapEnabled);
           if (p.measurementStyle && setMeasurementStyle) setMeasurementStyle(p.measurementStyle);
           if (name) setCurrentFileName(name);
+
+          // Persist the loaded project to the active reload buffer 'lucey_save' so it survives page reloads
+          localStorage.setItem('lucey_save', s);
         }
       } catch (e) {}
     } else if (name) {
@@ -253,6 +273,9 @@ export const createIoSlice = (set, get) => ({
           if (p.constraints) setConstraints(p.constraints);
           setCurrentFileName(file.name.replace(/\.json$/i, ''));
           resetHistory();
+
+          // Persist the imported project to the active reload buffer 'lucey_save' so it survives page reloads
+          localStorage.setItem('lucey_save', event.target.result);
         }
       } catch (e) {
         alert("Failed to parse project file.");

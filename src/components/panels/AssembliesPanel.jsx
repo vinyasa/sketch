@@ -45,6 +45,20 @@ const ASSEMBLIES = [
         description: 'Evenly spaced horizontal shelves for any opening',
         color: '#6d8d53',
     },
+    {
+        id: 'tableBase',
+        label: 'Table Base',
+        icon: '🏓',
+        description: 'Tapered legs, aprons, and responsive stringers',
+        color: '#ff7a00',
+    },
+    {
+        id: 'tableTop',
+        label: 'Table Top',
+        icon: '➖',
+        description: 'Slat glue-up with tenons, breadboard ends, and auto-snap',
+        color: '#ffaa00',
+    },
 ];
 
 const AssemblyCard = ({ item, onSelect }) => {
@@ -96,7 +110,7 @@ const AssemblyCard = ({ item, onSelect }) => {
 };
 
 const AssembliesPanel = () => {
-    const { setCabinetDialog, setBoxDialog, setShakerDoorDialog, setDrawerDialog, setFaceFrameDialog, setShelvingDialog } = useStore();
+    const { setCabinetDialog, setBoxDialog, setShakerDoorDialog, setDrawerDialog, setFaceFrameDialog, setShelvingDialog, setTableBaseDialog, setTableTopDialog } = useStore();
 
     const handleSelect = (item) => {
         const { boards, groups, selectedItemIds } = useStore.getState();
@@ -160,13 +174,29 @@ const AssembliesPanel = () => {
             setShelvingDialog({
                 ...defaultCfg,
             });
+        } else if (item.id === 'tableBase') {
+            setTableBaseDialog({
+                width: 48, height: 29, depth: 30,
+                legSize: 2.25, legTaperAngle: 1.5,
+                apronHeight: 4.0, apronThickness: 0.75,
+                apronInset: 0.25, apronJoint: 'pocket-hole',
+                ...defaultCfg,
+            });
+        } else if (item.id === 'tableTop') {
+            setTableTopDialog({
+                boardWidth: 5.5, thickness: 1.0,
+                widthOverhang: 2.0, depthOverhang: 2.0,
+                tenonSpacing: 10, jointType: 'loose-tenon',
+                breadboardEnds: false,
+                ...defaultCfg,
+            });
         }
     };
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
             <div style={{
-                fontSize: '0.6rem', color: 'var(--text-muted)', textTransform: 'uppercase',
+                fontSize: '0.6rem', color: 'var(--accent-color)', textTransform: 'uppercase',
                 letterSpacing: '0.6px', fontWeight: 700, marginBottom: '2px',
             }}>
                 Parametric Builders

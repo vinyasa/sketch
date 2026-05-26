@@ -61,7 +61,7 @@ const OutlinerPanel = () => {
                             </span>
                         )}
                         {isGroup && !hasChildren && <span style={{ marginRight: '4px', display: 'inline-block', width: '12px' }}></span>}
-                        {isGroup ? nodeId : g.name}
+                        {isGroup ? (g.name || nodeId) : g.name}
                         {!isGroup && overlappingBoardIds && overlappingBoardIds.includes(nodeId) && (
                             <span title="Board is physically overlapping another board" style={{ marginLeft: '6px', color: '#ff3b30' }}>⚠️</span>
                         )}

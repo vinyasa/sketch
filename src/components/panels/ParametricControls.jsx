@@ -49,6 +49,12 @@ const ParametricControls = ({ groupId, meta }) => {
         } else if (meta.builder === 'shelving') {
             const { buildShelving } = useStore.getState();
             if (buildShelving) buildShelving(cfg);
+        } else if (meta.builder === 'table-base') {
+            const { buildTableBase } = useStore.getState();
+            if (buildTableBase) buildTableBase(cfg);
+        } else if (meta.builder === 'table-top') {
+            const { buildTableTop } = useStore.getState();
+            if (buildTableTop) buildTableTop(cfg);
         }
     };
 
@@ -155,6 +161,98 @@ const ParametricControls = ({ groupId, meta }) => {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                     {renderInput('count', 'Shelf Count', 1, 1)}
                     {renderInput('thickness', 'Thickness')}
+                </div>
+            </>
+        );
+    } else if (meta.builder === 'table-base') {
+        controls = (
+            <>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
+                    {renderInput('width', 'Width (X)')}
+                    {renderInput('height', 'Height (Y)')}
+                    {renderInput('depth', 'Depth (Z)')}
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                    {renderInput('legSize', 'Leg Size')}
+                    {renderInput('legTaperAngle', 'Taper Angle')}
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
+                    {renderInput('apronHeight', 'Apron H')}
+                    {renderInput('apronThickness', 'Apron T')}
+                    {renderInput('apronInset', 'Inset')}
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                    {renderInput('stringerWidth', 'Stringer W')}
+                    {renderInput('stringerThickness', 'Stringer T')}
+                </div>
+                <div style={{ marginBottom: '8px' }}>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Apron-to-Leg Joint</div>
+                    <select 
+                        value={params.apronJoint || 'pocket-hole'} 
+                        onChange={e => handleChange('apronJoint', e.target.value)}
+                        style={{ 
+                            width: '100%', padding: '5px 8px', 
+                            background: 'var(--bg-color)', color: 'var(--text-main)', 
+                            border: '1px solid var(--border-color)', borderRadius: '6px', 
+                            outline: 'none', fontSize: '0.9rem', cursor: 'pointer'
+                        }}
+                    >
+                        <option value="pocket-hole">Pocket Holes</option>
+                        <option value="loose-tenon">Loose Tenons (Dominoes)</option>
+                        <option value="dowels">Dowel Pins</option>
+                    </select>
+                </div>
+            </>
+        );
+    } else if (meta.builder === 'table-top') {
+        controls = (
+            <>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                    {renderInput('boardWidth', 'Slat Width')}
+                    {renderInput('thickness', 'Thickness')}
+                </div>
+                {params.width !== undefined && (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                        {renderInput('width', 'Width (X)')}
+                        {renderInput('depth', 'Depth (Z)')}
+                    </div>
+                )}
+                {params.widthOverhang !== undefined && (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                        {renderInput('widthOverhang', 'X Overhang')}
+                        {renderInput('depthOverhang', 'Z Overhang')}
+                    </div>
+                )}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                    <div style={{ marginBottom: '8px' }}>
+                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Joint Type</div>
+                        <select 
+                            value={params.jointType || 'loose-tenon'} 
+                            onChange={e => handleChange('jointType', e.target.value)}
+                            style={{ 
+                                width: '100%', padding: '5px 8px', 
+                                background: 'var(--bg-color)', color: 'var(--text-main)', 
+                                border: '1px solid var(--border-color)', borderRadius: '6px', 
+                                outline: 'none', fontSize: '0.9rem', cursor: 'pointer'
+                            }}
+                        >
+                            <option value="loose-tenon">Loose Tenon</option>
+                            <option value="dowels">Dowel Pins</option>
+                            <option value="butt">Edge-Glue (Butt)</option>
+                        </select>
+                    </div>
+                    {params.jointType !== 'butt' && renderInput('tenonSpacing', 'Joint Spacing (in)', 0.5, 2)}
+                </div>
+                <div style={{ marginBottom: '8px' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '0.72rem', color: 'var(--text-main)', marginTop: '4px' }}>
+                        <input 
+                            type="checkbox" 
+                            checked={params.breadboardEnds === true || params.breadboardEnds === 'true'} 
+                            onChange={e => handleChange('breadboardEnds', e.target.checked)}
+                            style={{ width: '13px', height: '13px', cursor: 'pointer', accentColor: 'var(--accent-color)' }} 
+                        />
+                        Breadboard Ends
+                    </label>
                 </div>
             </>
         );

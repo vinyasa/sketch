@@ -24,6 +24,8 @@ import ShakerDoorBuilderDialog from './components/dialogs/ShakerDoorBuilderDialo
 import DrawerBuilderDialog from './components/dialogs/DrawerBuilderDialog';
 import FaceFrameBuilderDialog from './components/dialogs/FaceFrameBuilderDialog';
 import ShelvingBuilderDialog from './components/dialogs/ShelvingBuilderDialog';
+import TableBaseBuilderDialog from './components/dialogs/TableBaseBuilderDialog';
+import TableTopBuilderDialog from './components/dialogs/TableTopBuilderDialog';
 import AiHelpDialog from './components/dialogs/AiHelpDialog';
 import PrintDialog from './components/dialogs/PrintDialog';
 import SavePromptDialog from './components/dialogs/SavePromptDialog';
@@ -319,6 +321,8 @@ export default function App() {
                 <DrawerBuilderDialog />
                 <FaceFrameBuilderDialog />
                 <ShelvingBuilderDialog />
+                <TableBaseBuilderDialog />
+                <TableTopBuilderDialog />
                 <AiHelpDialog />
                 <PrintDialog />
                 <SavePromptDialog />

@@ -1,15 +1,37 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import * as THREE from 'three';
 import { Line, Html } from '@react-three/drei';
 
 export function ConstraintVisualizer({ boards, groups, selectedItemIds, constraints }) {
+  const [showAlignments, setShowAlignments] = useState(false);
+
+  const selectedKeys = (selectedItemIds || []).join(',');
+
+  useEffect(() => {
+    if (selectedItemIds && selectedItemIds.length > 0) {
+      setShowAlignments(true);
+      const timer = setTimeout(() => {
+        setShowAlignments(false);
+      }, 3000);
+      return () => clearTimeout(timer);
+    } else {
+      setShowAlignments(false);
+    }
+  }, [selectedKeys]);
+
   if (!constraints || Object.keys(constraints).length === 0) return null;
   const selSet = new Set(selectedItemIds);
 
   // Only show constraints where at least one board is selected
-  const visibleConstraints = Object.entries(constraints).filter(([_, c]) =>
+  let visibleConstraints = Object.entries(constraints).filter(([_, c]) =>
     selSet.has(c.boardAId) || selSet.has(c.boardBId)
   );
+
+  // Filter out Flush constraints if showAlignments is false
+  if (!showAlignments) {
+    visibleConstraints = visibleConstraints.filter(([_, c]) => c.type !== 'Flush');
+  }
+
   if (visibleConstraints.length === 0) return null;
 
   const getFaceWorldPos3 = (bd, faceStr) => {
