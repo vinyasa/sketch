@@ -56,6 +56,11 @@ export function getOverlappingBoards(boards) {
             if (b1.board.edgeJoints?.some(j => j.partnerId === b2.id)) continue;
             if (b2.board.edgeJoints?.some(j => j.partnerId === b1.id)) continue;
 
+            // Ignore if either board is a visual joint fastener (dowel, Domino, or tenon)
+            const isB1Fastener = b1.board.name?.includes('Dowel') || b1.board.name?.includes('Domino') || b1.board.name?.includes('Tenon');
+            const isB2Fastener = b2.board.name?.includes('Dowel') || b2.board.name?.includes('Domino') || b2.board.name?.includes('Tenon');
+            if (isB1Fastener || isB2Fastener) continue;
+
             // Ignore if there is a subtraction relationship between them
             const hasSubtract = 
                 b1.board.operations?.some(op => op.type === 'subtract' && op.cutterId === b2.id) ||
