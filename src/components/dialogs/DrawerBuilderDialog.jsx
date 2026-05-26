@@ -2,7 +2,7 @@ import React from 'react';
 import useStore from '../../store/useStore';
 
 const DrawerBuilderDialog = () => {
-    const { drawerDialog: dialog, setDrawerDialog: setDialog, buildDrawers } = useStore();
+    const { drawerDialog: dialog, setDrawerDialog: setDialog, buildDrawers, selectedItemIds, groups, boards } = useStore();
     if (!dialog) return null;
 
     const parse = (v, def) => { const n = parseFloat(v); return isNaN(n) ? def : n; };
@@ -24,6 +24,55 @@ const DrawerBuilderDialog = () => {
     const jointType = dialog.jointType ?? 'butt';
 
     const valid = W > 2 * slideWidth + 2 * thicknessBox && H > count * verticalGap + count * 2 && count > 0;
+
+    // Detect if a cabinet is selected in the workspace
+    let cabinetId = selectedItemIds?.find(id => groups[id]?.meta?.builder === 'cabinet');
+    if (!cabinetId) {
+        selectedItemIds?.forEach(id => {
+            const board = boards?.find(b => b.id.toString() === id.toString());
+            if (board && groups[board.parentId]?.meta?.builder === 'cabinet') {
+                cabinetId = board.parentId;
+            }
+        });
+    }
+
+    const selectedCabinet = cabinetId ? groups[cabinetId] : null;
+    let cabOpeningWidth = 0;
+    let cabOpeningHeight = 0;
+    let cabOpeningDepth = 0;
+    let cabName = '';
+    let isCabinetSelected = false;
+    let willFit = false;
+
+    if (selectedCabinet) {
+        isCabinetSelected = true;
+        cabName = selectedCabinet.name || cabinetId;
+        const cabParams = selectedCabinet.meta?.params || {};
+        
+        const cabW = parse(cabParams.width, 24);
+        const cabH = parse(cabParams.height, 30);
+        const cabD = parse(cabParams.depth, 14);
+        const cabtTB = parse(cabParams.thicknessTB, 0.75);
+        const cabtSide = parse(cabParams.thicknessSide, 0.75);
+        const cabtBack = parse(cabParams.thicknessBack, 0.25);
+        const cabCoreDepth = cabParams.backStyle === 'flat' ? cabD - cabtBack : cabD;
+        
+        cabOpeningWidth = cabW - 2 * cabtSide;
+        cabOpeningHeight = cabH - 2 * cabtTB;
+        cabOpeningDepth = cabCoreDepth;
+        
+        willFit = W <= cabOpeningWidth + 0.01 && H <= cabOpeningHeight + 0.01 && D <= cabOpeningDepth + 0.01;
+    }
+
+    const useCabinetDimensions = () => {
+        if (!selectedCabinet) return;
+        setDialog(prev => ({
+            ...prev,
+            width: cabOpeningWidth,
+            height: cabOpeningHeight,
+            depth: cabOpeningDepth
+        }));
+    };
 
     const inputStyle = {
         width: '100%', padding: '5px 8px',
@@ -181,15 +230,69 @@ const DrawerBuilderDialog = () => {
                     </div>
                 </div>
 
+                {/* Cabinet Fit Acknowledgement */}
+                {isCabinetSelected && (
+                    <div className="inspector-card" style={{
+                        margin: 0,
+                        background: willFit ? 'rgba(60,200,90,0.06)' : 'rgba(255,59,48,0.06)',
+                        border: willFit ? '1px solid rgba(60,200,90,0.2)' : '1px solid rgba(255,59,48,0.3)',
+                    }}>
+                        <h4 style={{ color: willFit ? '#34c759' : '#ff3b30', display: 'flex', alignItems: 'center', gap: '6px', margin: 0 }}>
+                            {willFit ? '✓ Cabinet Fit Confirmed' : '⚠ Cabinet Fit Warning'}
+                        </h4>
+                        <div style={{ fontSize: '0.78rem', color: 'var(--text-main)', marginTop: '6px', lineHeight: 1.5 }}>
+                            {willFit ? (
+                                <>
+                                    These drawers are configured to fit inside the selected cabinet <strong>{cabName}</strong>.
+                                    <div style={{ color: 'var(--text-muted)', fontSize: '0.72rem', marginTop: '4px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <span>Cabinet Opening: {cabOpeningWidth}" × {cabOpeningHeight}" × {cabOpeningDepth}"</span>
+                                        {(Math.abs(W - cabOpeningWidth) > 0.01 || Math.abs(H - cabOpeningHeight) > 0.01 || Math.abs(D - cabOpeningDepth) > 0.01) && (
+                                            <span 
+                                                style={{ color: 'var(--accent-color)', cursor: 'pointer', textDecoration: 'underline' }}
+                                                onClick={useCabinetDimensions}
+                                            >
+                                                Snap to Full Opening
+                                            </span>
+                                        )}
+                                    </div>
+                                </>
+                            ) : (
+                                <>
+                                    Configured drawer dimensions ({W}" × {H}" × {D}") exceed the selected cabinet <strong>{cabName}</strong> opening of {cabOpeningWidth}" × {cabOpeningHeight}" × {cabOpeningDepth}".
+                                    <div style={{ marginTop: '6px' }}>
+                                        <button 
+                                            className="nav-btn" 
+                                            style={{ padding: '3px 8px', fontSize: '0.72rem', borderColor: 'var(--accent-color)', cursor: 'pointer' }}
+                                            onClick={useCabinetDimensions}
+                                        >
+                                            👉 Auto-fit to Cabinet Opening ({cabOpeningWidth}" × {cabOpeningHeight}" × {cabOpeningDepth}")
+                                        </button>
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                    </div>
+                )}
+
                 {!valid && (
                     <div style={{ color: '#ff3b30', fontSize: '0.85rem', background: 'rgba(255, 59, 48, 0.1)', padding: '8px', borderRadius: '4px' }}>
                         Invalid dimensions. Ensure cabinet opening is larger than clearances.
                     </div>
                 )}
 
-                <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '8px' }}>
-                    <button className="secondary-btn" onClick={() => setDialog(null)}>Cancel</button>
-                    <button className="primary-btn" disabled={!valid} onClick={handleBuild}>
+                {/* Action Buttons */}
+                <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+                    <button className="nav-btn" style={{ flex: 1, padding: '10px' }}
+                        onClick={() => setDialog(null)}>
+                        Cancel
+                    </button>
+                    <button className="primary-btn" style={{
+                        flex: 1, padding: '10px',
+                        opacity: valid ? 1 : 0.4,
+                        cursor: valid ? 'pointer' : 'default',
+                    }}
+                        disabled={!valid}
+                        onClick={handleBuild}>
                         {dialog.editGroupId ? 'Update Drawers' : 'Build Drawers'}
                     </button>
                 </div>
