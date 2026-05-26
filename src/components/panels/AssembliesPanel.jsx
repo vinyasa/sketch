@@ -187,7 +187,6 @@ const AssembliesPanel = () => {
                 boardWidth: 5.5, thickness: 1.0,
                 widthOverhang: 2.0, depthOverhang: 2.0,
                 tenonSpacing: 10, jointType: 'loose-tenon',
-                breadboardEnds: false,
                 ...defaultCfg,
             });
         }

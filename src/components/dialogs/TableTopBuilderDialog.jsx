@@ -13,7 +13,6 @@ const TableTopBuilderDialog = () => {
     const depthOverhang = parse(dialog.depthOverhang, 2.0);
     const tenonSpacing = parse(dialog.tenonSpacing, 10.0);
     const jointType = dialog.jointType || 'loose-tenon';
-    const breadboardEnds = dialog.breadboardEnds === true || dialog.breadboardEnds === 'true';
 
     // Scan for base group to determine dimensions feedback
     let hasBase = false;
@@ -290,10 +289,9 @@ const TableTopBuilderDialog = () => {
                     )}
                 </div>
 
-                {/* Joinery and Breadboard ends */}
+                {/* Joinery Details */}
                 {(() => {
-                    const breadboardWidth = breadboardEnds ? boardWidth : 0;
-                    const slatLength = W - 2 * breadboardWidth;
+                    const slatLength = W;
                     const dynamicTenonCount = Math.max(1, Math.floor(slatLength / tenonSpacing));
                     return (
                         <>
@@ -324,12 +322,6 @@ const TableTopBuilderDialog = () => {
                                         Produces <strong>{dynamicTenonCount}</strong> {jointType === 'loose-tenon' ? 'tenons' : 'dowels'} per joint based on the {slatLength.toFixed(2)}" slat length.
                                     </div>
                                 )}
-                                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '0.78rem', color: 'var(--text-main)', marginTop: '4px' }}>
-                                    <input type="checkbox" checked={breadboardEnds}
-                                        onChange={e => setDialog(p => ({ ...p, breadboardEnds: e.target.checked }))}
-                                        style={{ width: '13px', height: '13px', cursor: 'pointer', accentColor: 'var(--accent-color)' }} />
-                                    Enable Breadboard Ends (Capped Ends)
-                                </label>
                             </div>
 
                             {/* Top Summary Feedback */}
@@ -340,7 +332,6 @@ const TableTopBuilderDialog = () => {
                                         <div><strong>Overall Size:</strong> {W.toFixed(2)}" Wide × {D.toFixed(2)}" Deep</div>
                                         <div><strong>Thickness:</strong> {thickness}" stock</div>
                                         <div><strong>Joinery:</strong> {jointType === 'loose-tenon' ? `Loose tenons (Dominoes) × ${dynamicTenonCount} (spaced every ${tenonSpacing}")` : jointType === 'dowels' ? `Dowel pins × ${dynamicTenonCount} (spaced every ${tenonSpacing}")` : 'Standard edge-glue'}</div>
-                                        <div><strong>Ends:</strong> {breadboardEnds ? 'Traditional Breadboard ends capped left/right' : 'Standard flat side edges'}</div>
                                     </div>
                                 ) : (
                                     <div style={{ fontSize: '0.78rem', color: '#ff3b30' }}>

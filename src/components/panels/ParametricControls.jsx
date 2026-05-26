@@ -243,17 +243,7 @@ const ParametricControls = ({ groupId, meta }) => {
                     </div>
                     {params.jointType !== 'butt' && renderInput('tenonSpacing', 'Joint Spacing (in)', 0.5, 2)}
                 </div>
-                <div style={{ marginBottom: '8px' }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '0.72rem', color: 'var(--text-main)', marginTop: '4px' }}>
-                        <input 
-                            type="checkbox" 
-                            checked={params.breadboardEnds === true || params.breadboardEnds === 'true'} 
-                            onChange={e => handleChange('breadboardEnds', e.target.checked)}
-                            style={{ width: '13px', height: '13px', cursor: 'pointer', accentColor: 'var(--accent-color)' }} 
-                        />
-                        Breadboard Ends
-                    </label>
-                </div>
+
             </>
         );
     }

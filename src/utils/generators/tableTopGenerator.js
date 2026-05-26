@@ -3,10 +3,6 @@ import { computeWorldAABB, collectChildBoards } from '../sceneGraph';
 export function generateTableTop(cfg, boards, groups, defaultMaterial) {
   const parseNum = (val, def) => { const n = parseFloat(val); return isNaN(n) ? def : n; };
   const newGroups = {};
-  const parseBool = (val, def) => {
-    if (val === undefined || val === null) return def;
-    return val === true || val === 'true';
-  };
   
   const boardWidth = parseNum(cfg.boardWidth, 5.5);
   const thickness = parseNum(cfg.thickness, 1.0);
@@ -14,7 +10,6 @@ export function generateTableTop(cfg, boards, groups, defaultMaterial) {
   const depthOverhang = parseNum(cfg.depthOverhang, 2.0);
   const tenonSpacing = parseNum(cfg.tenonSpacing, 10.0);
   const jointType = cfg.jointType || 'loose-tenon'; // 'loose-tenon' or 'butt'
-  const breadboardEnds = parseBool(cfg.breadboardEnds, false);
 
   const isEditing = !!cfg.editGroupId;
   const groupId = isEditing ? cfg.editGroupId : 'Table Top ' + Math.floor(Math.random() * 1000);
@@ -91,8 +86,7 @@ export function generateTableTop(cfg, boards, groups, defaultMaterial) {
   const newBoards = [];
 
   // Calculate slat geometry
-  const breadboardWidth = breadboardEnds ? boardWidth : 0;
-  const slatLength = W - 2 * breadboardWidth;
+  const slatLength = W;
   const slatCount = Math.max(1, Math.round(D / boardWidth));
   const adjSlatZ = D / slatCount;
   const dynamicTenonCount = Math.max(1, Math.floor(slatLength / tenonSpacing));
@@ -101,7 +95,7 @@ export function generateTableTop(cfg, boards, groups, defaultMaterial) {
   const slatBoards = [];
   for (let j = 0; j < slatCount; j++) {
     const zCenter = adjSlatZ * j + adjSlatZ / 2;
-    const xCenter = breadboardWidth + slatLength / 2;
+    const xCenter = slatLength / 2;
     const yCenter = thickness / 2;
     const slatName = `Top Slat ${j + 1}`;
 
@@ -120,45 +114,7 @@ export function generateTableTop(cfg, boards, groups, defaultMaterial) {
   }
   newBoards.push(...slatBoards);
 
-  // 4. Generate Breadboard Ends if enabled
-  let leftBreadboard = null;
-  let rightBreadboard = null;
-  if (breadboardEnds) {
-    const yCenter = thickness / 2;
-    const leftName = 'Left Breadboard';
-    leftBreadboard = {
-      id: getNextId(leftName),
-      name: leftName,
-      parentId: groupId,
-      size: [breadboardWidth, thickness, D],
-      position: [breadboardWidth / 2 + offset[0], yCenter + offset[1], D / 2 + offset[2]],
-      material: defaultMaterial,
-      joint: 'None',
-      shape: 'box',
-      operations: [],
-      edgeJoints: []
-    };
-
-    const rightName = 'Right Breadboard';
-    rightBreadboard = {
-      id: getNextId(rightName),
-      name: rightName,
-      parentId: groupId,
-      size: [breadboardWidth, thickness, D],
-      position: [W - breadboardWidth / 2 + offset[0], yCenter + offset[1], D / 2 + offset[2]],
-      material: defaultMaterial,
-      joint: 'None',
-      shape: 'box',
-      operations: [],
-      edgeJoints: []
-    };
-
-    newBoards.push(leftBreadboard);
-    newBoards.push(rightBreadboard);
-  }
-
-  // 5. Establish Edge Joints between boards (loose-tenon or dowels)
-  // 5. Establish Edge Joints between boards (loose-tenon or dowels)
+  // 4. Establish Edge Joints between boards (loose-tenon or dowels)
   let jointGroupId = null;
   if (jointType === 'loose-tenon' || jointType === 'dowels') {
     const isDomino = jointType === 'loose-tenon';
@@ -299,270 +255,13 @@ export function generateTableTop(cfg, boards, groups, defaultMaterial) {
         }
       }
     }
-
-    // Connect Slats to Breadboard Ends if enabled
-    if (breadboardEnds && leftBreadboard && rightBreadboard) {
-      const mortiseRadius = isDomino ? 0.15625 : 0.1875;
-      slatBoards.forEach((slat, idx) => {
-        // Skip the first and last slats to avoid drilling holes on the outer front/back edges
-        if (idx === 0 || idx === slatBoards.length - 1) return;
-
-        // Connect Slat to Left Breadboard
-        slat.edgeJoints.push({
-          type: jointType,
-          overBoardId: slat.id.toString(),
-          partnerId: leftBreadboard.id.toString(),
-          tenonCount: 1,
-          thicknessA: thickness,
-          thicknessB: thickness
-        });
-
-        leftBreadboard.edgeJoints.push({
-          type: jointType,
-          overBoardId: leftBreadboard.id.toString(),
-          partnerId: slat.id.toString(),
-          tenonCount: 1,
-          thicknessA: thickness,
-          thicknessB: thickness
-        });
-
-        // Visually add pocket mortise slots inside breadboard & slats
-        if (isDomino) {
-          slat.operations.push({
-            id: baseId + 5000 + slat.id,
-            type: 'dado',
-            face: 'left',
-            direction: 'z',
-            width: 0.3125,
-            length: 1.25,
-            depth: 1.0,
-            offset: 0, // Centered vertically in thickness (Y)
-            lengthOffset: 0, // Centered along slat width (Z)
-            source: 'procedural-joint'
-          });
-
-          const leftZOffset = slat.position[2] - leftBreadboard.position[2];
-          leftBreadboard.operations.push({
-            id: baseId + 6000 + slat.id,
-            type: 'dado',
-            face: 'right',
-            direction: 'z',
-            width: 0.3125,
-            length: 1.25,
-            depth: 1.0,
-            offset: 0, // Centered vertically in thickness (Y)
-            lengthOffset: leftZOffset, // Positioned along breadboard length (Z)
-            source: 'procedural-joint'
-          });
-
-          // Connect Slat to Right Breadboard
-          slat.edgeJoints.push({
-            type: jointType,
-            overBoardId: slat.id.toString(),
-            partnerId: rightBreadboard.id.toString(),
-            tenonCount: 1,
-            thicknessA: thickness,
-            thicknessB: thickness
-          });
-
-          rightBreadboard.edgeJoints.push({
-            type: jointType,
-            overBoardId: rightBreadboard.id.toString(),
-            partnerId: slat.id.toString(),
-            tenonCount: 1,
-            thicknessA: thickness,
-            thicknessB: thickness
-          });
-
-          slat.operations.push({
-            id: baseId + 7000 + slat.id,
-            type: 'dado',
-            face: 'right',
-            direction: 'z',
-            width: 0.3125,
-            length: 1.25,
-            depth: 1.0,
-            offset: 0, // Centered vertically in thickness (Y)
-            lengthOffset: 0, // Centered along slat width (Z)
-            source: 'procedural-joint'
-          });
-
-          const rightZOffset = slat.position[2] - rightBreadboard.position[2];
-          rightBreadboard.operations.push({
-            id: baseId + 8000 + slat.id,
-            type: 'dado',
-            face: 'left',
-            direction: 'z',
-            width: 0.3125,
-            length: 1.25,
-            depth: 1.0,
-            offset: 0, // Centered vertically in thickness (Y)
-            lengthOffset: rightZOffset, // Positioned along breadboard length (Z)
-            source: 'procedural-joint'
-          });
-        } else {
-          slat.operations.push({
-            id: baseId + 5000 + slat.id,
-            type: 'hole',
-            face: 'left',
-            axis: 'x',
-            radius: mortiseRadius,
-            depth: 1.0,
-            offset: 0,
-            offsetY: 0,
-            source: 'procedural-joint'
-          });
-
-          const leftZOffset = slat.position[2] - leftBreadboard.position[2];
-          leftBreadboard.operations.push({
-            id: baseId + 6000 + slat.id,
-            type: 'hole',
-            face: 'right',
-            axis: 'x',
-            radius: mortiseRadius,
-            depth: 1.0,
-            offset: leftZOffset,
-            offsetY: 0,
-            source: 'procedural-joint'
-          });
-
-          // Connect Slat to Right Breadboard
-          slat.edgeJoints.push({
-            type: jointType,
-            overBoardId: slat.id.toString(),
-            partnerId: rightBreadboard.id.toString(),
-            tenonCount: 1,
-            thicknessA: thickness,
-            thicknessB: thickness
-          });
-
-          rightBreadboard.edgeJoints.push({
-            type: jointType,
-            overBoardId: rightBreadboard.id.toString(),
-            partnerId: slat.id.toString(),
-            tenonCount: 1,
-            thicknessA: thickness,
-            thicknessB: thickness
-          });
-
-          slat.operations.push({
-            id: baseId + 7000 + slat.id,
-            type: 'hole',
-            face: 'right',
-            axis: 'x',
-            radius: mortiseRadius,
-            depth: 1.0,
-            offset: 0,
-            offsetY: 0,
-            source: 'procedural-joint'
-          });
-
-          const rightZOffset = slat.position[2] - rightBreadboard.position[2];
-          rightBreadboard.operations.push({
-            id: baseId + 8000 + slat.id,
-            type: 'hole',
-            face: 'left',
-            axis: 'x',
-            radius: mortiseRadius,
-            depth: 1.0,
-            offset: rightZOffset,
-            offsetY: 0,
-            source: 'procedural-joint'
-          });
-        }
-
-        // Add physical breadboard joint fasteners
-        const leftSeamX = (slat.position[0] - slat.size[0] / 2 + leftBreadboard.position[0] + leftBreadboard.size[0] / 2) / 2;
-        const rightSeamX = (slat.position[0] + slat.size[0] / 2 + rightBreadboard.position[0] - rightBreadboard.size[0] / 2) / 2;
-        const leftFastenerName = isDomino ? `Left Domino Slat ${idx}` : `Left Dowel Slat ${idx}`;
-        const rightFastenerName = isDomino ? `Right Domino Slat ${idx}` : `Right Dowel Slat ${idx}`;
-
-        if (isDomino) {
-          // Left breadboard tenon
-          newBoards.push({
-            id: baseId + 14000 + idx,
-            name: leftFastenerName,
-            parentId: jointGroupId,
-            size: [2.0, 0.3125, 1.25], // Length in X, thickness in Y, width in Z
-            position: [leftSeamX, slat.position[1], slat.position[2]],
-            material: defaultMaterial,
-            joint: 'None',
-            shape: 'box',
-            operations: [],
-            edgeJoints: []
-          });
-          // Right breadboard tenon
-          newBoards.push({
-            id: baseId + 15000 + idx,
-            name: rightFastenerName,
-            parentId: jointGroupId,
-            size: [2.0, 0.3125, 1.25],
-            position: [rightSeamX, slat.position[1], slat.position[2]],
-            material: defaultMaterial,
-            joint: 'None',
-            shape: 'box',
-            operations: [],
-            edgeJoints: []
-          });
-        } else {
-          // Left breadboard dowel
-          newBoards.push({
-            id: baseId + 14000 + idx,
-            name: leftFastenerName,
-            parentId: jointGroupId,
-            size: [2.0, 0.375, 0.375],
-            position: [leftSeamX, slat.position[1], slat.position[2]],
-            material: defaultMaterial,
-            joint: 'None',
-            shape: 'cylinder',
-            cylinder: {
-              radius: 0.1875,
-              axis: 'x'
-            },
-            operations: [],
-            edgeJoints: []
-          });
-          // Right breadboard dowel
-          newBoards.push({
-            id: baseId + 15000 + idx,
-            name: rightFastenerName,
-            parentId: jointGroupId,
-            size: [2.0, 0.375, 0.375],
-            position: [rightSeamX, slat.position[1], slat.position[2]],
-            material: defaultMaterial,
-            joint: 'None',
-            shape: 'cylinder',
-            cylinder: {
-              radius: 0.1875,
-              axis: 'x'
-            },
-            operations: [],
-            edgeJoints: []
-          });
-        }
-      });
-    }
   }
 
-  // 6. Generic safety double-check: If no other board face is touching this face, do not drill holes
+  // 5. Generic safety double-check: If no other board face is touching this face, do not drill holes
   newBoards.forEach(board => {
     if (board.operations) {
       board.operations = board.operations.filter(op => {
         if (op.source === 'procedural-joint') {
-          // Unconditional skip: Never drill joint holes on the left and right ends of Top Slat 1 and the last slat
-          if ((board.name === 'Top Slat 1' || board.name === `Top Slat ${slatCount}`) && (op.face === 'left' || op.face === 'right')) {
-            return false;
-          }
-          // Also skip the matching slots inside Left/Right Breadboards facing Slat 1 or the last slat
-          if (board.name === 'Left Breadboard' || board.name === 'Right Breadboard') {
-            const zOffset1 = adjSlatZ / 2 - D / 2;
-            const zOffsetLast = D / 2 - adjSlatZ / 2;
-            const currentOffset = op.lengthOffset !== undefined ? op.lengthOffset : op.offset;
-            if (Math.abs(currentOffset - zOffset1) < 0.05 || Math.abs(currentOffset - zOffsetLast) < 0.05) {
-              return false;
-            }
-          }
-
           return isFaceTouchingAny(board, op.face, newBoards);
         }
         return true;
