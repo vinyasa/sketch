@@ -256,6 +256,18 @@ const _buildEdgeProfileTool = (size, op) => {
   const p1Idx = a1Idx;
   const p2Idx = a2Idx;
   
+  // Compute orthonormal basis with determinant +1 to avoid mirroring
+  const vec_p1 = new THREE.Vector3();
+  vec_p1.setComponent(p1Idx, 1);
+  
+  const vec_run = new THREE.Vector3();
+  vec_run.setComponent(runIdx, 1);
+  
+  const vec_p2 = new THREE.Vector3().crossVectors(vec_run, vec_p1);
+  const s_p2 = vec_p2.getComponent(p2Idx); // Will be 1 or -1
+  
+  const s2_adj = s2 * s_p2;
+  
   const hw1 = size[p1Idx] / 2;
   const hw2 = size[p2Idx] / 2;
   const L = size[runIdx];
@@ -263,13 +275,13 @@ const _buildEdgeProfileTool = (size, op) => {
   
   const shape = new THREE.Shape();
   const Cx = s1 * hw1;
-  const Cy = s2 * hw2;
+  const Cy = s2_adj * hw2;
   
   const Ax = s1 * (hw1 - R);
-  const Ay = s2 * hw2;
+  const Ay = s2_adj * hw2;
   
   const Bx = s1 * hw1;
-  const By = s2 * (hw2 - R);
+  const By = s2_adj * (hw2 - R);
   
   shape.moveTo(Ax, Ay);
   shape.lineTo(Cx, Cy);
@@ -277,10 +289,10 @@ const _buildEdgeProfileTool = (size, op) => {
   
   if (profile === 'roundover') {
     const Ox = s1 * (hw1 - R);
-    const Oy = s2 * (hw2 - R);
+    const Oy = s2_adj * (hw2 - R);
     const startAngle = Math.atan2(By - Oy, Bx - Ox);
     const endAngle = Math.atan2(Ay - Oy, Ax - Ox);
-    const clockwise = (s1 * s2) < 0;
+    const clockwise = (s1 * s2_adj) < 0;
     shape.absarc(Ox, Oy, R, startAngle, endAngle, clockwise);
   } else {
     shape.lineTo(Ax, Ay);
@@ -289,16 +301,12 @@ const _buildEdgeProfileTool = (size, op) => {
   const geom = new THREE.ExtrudeGeometry(shape, { depth: L + 2, bevelEnabled: false, curveSegments: 16 });
   geom.translate(0, 0, -(L + 2) / 2);
   
-  const v_p1 = [0, 0, 0]; v_p1[p1Idx] = 1;
-  const v_p2 = [0, 0, 0]; v_p2[p2Idx] = 1;
-  const v_run = [0, 0, 0]; v_run[runIdx] = 1;
-  
   const matrix = new THREE.Matrix4();
   matrix.set(
-    v_p1[0], v_p2[0], v_run[0], 0,
-    v_p1[1], v_p2[1], v_run[1], 0,
-    v_p1[2], v_p2[2], v_run[2], 0,
-    0,       0,       0,       1
+    vec_p1.x,  vec_p2.x,  vec_run.x,  0,
+    vec_p1.y,  vec_p2.y,  vec_run.y,  0,
+    vec_p1.z,  vec_p2.z,  vec_run.z,  0,
+    0,         0,         0,          1
   );
   
   geom.applyMatrix4(matrix);

@@ -18,7 +18,8 @@ const SettingsPanel = () => {
         panelLayoutMode, setPanelLayoutMode,
         workspaceLayout, setWorkspaceLayout,
         lumberyardSnapEnabled, setLumberyardSnapEnabled,
-        measurementStyle, setMeasurementStyle
+        measurementStyle, setMeasurementStyle,
+        setShowAttributionDialog
     } = useStore();
     const [confirmWipe, setConfirmWipe] = useState(false);
 
@@ -240,6 +241,31 @@ const SettingsPanel = () => {
                     Lumberyard Snapping
                 </label>
                 <p className="hint" style={hintStyle}>Auto-convert standard names like "2x4" into actual lumber size.</p>
+            </div>
+
+            <div className="inspector-card" style={{ gridColumn: 'span 2', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <label style={labelStyle}>Credits & Licenses</label>
+                <p className="hint" style={hintStyle}>View attributions and licenses for the open-source libraries used in this project.</p>
+                <button
+                    className="nav-btn"
+                    style={{
+                        width: 'fit-content',
+                        padding: '6px 14px',
+                        fontSize: '0.72rem',
+                        fontWeight: 'bold',
+                        marginTop: '4px',
+                        borderColor: 'var(--accent-color)',
+                        color: 'var(--accent-color)',
+                        background: 'rgba(255, 122, 0, 0.05)',
+                        transition: 'all 0.2s',
+                        cursor: 'pointer'
+                    }}
+                    onMouseEnter={e => e.target.style.background = 'rgba(255, 122, 0, 0.15)'}
+                    onMouseLeave={e => e.target.style.background = 'rgba(255, 122, 0, 0.05)'}
+                    onClick={() => setShowAttributionDialog(true)}
+                >
+                    📜 View Open Source Licenses
+                </button>
             </div>
 
             <div className="inspector-card" style={{ borderColor: 'rgba(255,59,48,0.3)', background: 'rgba(255,59,48,0.05)', gridColumn: 'span 2' }}>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, Suspense } from 'react';
+import React, { useState, useEffect, Suspense, useMemo } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { PerspectiveCamera, OrthographicCamera, Html } from '@react-three/drei';
 import useStore from '../store/useStore';
@@ -107,13 +107,26 @@ export default function Viewport3D() {
     };
   }, [measureMode, setMeasureMode]);
 
-  const workspaceSize = useStore(s => s.workspaceSize) || 120;
+  const storeWorkspaceSize = useStore(s => s.workspaceSize) || 120;
+
+  const workspaceSize = useMemo(() => {
+    if (boards.length === 0) return storeWorkspaceSize;
+    const maxBoundary = Math.max(...boards.map(b => {
+      const xBoundary = Math.abs(b.position[0]) + b.size[0] / 2;
+      const zBoundary = Math.abs(b.position[2]) + b.size[2] / 2;
+      return Math.max(xBoundary, zBoundary);
+    }));
+    const requiredSize = Math.ceil(maxBoundary * 2);
+    // Add a safe 24-inch margin and round up to a clean foot multiple
+    const targetSize = Math.max(storeWorkspaceSize, requiredSize + 24);
+    return Math.ceil(targetSize / 12) * 12;
+  }, [storeWorkspaceSize, boards]);
 
   return (
     <div className="viewport-container" style={{ width: '100%', height: '100%', position: 'relative' }}>
       <Canvas shadows={lighting?.shadows ? 'soft' : false} onPointerMissed={() => setSelectedItemIds([])}>
         <SceneLights lighting={lighting} />
-        {!printCapture && <ShadowFloor shadows={lighting?.shadows} />}
+        {!printCapture && <ShadowFloor shadows={lighting?.shadows} workspaceSize={workspaceSize} />}
 
         <GizmoControls />
 

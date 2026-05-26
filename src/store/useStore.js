@@ -286,6 +286,9 @@ const useStore = create((set, get) => ({
     showAiHelpDialog: false,
     setShowAiHelpDialog: (v) => set({ showAiHelpDialog: typeof v === 'function' ? v(get().showAiHelpDialog) : v }),
 
+    showAttributionDialog: false,
+    setShowAttributionDialog: (v) => set({ showAttributionDialog: typeof v === 'function' ? v(get().showAttributionDialog) : v }),
+
     currentFileName: (() => { const rf = loadRecentFiles(); return rf.length > 0 ? rf[0].name : 'Untitled'; })(),
     setCurrentFileName: (v) => set({ currentFileName: v }),
 

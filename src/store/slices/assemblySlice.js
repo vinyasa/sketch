@@ -1,13 +1,20 @@
 import { computeWorldAABB, collectChildBoards } from '../../utils/sceneGraph';
-import { calculateProceduralBoxWalls } from '../../utils/procedural';
-import { generateCabinet } from '../../utils/generators/cabinetGenerator';
-import { generateBox } from '../../utils/generators/boxGenerator';
-import { generateFaceFrame } from '../../utils/generators/faceFrameGenerator';
-import { generateShelving } from '../../utils/generators/shelvingGenerator';
-import { generateShakerDoor } from '../../utils/generators/shakerDoorGenerator';
-import { generateDrawers } from '../../utils/generators/drawerGenerator';
-import { generateTableBase } from '../../utils/generators/tableBaseGenerator';
-import { generateTableTop } from '../../utils/generators/tableTopGenerator';
+import { applySmartFastenersHelper } from '../../utils/assemblyFasteners';
+import { cloneAssemblyHelper } from '../../utils/assemblyCloner';
+import {
+  applyAssemblyProfileHelper,
+  clearAssemblyProfileHelper
+} from '../../utils/assemblyProfiler';
+import {
+  buildCabinetHelper,
+  buildBoxHelper,
+  buildFaceFrameHelper,
+  buildShelvingHelper,
+  buildShakerDoorHelper,
+  buildDrawersHelper,
+  buildTableBaseHelper,
+  buildTableTopHelper
+} from '../../utils/proceduralUpdaters';
 
 export const createAssemblySlice = (set, get) => ({
   cloneAssembly: selectedGroupId => {
@@ -24,103 +31,7 @@ export const createAssemblySlice = (set, get) => ({
     } = get();
     if (!groups[selectedGroupId]) return;
     pushHistory();
-    const collectGroupSubTree = rootId => {
-      const result = {};
-      const traverse = currentId => {
-        if (!groups[currentId]) return;
-        result[currentId] = {
-          ...groups[currentId]
-        };
-        Object.keys(groups).filter(k => groups[k].parentId === currentId).forEach(traverse);
-      };
-      traverse(rootId);
-      return result;
-    };
-    const snapshotGroups = collectGroupSubTree(selectedGroupId);
-    const groupIdsInAssembly = new Set(Object.keys(snapshotGroups));
-    const snapshotBoards = boards.filter(b => {
-      let pid = b.parentId;
-      while (pid) {
-        if (groupIdsInAssembly.has(pid)) return true;
-        const pg = groups[pid];
-        pid = pg ? pg.parentId : null;
-      }
-      return false;
-    }).map(b => ({
-      ...b
-    }));
-    const boardIdsInAssembly = new Set(snapshotBoards.map(b => b.id.toString()));
-    const snapshotConstraints = {};
-    Object.entries(constraints).forEach(([cId, c]) => {
-      if (boardIdsInAssembly.has(c.boardAId) && boardIdsInAssembly.has(c.boardBId)) {
-        snapshotConstraints[cId] = {
-          ...c
-        };
-      }
-    });
-    const existingGroupNames = new Set(Object.keys(groups));
-    const uniqueGroupName = base => {
-      // Strip any trailing digits like -2, -3 from the base before cloning
-      const cleanBase = base.replace(/-\d+$/, '');
-      let n = 2;
-      let name = `${cleanBase}-${n}`;
-      while (existingGroupNames.has(name)) {
-        n++;
-        name = `${cleanBase}-${n}`;
-      }
-      existingGroupNames.add(name);
-      return name;
-    };
-    const oldRootId = selectedGroupId;
-    const groupIdMap = {};
-    groupIdMap[oldRootId] = uniqueGroupName(selectedGroupId);
-    Object.keys(snapshotGroups).forEach(oldId => {
-      if (oldId !== oldRootId) {
-        groupIdMap[oldId] = uniqueGroupName(oldId);
-      }
-    });
-    const newRootId = groupIdMap[oldRootId];
-    let nextBoardId = Math.max(0, ...boards.map(b => parseInt(b.id) || 0)) + 1;
-    const boardIdMap = {};
-    snapshotBoards.forEach(b => {
-      boardIdMap[b.id.toString()] = nextBoardId++;
-    });
-    const newGroups = {};
-    Object.entries(snapshotGroups).forEach(([oldId, g]) => {
-      const newId = groupIdMap[oldId];
-      const newParentId = oldId === oldRootId ? g.parentId : groupIdMap[g.parentId] ?? g.parentId;
-      newGroups[newId] = {
-        ...g,
-        parentId: newParentId
-      };
-    });
-    const newBoards = snapshotBoards.map(b => {
-      const edgeJoints = (b.edgeJoints || []).map(ej => ({
-        ...ej,
-        partnerId: boardIdMap[ej.partnerId]?.toString() ?? ej.partnerId
-      }));
-      const operations = (b.operations || []).map(op => ({
-        ...op,
-        partnerId: boardIdMap[op.partnerId]?.toString() ?? op.partnerId
-      }));
-      return {
-        ...b,
-        id: boardIdMap[b.id.toString()],
-        parentId: groupIdMap[b.parentId] ?? b.parentId,
-        position: [b.position[0] + 10, b.position[1], b.position[2] + 10],
-        edgeJoints,
-        operations
-      };
-    });
-    const newConstraints = {};
-    Object.entries(snapshotConstraints).forEach(([, c]) => {
-      const newCId = Date.now().toString() + Math.random();
-      newConstraints[newCId] = {
-        ...c,
-        boardAId: boardIdMap[c.boardAId]?.toString() ?? c.boardAId,
-        boardBId: boardIdMap[c.boardBId]?.toString() ?? c.boardBId
-      };
-    });
+    const { newBoards, newGroups, newConstraints, newRootId } = cloneAssemblyHelper(selectedGroupId, boards, groups, constraints);
     setGroups(prev => ({
       ...prev,
       ...newGroups
@@ -131,7 +42,7 @@ export const createAssemblySlice = (set, get) => ({
       ...newConstraints
     }));
     setSelectedItemIds([newRootId]);
-    showToast(`Cloned "${oldRootId}"`);
+    showToast(`Cloned "${selectedGroupId}"`);
   },
   updateProceduralBox: (groupId, metaUpdates) => {
     const {
@@ -227,78 +138,27 @@ export const createAssemblySlice = (set, get) => ({
   },
   // ─── Cabinet Builder ──────────────────────────────────────────────────────
   buildCabinet: cfg => {
-    const {
-      pushHistory,
-      boards,
-      groups,
-      setBoards,
-      setGroups,
-      setSelectedItemIds
-    } = get();
+    const { pushHistory, boards, groups, setBoards, setGroups, setSelectedItemIds } = get();
     pushHistory();
-    
-    const {
-      groupId,
-      savedParams,
-      newBoards,
-      isEditing,
-      backStyle,
-      tSide,
-      tTB,
-      tBack,
-      baseId,
-      oldIdMap
-    } = generateCabinet(cfg, boards, groups);
-
-    if (isEditing) {
-      setGroups(prev => ({
-        ...prev,
-        [groupId]: {
-          ...prev[groupId],
-          meta: {
-            builder: 'cabinet',
-            params: savedParams
-          }
-        }
-      }));
-    } else {
-      setGroups(prev => ({
-        ...prev,
-        [groupId]: {
-          parentId: 'Workspace',
-          isExpanded: true,
-          visible: true,
-          name: 'Cabinet',
-          meta: {
-            builder: 'cabinet',
-            params: savedParams
-          }
-        }
-      }));
-    }
-
-    setBoards(prev => {
-      const newBoardIds = new Set(newBoards.map(nb => nb.id));
-      const filtered = prev.filter(b => !newBoardIds.has(b.id) && b.parentId !== groupId);
-      return [...filtered, ...newBoards];
-    });
-    setSelectedItemIds([groupId]);
+    const res = buildCabinetHelper(cfg, boards, groups);
+    setGroups(res.updatedGroups);
+    setBoards(res.updatedBoards);
+    setSelectedItemIds([res.groupId]);
 
     setTimeout(() => {
-      const {
-        setBoards
-      } = get();
-      const bottomId = newBoards[0].id;
-      const topId = newBoards[1].id;
-      const leftId = newBoards[2].id;
-      const rightId = newBoards[3].id;
-      const backId = newBoards[4].id;
-
-      if (backStyle === 'inset') {
+      const { setBoards } = get();
+      if (res.backStyle === 'inset') {
         setTimeout(() => {
-          const backIdStr = backId.toString();
+          const backIdStr = res.newBoards[4].id.toString();
+          const tSide = res.tSide;
+          const tTB = res.tTB;
+          const tBack = res.tBack;
+          const bottomId = res.newBoards[0].id;
+          const topId = res.newBoards[1].id;
+          const leftId = res.newBoards[2].id;
+          const rightId = res.newBoards[3].id;
           setBoards(prev => prev.map(b => {
-            if (['Bottom', 'Top', 'Left Side', 'Right Side'].includes(b.name) && b.parentId === groupId) {
+            if (['Bottom', 'Top', 'Left Side', 'Right Side'].includes(b.name) && b.parentId === res.groupId) {
               const joint = {
                 type: 'rabbet',
                 partnerId: backIdStr,
@@ -310,12 +170,9 @@ export const createAssemblySlice = (set, get) => ({
                 signA: -1,
                 signB: 1
               };
-              return {
-                ...b,
-                edgeJoints: [...(b.edgeJoints || []), joint]
-              };
+              return { ...b, edgeJoints: [...(b.edgeJoints || []), joint] };
             }
-            if (b.name === 'Back' && b.parentId === groupId) {
+            if (b.name === 'Back' && b.parentId === res.groupId) {
               const sideIds = [bottomId, topId, leftId, rightId].map(String);
               const newJoints = sideIds.map((id, idx) => ({
                 type: 'rabbet',
@@ -328,10 +185,7 @@ export const createAssemblySlice = (set, get) => ({
                 signA: -1,
                 signB: 1
               }));
-              return {
-                ...b,
-                edgeJoints: [...(b.edgeJoints || []), ...newJoints]
-              };
+              return { ...b, edgeJoints: [...(b.edgeJoints || []), ...newJoints] };
             }
             return b;
           }));
@@ -341,415 +195,156 @@ export const createAssemblySlice = (set, get) => ({
   },
   // ─── Box Builder ──────────────────────────────────────────────────────────
   buildBox: cfg => {
-    const {
-      pushHistory,
-      boards,
-      groups,
-      setBoards,
-      setGroups,
-      setSelectedItemIds
-    } = get();
+    const { pushHistory, boards, groups, setBoards, setGroups, setSelectedItemIds } = get();
     pushHistory();
-
-    const {
-      groupId,
-      savedParams,
-      newBoards,
-      isEditing
-    } = generateBox(cfg, boards, groups);
-
-    if (isEditing) {
-      setGroups(prev => ({
-        ...prev,
-        [groupId]: {
-          ...prev[groupId],
-          meta: {
-            builder: 'box',
-            params: savedParams
-          }
-        }
-      }));
-    } else {
-      setGroups(prev => ({
-        ...prev,
-        [groupId]: {
-          parentId: 'Workspace',
-          isExpanded: true,
-          visible: true,
-          name: 'Box',
-          meta: {
-            builder: 'box',
-            params: savedParams
-          }
-        }
-      }));
-    }
-
-    setBoards(prev => {
-      const newBoardIds = new Set(newBoards.map(nb => nb.id));
-      const filtered = prev.filter(b => !newBoardIds.has(b.id) && b.parentId !== groupId);
-      return [...filtered, ...newBoards];
-    });
-    setSelectedItemIds([groupId]);
+    const res = buildBoxHelper(cfg, boards, groups);
+    setGroups(res.updatedGroups);
+    setBoards(res.updatedBoards);
+    setSelectedItemIds([res.groupId]);
   },
   // ─── Face Frame Builder ───────────────────────────────────────────────────
   buildFaceFrame: cfg => {
     const { pushHistory, boards, groups, setBoards, setGroups, setSelectedItemIds, defaultMaterial } = get();
     pushHistory();
-
-    const {
-      groupId,
-      savedParams,
-      newBoards,
-      isEditing
-    } = generateFaceFrame(cfg, boards, groups, defaultMaterial);
-
-    if (isEditing) {
-      setGroups(prev => ({
-        ...prev,
-        [groupId]: { ...prev[groupId], meta: { builder: 'face-frame', params: savedParams } }
-      }));
-    } else {
-      setGroups(prev => ({
-        ...prev,
-        [groupId]: {
-          parentId: 'Workspace', isExpanded: true, visible: true, name: 'Face Frame',
-          meta: { builder: 'face-frame', params: savedParams }
-        }
-      }));
-    }
-
-    setBoards(prev => {
-      const newBoardIds = new Set(newBoards.map(nb => nb.id));
-      const filtered = prev.filter(b => !newBoardIds.has(b.id) && b.parentId !== groupId);
-      return [...filtered, ...newBoards];
-    });
-    setSelectedItemIds([groupId]);
+    const res = buildFaceFrameHelper(cfg, boards, groups, defaultMaterial);
+    setGroups(res.updatedGroups);
+    setBoards(res.updatedBoards);
+    setSelectedItemIds([res.groupId]);
   },
   // ─── Shelving Builder ─────────────────────────────────────────────────────
   buildShelving: cfg => {
     const { pushHistory, boards, groups, setBoards, setGroups, setSelectedItemIds, defaultMaterial } = get();
     pushHistory();
-
-    const {
-      groupId,
-      savedParams,
-      newBoards,
-      isEditing
-    } = generateShelving(cfg, boards, groups, defaultMaterial);
-
-    if (isEditing) {
-      setGroups(prev => ({
-        ...prev,
-        [groupId]: { ...prev[groupId], meta: { builder: 'shelving', params: savedParams } }
-      }));
-    } else {
-      setGroups(prev => ({
-        ...prev,
-        [groupId]: {
-          parentId: 'Workspace', isExpanded: true, visible: true, name: 'Shelves',
-          meta: { builder: 'shelving', params: savedParams }
-        }
-      }));
-    }
-
-    setBoards(prev => {
-      const newBoardIds = new Set(newBoards.map(nb => nb.id));
-      const filtered = prev.filter(b => !newBoardIds.has(b.id) && b.parentId !== groupId);
-      return [...filtered, ...newBoards];
-    });
-    setSelectedItemIds([groupId]);
+    const res = buildShelvingHelper(cfg, boards, groups, defaultMaterial);
+    setGroups(res.updatedGroups);
+    setBoards(res.updatedBoards);
+    setSelectedItemIds([res.groupId]);
   },
   // ─── Shaker Door Builder ──────────────────────────────────────────────────
   buildShakerDoor: cfg => {
-    const {
-      pushHistory,
-      boards,
-      groups,
-      setBoards,
-      setGroups,
-      setSelectedItemIds,
-      defaultMaterial
-    } = get();
+    const { pushHistory, boards, groups, setBoards, setGroups, setSelectedItemIds, defaultMaterial } = get();
     pushHistory();
-
-    const {
-      groupId,
-      savedParams,
-      newBoards,
-      isEditing
-    } = generateShakerDoor(cfg, boards, groups, defaultMaterial);
-
-    if (isEditing) {
-      setGroups(prev => ({
-        ...prev,
-        [groupId]: {
-          ...prev[groupId],
-          meta: {
-            builder: 'shaker-door',
-            params: savedParams
-          }
-        }
-      }));
-    } else {
-      setGroups(prev => ({
-        ...prev,
-        [groupId]: {
-          parentId: 'Workspace',
-          isExpanded: true,
-          visible: true,
-          name: 'Door',
-          meta: {
-            builder: 'shaker-door',
-            params: savedParams
-          }
-        }
-      }));
-    }
-
-    setBoards(prev => {
-      const newBoardIds = new Set(newBoards.map(nb => nb.id));
-      const filtered = prev.filter(b => !newBoardIds.has(b.id) && b.parentId !== groupId);
-      return [...filtered, ...newBoards];
-    });
-    setSelectedItemIds([groupId]);
+    const res = buildShakerDoorHelper(cfg, boards, groups, defaultMaterial);
+    setGroups(res.updatedGroups);
+    setBoards(res.updatedBoards);
+    setSelectedItemIds([res.groupId]);
   },
   // ─── Drawer Stack Builder ─────────────────────────────────────────────────
   buildDrawers: cfg => {
-    const {
-      pushHistory,
-      boards,
-      groups,
-      setBoards,
-      setGroups,
-      setSelectedItemIds,
-      defaultMaterial
-    } = get();
+    const { pushHistory, boards, groups, setBoards, setGroups, setSelectedItemIds, defaultMaterial } = get();
     pushHistory();
-
-    const {
-      rootGroupId,
-      newGroups,
-      newBoards,
-      isEditing
-    } = generateDrawers(cfg, boards, groups, defaultMaterial);
-
-    setGroups(prev => {
-      const next = {
-        ...prev
-      };
-      if (isEditing) {
-        Object.keys(next).forEach(k => {
-          let pid = next[k].parentId;
-          while (pid) {
-            if (pid === rootGroupId) {
-              delete next[k];
-              break;
-            }
-            pid = next[pid]?.parentId;
-          }
-        });
-      }
-      return {
-        ...next,
-        ...newGroups
-      };
-    });
-    setBoards(prev => {
-      const filtered = prev.filter(b => {
-        if (!isEditing) return true;
-        let pid = b.parentId;
-        while (pid) {
-          if (pid === rootGroupId) return false;
-          pid = groups[pid]?.parentId;
-        }
-        return true;
-      });
-      return [...filtered, ...newBoards];
-    });
-    setSelectedItemIds([rootGroupId]);
+    const res = buildDrawersHelper(cfg, boards, groups, defaultMaterial);
+    setGroups(res.updatedGroups);
+    setBoards(res.updatedBoards);
+    setSelectedItemIds([res.rootGroupId]);
   },
   // ─── Table Base Builder ───────────────────────────────────────────────────
   buildTableBase: cfg => {
     const { pushHistory, boards, groups, setBoards, setGroups, setConstraints, setSelectedItemIds, defaultMaterial } = get();
     pushHistory();
-
-    const {
-      groupId,
-      savedParams,
-      newBoards,
-      newConstraints,
-      newGroups,
-      isEditing
-    } = generateTableBase(cfg, boards, groups, defaultMaterial);
-
-    setGroups(prev => {
-      const next = { ...prev };
-      if (isEditing) {
-        // Delete any sub-groups belonging recursively to this table base
-        Object.keys(next).forEach(k => {
-          let pid = next[k].parentId;
-          while (pid) {
-            if (pid === groupId) {
-              delete next[k];
-              break;
-            }
-            pid = next[pid]?.parentId;
-          }
-        });
-        next[groupId] = {
-          ...prev[groupId],
-          meta: { builder: 'table-base', params: savedParams }
-        };
-      } else {
-        next[groupId] = {
-          parentId: 'Workspace',
-          isExpanded: true,
-          visible: true,
-          name: 'Table Base',
-          meta: { builder: 'table-base', params: savedParams }
-        };
-      }
-      return {
-        ...next,
-        ...newGroups
-      };
-    });
-
-    setBoards(prev => {
-      const childBoards = collectChildBoards(groupId, prev, groups);
-      const childBoardIds = new Set(childBoards.map(b => b.id.toString()));
-      const newBoardIds = new Set(newBoards.map(nb => nb.id.toString()));
-      
-      const filtered = prev.filter(b => 
-        !childBoardIds.has(b.id.toString()) && 
-        !newBoardIds.has(b.id.toString()) && 
-        b.parentId !== groupId
-      );
-      return [...filtered, ...newBoards];
-    });
-
-    if (isEditing) {
-      const childBoards = collectChildBoards(groupId, boards, groups);
-      const childBoardIds = new Set(childBoards.map(b => b.id.toString()));
-      setConstraints(prev => {
-        const next = { ...prev };
-        Object.keys(next).forEach(cId => {
-          const c = next[cId];
-          if (childBoardIds.has(c.boardAId) || childBoardIds.has(c.boardBId)) {
-            delete next[cId];
-          }
-        });
-        return { ...next, ...newConstraints };
-      });
-    } else {
-      setConstraints(prev => ({ ...prev, ...newConstraints }));
-    }
-
-    setSelectedItemIds([groupId]);
+    const res = buildTableBaseHelper(cfg, boards, groups, get().constraints, defaultMaterial);
+    setGroups(res.updatedGroups);
+    setBoards(res.updatedBoards);
+    setConstraints(res.updatedConstraints);
+    setSelectedItemIds([res.groupId]);
   },
   // ─── Table Top Builder ────────────────────────────────────────────────────
   buildTableTop: cfg => {
     const { pushHistory, boards, groups, setBoards, setGroups, setConstraints, setSelectedItemIds, defaultMaterial, showToast } = get();
     pushHistory();
+    const res = buildTableTopHelper(cfg, boards, groups, get().constraints, defaultMaterial);
+    setGroups(res.updatedGroups);
+    setBoards(res.updatedBoards);
+    setConstraints(res.updatedConstraints);
+    setSelectedItemIds([res.groupId]);
 
-    const {
-      groupId,
-      savedParams,
-      newBoards,
-      newGroups,
-      isEditing,
-      hasBase,
-      baseGroupId
-    } = generateTableTop(cfg, boards, groups, defaultMaterial);
+    // Establish structural rigid glue constraints
+    setTimeout(() => {
+      const latestBoards = get().boards;
+      const topBoards = latestBoards.filter(b => b.parentId === res.groupId);
+      
+      const newConstraints = {};
+      let cIndex = 0;
 
-    setGroups(prev => {
-      const next = { ...prev };
-      if (isEditing) {
-        // recursively delete old child groups under groupId
-        Object.keys(next).forEach(k => {
-          let pid = next[k].parentId;
-          while (pid) {
-            if (pid === groupId) {
-              delete next[k];
-              break;
-            }
-            pid = next[pid]?.parentId;
-          }
-        });
-        next[groupId] = {
-          ...prev[groupId],
-          meta: { builder: 'table-top', params: savedParams }
-        };
-      } else {
-        next[groupId] = {
-          parentId: 'Workspace',
-          isExpanded: true,
-          visible: true,
-          name: 'Table Top',
-          meta: { builder: 'table-top', params: savedParams }
+      // 1. Glue adjacent slats together rigidly so they form a single solid panel
+      const topSlats = topBoards.filter(b => b.name.startsWith('Top Slat ')).sort((a, b) => {
+        const numA = parseInt(a.name.replace('Top Slat ', ''), 10);
+        const numB = parseInt(b.name.replace('Top Slat ', ''), 10);
+        return numA - numB;
+      });
+
+      for (let i = 0; i < topSlats.length - 1; i++) {
+        const slatA = topSlats[i];
+        const slatB = topSlats[i + 1];
+        const cId = `glue_slat_seam_${Date.now()}_${cIndex++}`;
+        newConstraints[cId] = {
+          type: 'Glue',
+          boardAId: slatA.id.toString(),
+          boardBId: slatB.id.toString(),
+          offset: [
+            slatB.position[0] - slatA.position[0],
+            slatB.position[1] - slatA.position[1],
+            slatB.position[2] - slatA.position[2]
+          ],
+          enabled: true
         };
       }
-      return {
-        ...next,
-        ...newGroups
-      };
-    });
 
-    setBoards(prev => {
-      const childBoards = collectChildBoards(groupId, prev, groups);
-      const childBoardIds = new Set(childBoards.map(b => b.id.toString()));
-      const newBoardIds = new Set(newBoards.map(nb => nb.id.toString()));
-      
-      const filtered = prev.filter(b => 
-        !childBoardIds.has(b.id.toString()) && 
-        !newBoardIds.has(b.id.toString()) && 
-        b.parentId !== groupId
-      );
-      return [...filtered, ...newBoards];
-    });
+      // 2. Glue procedural fasteners (Dowels/Dominoes) to their corresponding slat
+      const proceduralFasteners = topBoards.filter(b => b.name.startsWith('Domino ') || b.name.startsWith('Dowel '));
+      proceduralFasteners.forEach(pf => {
+        const match = pf.name.match(/[j](\d+)/);
+        if (match) {
+          const slatIdx = parseInt(match[1], 10);
+          const parentSlat = topSlats.find(s => s.name === `Top Slat ${slatIdx}`);
+          if (parentSlat) {
+            const cId = `glue_procedural_fastener_${Date.now()}_${cIndex++}`;
+            newConstraints[cId] = {
+              type: 'Glue',
+              boardAId: pf.id.toString(),
+              boardBId: parentSlat.id.toString(),
+              offset: [
+                parentSlat.position[0] - pf.position[0],
+                parentSlat.position[1] - pf.position[1],
+                parentSlat.position[2] - pf.position[2]
+              ],
+              enabled: true
+            };
+          }
+        }
+      });
 
-    setSelectedItemIds([groupId]);
-
-    // If there is an active base, automatically establish structural rigid glue constraints
-    if (hasBase && baseGroupId) {
-      setTimeout(() => {
-        const latestBoards = get().boards;
-        const baseBoards = collectChildBoards(baseGroupId, latestBoards, get().groups);
-        const topBoards = latestBoards.filter(b => b.parentId === groupId);
-        
+      // 3. If there is an active base, snap-align and glue table top to base
+      if (res.hasBase && res.baseGroupId) {
+        const baseBoards = collectChildBoards(res.baseGroupId, latestBoards, get().groups);
         const frontApron = baseBoards.find(b => b.name === 'Apron Front');
         const backApron = baseBoards.find(b => b.name === 'Apron Back');
         const leftApron = baseBoards.find(b => b.name === 'Apron Left');
         const rightApron = baseBoards.find(b => b.name === 'Apron Right');
         const baseStringers = baseBoards.filter(b => b.name.startsWith('Stringer '));
 
-        const newConstraints = {};
-        let cIndex = 0;
-
-        // Glue first slat to front apron
-        const firstSlat = topBoards.find(b => b.name === 'Top Slat 1');
-        if (firstSlat && frontApron) {
+        // Glue first slat to back apron
+        const firstSlat = topSlats[0];
+        if (firstSlat && backApron) {
           const cId = `glue_top_base_${Date.now()}_${cIndex++}`;
           newConstraints[cId] = {
             type: 'Glue',
             boardAId: firstSlat.id.toString(),
-            boardBId: frontApron.id.toString(),
-            offset: [firstSlat.position[0] - frontApron.position[0], firstSlat.position[1] - frontApron.position[1], firstSlat.position[2] - frontApron.position[2]],
+            boardBId: backApron.id.toString(),
+            offset: [firstSlat.position[0] - backApron.position[0], firstSlat.position[1] - backApron.position[1], firstSlat.position[2] - backApron.position[2]],
             enabled: true
           };
         }
 
-        // Glue last slat to back apron
-        const topSlats = topBoards.filter(b => b.name.startsWith('Top Slat '));
-        if (topSlats.length > 0 && backApron) {
+        // Glue last slat to front apron
+        if (topSlats.length > 0 && frontApron) {
           const lastSlat = topSlats[topSlats.length - 1];
           const cId = `glue_top_base_${Date.now()}_${cIndex++}`;
           newConstraints[cId] = {
             type: 'Glue',
             boardAId: lastSlat.id.toString(),
-            boardBId: backApron.id.toString(),
-            offset: [lastSlat.position[0] - backApron.position[0], lastSlat.position[1] - backApron.position[1], lastSlat.position[2] - backApron.position[2]],
+            boardBId: frontApron.id.toString(),
+            offset: [lastSlat.position[0] - frontApron.position[0], lastSlat.position[1] - frontApron.position[1], lastSlat.position[2] - frontApron.position[2]],
             enabled: true
           };
         }
@@ -794,11 +389,15 @@ export const createAssemblySlice = (set, get) => ({
             }
           });
         }
+      }
 
-        setConstraints(prev => ({ ...prev, ...newConstraints }));
+      setConstraints(prev => ({ ...prev, ...newConstraints }));
+      if (res.hasBase && res.baseGroupId) {
         showToast('✅ Table top snap-aligned on base. Glue constraints generated.');
-      }, 50);
-    }
+      } else {
+        showToast('✅ Table top generated. Glue constraints created.');
+      }
+    }, 50);
   },
   manualAddAssembly: () => {
     const {
@@ -975,5 +574,134 @@ export const createAssemblySlice = (set, get) => ({
     setBoards(prev => [...prev, proxyBoard]);
     setSelectedItemIds([proxyIdNum.toString()]);
     showToast('Pivot Proxy created. Assembly hidden.');
+  },
+
+  // ─── Smart Joint Fasteners ──────────────────────────────────────────────────
+  applySmartFasteners: (boardAId, boardBId, config) => {
+    const {
+      boards,
+      groups,
+      constraints,
+      setBoards,
+      setGroups,
+      setConstraints,
+      pushHistory,
+      showToast
+    } = get();
+
+    const boardA = boards.find(b => b.id.toString() === boardAId.toString());
+    const boardB = boards.find(b => b.id.toString() === boardBId.toString());
+    if (!boardA || !boardB) return;
+
+    pushHistory();
+
+    const res = applySmartFastenersHelper(boardA, boardB, config, boards, groups, constraints);
+    
+    setGroups(res.nextGroups);
+    setBoards(res.newBoards);
+    setConstraints(res.nextConstraints);
+
+    if (!res.success) {
+      showToast('⚠️ Boards are not touching flush!');
+    } else {
+      const fastenerLabel = config.type === 'pocket-hole' ? 'Pocket Holes'
+                          : config.type === 'dowels' ? 'Dowel Pins'
+                          : config.type === 'loose-tenon' ? 'Loose Tenons (Dominoes)'
+                          : 'Wood Screws';
+      showToast(`✅ Added ${config.count || 2} ${fastenerLabel}. Rigid glue link created.`);
+    }
+  },
+
+  removeSmartFasteners: (boardAId, boardBId) => {
+    const {
+      pushHistory,
+      boards,
+      setBoards,
+      constraints,
+      setConstraints,
+      groups,
+      setGroups,
+      showToast
+    } = get();
+
+    pushHistory();
+
+    // Remove operations
+    let finalBoards = boards.map(b => {
+      if (b.id.toString() === boardAId.toString() || b.id.toString() === boardBId.toString()) {
+        return {
+          ...b,
+          operations: (b.operations || []).filter(op => op.source !== 'smart-fastener'),
+          edgeJoints: (b.edgeJoints || []).filter(ej => ej.partnerId?.toString() !== (b.id.toString() === boardAId.toString() ? boardBId : boardAId).toString())
+        };
+      }
+      return b;
+    });
+
+    // Remove 3D visual entities
+    const fastenerGroupPrefix = `fasteners_${boardAId}_${boardBId}`;
+    const fastenerGroupPrefixRev = `fasteners_${boardBId}_${boardAId}`;
+    finalBoards = finalBoards.filter(b => {
+      const pid = b.parentId;
+      return pid !== fastenerGroupPrefix && pid !== fastenerGroupPrefixRev;
+    });
+
+    // Remove constraint
+    const nextConstraints = { ...constraints };
+    Object.keys(nextConstraints).forEach(cid => {
+      const c = nextConstraints[cid];
+      if (
+        c.type === 'Glue' &&
+        ((c.boardAId?.toString() === boardAId.toString() && c.boardBId?.toString() === boardBId.toString()) ||
+         (c.boardAId?.toString() === boardBId.toString() && c.boardBId?.toString() === boardAId.toString()))
+      ) {
+        delete nextConstraints[cid];
+      }
+    });
+
+    // Remove groups
+    const nextGroups = { ...groups };
+    delete nextGroups[fastenerGroupPrefix];
+    delete nextGroups[fastenerGroupPrefixRev];
+
+    setGroups(nextGroups);
+    setBoards(finalBoards);
+    setConstraints(nextConstraints);
+    showToast('🗑️ Cleared joint fasteners & rigid constraint.');
+  },
+
+  applyAssemblyProfile: (boardIds, faceDirection, profileType, profileParams) => {
+    const { boards, groups, setBoards, pushHistory, showToast } = get();
+    
+    // Resolve boards to profile
+    const selectedBoards = boards.filter(b => boardIds.includes(b.id.toString()));
+    
+    pushHistory();
+    
+    const res = applyAssemblyProfileHelper(selectedBoards, faceDirection, profileType, profileParams, boards);
+    
+    if (res.success) {
+      setBoards(res.newBoards);
+      const label = profileType === 'roundover' 
+        ? `1/4" roundover applied to outer top/perimeter edges`
+        : `45° chamfer applied to outer top/perimeter edges`;
+      showToast(`✅ Assembly profile applied: ${label}`);
+    } else {
+      showToast('⚠️ No flush candidate faces detected on selected boards.');
+    }
+  },
+
+  clearAssemblyProfile: (boardIds, faceDirection) => {
+    const { boards, setBoards, pushHistory, showToast } = get();
+    const selectedBoards = boards.filter(b => boardIds.includes(b.id.toString()));
+    
+    pushHistory();
+    
+    const res = clearAssemblyProfileHelper(selectedBoards, faceDirection, boards);
+    
+    if (res.success) {
+      setBoards(res.newBoards);
+      showToast(`🗑️ Assembly profile removed from ${faceDirection} edges.`);
+    }
   }
 });

@@ -29,6 +29,7 @@ import TableTopBuilderDialog from './components/dialogs/TableTopBuilderDialog';
 import AiHelpDialog from './components/dialogs/AiHelpDialog';
 import PrintDialog from './components/dialogs/PrintDialog';
 import SavePromptDialog from './components/dialogs/SavePromptDialog';
+import AttributionDialog from './components/dialogs/AttributionDialog';
 import ErrorBoundary from './components/layout/ErrorBoundary';
 import useStore from './store/useStore';
 import { getSmartPosition } from './utils/panelLayout';
@@ -326,6 +327,7 @@ export default function App() {
                 <AiHelpDialog />
                 <PrintDialog />
                 <SavePromptDialog />
+                <AttributionDialog />
             </div>
 
             {/* Right docked sidebar layout when active and panels are open */}

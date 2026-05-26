@@ -1,11 +1,12 @@
 import React from 'react';
 import { Text } from '@react-three/drei';
 
-export const ShadowFloor = ({ shadows }) => {
+export const ShadowFloor = ({ shadows, workspaceSize }) => {
   if (!shadows) return null;
+  const s = Math.max(200, (workspaceSize || 120) * 3); // Scale ground shadow plane dynamically
   return (
     <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]} receiveShadow>
-      <planeGeometry args={[200, 200]} />
+      <planeGeometry args={[s, s]} />
       <shadowMaterial transparent opacity={0.25} />
     </mesh>
   );
@@ -87,7 +88,7 @@ export const GridEnvironment = ({ showGrid, printCapture, theme, workspaceSize, 
 
   return (
     <group>
-      <ShadowFloor shadows={lighting?.shadows} />
+      <ShadowFloor shadows={lighting?.shadows} workspaceSize={workspaceSize} />
       {showGrid && minorDivs > 0 && (
         <gridHelper key={`min_${minorDivs}_${theme}`} args={[gridRadius, minorDivs, minorColor, minorColor]} position={[0, -0.02, 0]} />
       )}

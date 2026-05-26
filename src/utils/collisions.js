@@ -56,9 +56,19 @@ export function getOverlappingBoards(boards) {
             if (b1.board.edgeJoints?.some(j => j.partnerId === b2.id)) continue;
             if (b2.board.edgeJoints?.some(j => j.partnerId === b1.id)) continue;
 
-            // Ignore if either board is a visual joint fastener (dowel, Domino, or tenon)
-            const isB1Fastener = b1.board.name?.includes('Dowel') || b1.board.name?.includes('Domino') || b1.board.name?.includes('Tenon');
-            const isB2Fastener = b2.board.name?.includes('Dowel') || b2.board.name?.includes('Domino') || b2.board.name?.includes('Tenon');
+            // Ignore if either board is a visual joint fastener (dowel, Domino, tenon, pocket plug, or wood screw)
+            const isB1Fastener = b1.board.meta?.isFastenerElement ||
+                                 b1.board.name?.includes('Dowel') ||
+                                 b1.board.name?.includes('Domino') ||
+                                 b1.board.name?.includes('Tenon') ||
+                                 b1.board.name?.includes('Plug') ||
+                                 b1.board.name?.includes('Screw');
+            const isB2Fastener = b2.board.meta?.isFastenerElement ||
+                                 b2.board.name?.includes('Dowel') ||
+                                 b2.board.name?.includes('Domino') ||
+                                 b2.board.name?.includes('Tenon') ||
+                                 b2.board.name?.includes('Plug') ||
+                                 b2.board.name?.includes('Screw');
             if (isB1Fastener || isB2Fastener) continue;
 
             // Ignore if there is a subtraction relationship between them

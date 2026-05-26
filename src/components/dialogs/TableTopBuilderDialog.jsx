@@ -260,13 +260,13 @@ const TableTopBuilderDialog = () => {
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                             <div>
                                 <div style={labelStyle}>Width Overhang (X)</div>
-                                <input type="number" step="0.5" min="0" value={widthOverhang}
+                                <input type="number" step="0.125" min="0" value={widthOverhang}
                                     onChange={e => setDialog(p => ({ ...p, widthOverhang: e.target.value }))}
                                     style={inputStyle} />
                             </div>
                             <div>
                                 <div style={labelStyle}>Depth Overhang (Z)</div>
-                                <input type="number" step="0.5" min="0" value={depthOverhang}
+                                <input type="number" step="0.125" min="0" value={depthOverhang}
                                     onChange={e => setDialog(p => ({ ...p, depthOverhang: e.target.value }))}
                                     style={inputStyle} />
                             </div>
@@ -275,13 +275,13 @@ const TableTopBuilderDialog = () => {
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                             <div>
                                 <div style={labelStyle}>Total Width (X in)</div>
-                                <input type="number" step="1" min="6" value={W}
+                                <input type="number" step="0.125" min="6" value={W}
                                     onChange={e => setDialog(p => ({ ...p, width: e.target.value }))}
                                     style={inputStyle} />
                             </div>
                             <div>
                                 <div style={labelStyle}>Total Depth (Z in)</div>
-                                <input type="number" step="1" min="6" value={D}
+                                <input type="number" step="0.125" min="6" value={D}
                                     onChange={e => setDialog(p => ({ ...p, depth: e.target.value }))}
                                     style={inputStyle} />
                             </div>
