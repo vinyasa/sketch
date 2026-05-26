@@ -18,18 +18,18 @@ const ASSEMBLIES = [
         color: '#ffaa00',
     },
     {
-        id: 'cabinet',
-        label: 'Cabinet',
-        icon: '🗄',
-        description: 'Box with top, bottom, sides, front & back — ready for dados',
-        color: '#b08855',
-    },
-    {
         id: 'box',
         label: 'Box',
         icon: '📦',
         description: '6-sided box with top and bottom sitting flush on sides',
         color: '#908070',
+    },
+    {
+        id: 'cabinet',
+        label: 'Cabinet',
+        icon: '🗄',
+        description: 'Box with top, bottom, sides, front & back — ready for dados',
+        color: '#b08855',
     },
     {
         id: 'shakerDoor',
@@ -193,7 +193,7 @@ const AssembliesPanel = () => {
     };
 
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
             <div style={{
                 fontSize: '0.6rem', color: 'var(--accent-color)', textTransform: 'uppercase',
                 letterSpacing: '0.6px', fontWeight: 700, marginBottom: '2px',
