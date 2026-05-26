@@ -2,6 +2,7 @@ import { computeWorldAABB, collectChildBoards } from '../sceneGraph';
 
 export function generateTableTop(cfg, boards, groups, defaultMaterial) {
   const parseNum = (val, def) => { const n = parseFloat(val); return isNaN(n) ? def : n; };
+  const newGroups = {};
   const parseBool = (val, def) => {
     if (val === undefined || val === null) return def;
     return val === true || val === 'true';
@@ -157,8 +158,18 @@ export function generateTableTop(cfg, boards, groups, defaultMaterial) {
   }
 
   // 5. Establish Edge Joints between boards (loose-tenon or dowels)
+  // 5. Establish Edge Joints between boards (loose-tenon or dowels)
+  let jointGroupId = null;
   if (jointType === 'loose-tenon' || jointType === 'dowels') {
     const isDomino = jointType === 'loose-tenon';
+    jointGroupId = 'Joint Fasteners ' + Math.floor(Math.random() * 1000);
+    newGroups[jointGroupId] = {
+      parentId: groupId,
+      isExpanded: false,
+      visible: true,
+      name: isDomino ? 'Loose Tenons (Dominoes)' : 'Dowel Pins'
+    };
+
     // Edge-to-edge joints between adjacent slats
     for (let j = 0; j < slatBoards.length - 1; j++) {
       const bA = slatBoards[j];
@@ -249,6 +260,41 @@ export function generateTableTop(cfg, boards, groups, defaultMaterial) {
             offset: xOffset,
             offsetY: 0,
             source: 'procedural-joint'
+          });
+        }
+
+        // Add visual physical fastener centered in the seam
+        const seamZ = (bA.position[2] + bB.position[2]) / 2;
+        const fastenerName = isDomino ? `Domino j${j + 1}_k${k + 1}` : `Dowel j${j + 1}_k${k + 1}`;
+        if (isDomino) {
+          newBoards.push({
+            id: baseId + 13000 + j * 100 + k,
+            name: fastenerName,
+            parentId: jointGroupId,
+            size: [1.25, 0.3125, 2.0], // Width, thickness, length
+            position: [bA.position[0] + xOffset, bA.position[1], seamZ],
+            material: defaultMaterial,
+            joint: 'None',
+            shape: 'box',
+            operations: [],
+            edgeJoints: []
+          });
+        } else {
+          newBoards.push({
+            id: baseId + 13000 + j * 100 + k,
+            name: fastenerName,
+            parentId: jointGroupId,
+            size: [0.375, 0.375, 2.0],
+            position: [bA.position[0] + xOffset, bA.position[1], seamZ],
+            material: defaultMaterial,
+            joint: 'None',
+            shape: 'cylinder',
+            cylinder: {
+              radius: 0.1875,
+              axis: 'z'
+            },
+            operations: [],
+            edgeJoints: []
           });
         }
       }
@@ -424,6 +470,76 @@ export function generateTableTop(cfg, boards, groups, defaultMaterial) {
             source: 'procedural-joint'
           });
         }
+
+        // Add physical breadboard joint fasteners
+        const leftSeamX = (slat.position[0] - slat.size[0] / 2 + leftBreadboard.position[0] + leftBreadboard.size[0] / 2) / 2;
+        const rightSeamX = (slat.position[0] + slat.size[0] / 2 + rightBreadboard.position[0] - rightBreadboard.size[0] / 2) / 2;
+        const leftFastenerName = isDomino ? `Left Domino Slat ${idx}` : `Left Dowel Slat ${idx}`;
+        const rightFastenerName = isDomino ? `Right Domino Slat ${idx}` : `Right Dowel Slat ${idx}`;
+
+        if (isDomino) {
+          // Left breadboard tenon
+          newBoards.push({
+            id: baseId + 14000 + idx,
+            name: leftFastenerName,
+            parentId: jointGroupId,
+            size: [2.0, 0.3125, 1.25], // Length in X, thickness in Y, width in Z
+            position: [leftSeamX, slat.position[1], slat.position[2]],
+            material: defaultMaterial,
+            joint: 'None',
+            shape: 'box',
+            operations: [],
+            edgeJoints: []
+          });
+          // Right breadboard tenon
+          newBoards.push({
+            id: baseId + 15000 + idx,
+            name: rightFastenerName,
+            parentId: jointGroupId,
+            size: [2.0, 0.3125, 1.25],
+            position: [rightSeamX, slat.position[1], slat.position[2]],
+            material: defaultMaterial,
+            joint: 'None',
+            shape: 'box',
+            operations: [],
+            edgeJoints: []
+          });
+        } else {
+          // Left breadboard dowel
+          newBoards.push({
+            id: baseId + 14000 + idx,
+            name: leftFastenerName,
+            parentId: jointGroupId,
+            size: [2.0, 0.375, 0.375],
+            position: [leftSeamX, slat.position[1], slat.position[2]],
+            material: defaultMaterial,
+            joint: 'None',
+            shape: 'cylinder',
+            cylinder: {
+              radius: 0.1875,
+              axis: 'x'
+            },
+            operations: [],
+            edgeJoints: []
+          });
+          // Right breadboard dowel
+          newBoards.push({
+            id: baseId + 15000 + idx,
+            name: rightFastenerName,
+            parentId: jointGroupId,
+            size: [2.0, 0.375, 0.375],
+            position: [rightSeamX, slat.position[1], slat.position[2]],
+            material: defaultMaterial,
+            joint: 'None',
+            shape: 'cylinder',
+            cylinder: {
+              radius: 0.1875,
+              axis: 'x'
+            },
+            operations: [],
+            edgeJoints: []
+          });
+        }
       });
     }
   }
@@ -458,6 +574,7 @@ export function generateTableTop(cfg, boards, groups, defaultMaterial) {
     groupId,
     savedParams,
     newBoards,
+    newGroups,
     isEditing,
     hasBase,
     baseGroupId

@@ -657,31 +657,58 @@ export const createAssemblySlice = (set, get) => ({
       groupId,
       savedParams,
       newBoards,
+      newGroups,
       isEditing,
       hasBase,
       baseGroupId
     } = generateTableTop(cfg, boards, groups, defaultMaterial);
 
-    if (isEditing) {
-      setGroups(prev => ({
-        ...prev,
-        [groupId]: { ...prev[groupId], meta: { builder: 'table-top', params: savedParams } }
-      }));
-    } else {
-      setGroups(prev => ({
-        ...prev,
-        [groupId]: {
-          parentId: 'Workspace', isExpanded: true, visible: true, name: 'Table Top',
+    setGroups(prev => {
+      const next = { ...prev };
+      if (isEditing) {
+        // recursively delete old child groups under groupId
+        Object.keys(next).forEach(k => {
+          let pid = next[k].parentId;
+          while (pid) {
+            if (pid === groupId) {
+              delete next[k];
+              break;
+            }
+            pid = next[pid]?.parentId;
+          }
+        });
+        next[groupId] = {
+          ...prev[groupId],
           meta: { builder: 'table-top', params: savedParams }
-        }
-      }));
-    }
+        };
+      } else {
+        next[groupId] = {
+          parentId: 'Workspace',
+          isExpanded: true,
+          visible: true,
+          name: 'Table Top',
+          meta: { builder: 'table-top', params: savedParams }
+        };
+      }
+      return {
+        ...next,
+        ...newGroups
+      };
+    });
 
     setBoards(prev => {
-      const newBoardIds = new Set(newBoards.map(nb => nb.id));
-      const filtered = prev.filter(b => !newBoardIds.has(b.id) && b.parentId !== groupId);
+      const childBoards = collectChildBoards(groupId, prev, groups);
+      const childBoardIds = new Set(childBoards.map(b => b.id.toString()));
+      const newBoardIds = new Set(newBoards.map(nb => nb.id.toString()));
+      
+      const filtered = prev.filter(b => 
+        !childBoardIds.has(b.id.toString()) && 
+        !newBoardIds.has(b.id.toString()) && 
+        b.parentId !== groupId
+      );
       return [...filtered, ...newBoards];
     });
+
     setSelectedItemIds([groupId]);
 
     // If there is an active base, automatically establish structural rigid glue constraints
