@@ -32,18 +32,18 @@ const ASSEMBLIES = [
         color: '#b08855',
     },
     {
-        id: 'shakerDoor',
-        label: 'Shaker Door',
-        icon: '🚪',
-        description: 'Five-piece door with frame and central panel',
-        color: '#a07850',
-    },
-    {
         id: 'faceFrame',
         label: 'Face Frame',
         icon: '🖼️',
         description: 'Traditional cabinet front with stiles and rails',
         color: '#b5855c',
+    },
+    {
+        id: 'shakerDoor',
+        label: 'Shaker Door',
+        icon: '🚪',
+        description: 'Five-piece door with frame and central panel',
+        color: '#a07850',
     },
     {
         id: 'drawerStack',
