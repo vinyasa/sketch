@@ -2,8 +2,13 @@ import React from 'react';
 import useStore from '../../store/useStore';
 
 const FaceFrameBuilderDialog = () => {
-    const { faceFrameDialog: dialog, setFaceFrameDialog: setDialog, buildFaceFrame } = useStore();
+    const { faceFrameDialog: dialog, setFaceFrameDialog: setDialog, buildFaceFrame, groups } = useStore();
     if (!dialog) return null;
+
+    const cabinetGroupId = dialog.cabinetGroupId;
+    const hasCabinet = !!cabinetGroupId;
+    const cabinetGroup = cabinetGroupId ? groups[cabinetGroupId] : null;
+    const cabinetName = cabinetGroup ? cabinetGroup.name : 'Selected Cabinet';
 
     const parse = (v, def) => { const n = parseFloat(v); return isNaN(n) ? def : n; };
     const W = parse(dialog.width, 24);
@@ -46,6 +51,31 @@ const FaceFrameBuilderDialog = () => {
                 <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <span style={{ fontSize: '1.2rem' }}>🖼️</span> Face Frame
                 </h2>
+
+                {/* Cabinet Detection Banner */}
+                {hasCabinet ? (
+                    <div style={{
+                        padding: '10px 12px',
+                        background: 'rgba(52, 199, 89, 0.1)',
+                        border: '1px dashed rgba(52, 199, 89, 0.4)',
+                        borderRadius: '8px', fontSize: '0.75rem', color: '#34c759',
+                        lineHeight: 1.4
+                    }}>
+                        <strong>✓ Cabinet Group Selected ("{cabinetName}")</strong><br/>
+                        The face frame will be placed and auto-sized precisely to fit the front face of the selected cabinet.
+                    </div>
+                ) : (
+                    <div style={{
+                        padding: '10px 12px',
+                        background: 'rgba(188, 138, 95, 0.08)',
+                        border: '1px dashed var(--border-color)',
+                        borderRadius: '8px', fontSize: '0.75rem', color: 'var(--text-muted)',
+                        lineHeight: 1.4
+                    }}>
+                        <strong>No Cabinet selected.</strong><br/>
+                        Building a standalone face frame. You can input custom dimensions directly below.
+                    </div>
+                )}
 
                 <div className="inspector-card" style={{ margin: 0 }}>
                     <h4>Overall Opening (in)</h4>

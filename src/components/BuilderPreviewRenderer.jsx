@@ -76,8 +76,7 @@ export default function BuilderPreviewRenderer() {
             { size: [W - 2 * tSide, tTB, coreD], pos: [W / 2, H - tTB / 2, coreMidZ] },
             { size: [tSide, H, coreD], pos: [tSide / 2, H / 2, coreMidZ] },
             { size: [tSide, H, coreD], pos: [W - tSide / 2, H / 2, coreMidZ] },
-            { size: backSize, pos: backPos },
-            { size: [W, H, tFront], pos: [W / 2, H / 2, D + tFront / 2] }
+            { size: backSize, pos: backPos }
         ];
 
         previewBoards = panels.map(p => ({
@@ -147,14 +146,22 @@ export default function BuilderPreviewRenderer() {
         const panelH = H - 2 * wStile + 2 * grooveD - clear;
         const railTotalW = W - 2 * wStile + 2 * grooveD;
         const midZ = tFrame / 2;
+        const doorConstruction = shakerDoorDialog.doorConstruction || 'shaker';
 
-        const panels = [
-            { size: [wStile, H, tFrame], pos: [wStile / 2, H / 2, midZ] },
-            { size: [wStile, H, tFrame], pos: [W - wStile / 2, H / 2, midZ] },
-            { size: [railTotalW, wStile, tFrame], pos: [W / 2, H - wStile / 2, midZ] },
-            { size: [railTotalW, wStile, tFrame], pos: [W / 2, wStile / 2, midZ] },
-            { size: [panelW, panelH, tPanel], pos: [W / 2, H / 2, midZ] }
-        ];
+        let panels = [];
+        if (doorConstruction === 'flat') {
+            panels = [
+                { size: [W, H, tFrame], pos: [W / 2, H / 2, midZ] }
+            ];
+        } else {
+            panels = [
+                { size: [wStile, H, tFrame], pos: [wStile / 2, H / 2, midZ] },
+                { size: [wStile, H, tFrame], pos: [W - wStile / 2, H / 2, midZ] },
+                { size: [railTotalW, wStile, tFrame], pos: [W / 2, H - wStile / 2, midZ] },
+                { size: [railTotalW, wStile, tFrame], pos: [W / 2, wStile / 2, midZ] },
+                { size: [panelW, panelH, tPanel], pos: [W / 2, H / 2, midZ] }
+            ];
+        }
 
         previewBoards = panels.map(p => ({
             size: p.size,

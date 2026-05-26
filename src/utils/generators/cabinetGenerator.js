@@ -65,10 +65,6 @@ export function generateCabinet(cfg, boards, groups) {
     name: 'Back',
     size: backSize,
     position: backPos
-  }, {
-    name: 'Front',
-    size: [W, H, tFront],
-    position: [W / 2, H / 2, D + tFront / 2]
   }];
   const baseId = Date.now();
   const newBoards = panelDefs.map((pd, i) => {

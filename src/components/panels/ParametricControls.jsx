@@ -58,11 +58,11 @@ const ParametricControls = ({ groupId, meta }) => {
         }
     };
 
-    const renderInput = (key, label, customStep, customMin) => {
+    const renderInput = (key, label, customStep, customMin, fallbackVal) => {
         const step = customStep !== undefined ? customStep : defaultStep;
         const min = customMin !== undefined ? customMin : 0;
         
-        let displayVal = params[key] ?? '';
+        let displayVal = params[key] ?? fallbackVal ?? '';
         if (units === 'metric' && key !== 'count' && displayVal !== '') {
             displayVal = (parseFloat(displayVal) * 25.4).toFixed(1);
         }
@@ -89,7 +89,22 @@ const ParametricControls = ({ groupId, meta }) => {
 
     let controls = null;
 
-    if (meta.builder === 'cabinet' || meta.builder === 'box') {
+    if (meta.builder === 'cabinet') {
+        controls = (
+            <>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
+                    {renderInput('width', 'Width (X)')}
+                    {renderInput('height', 'Height (Y)')}
+                    {renderInput('depth', 'Depth (Z)')}
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
+                    {renderInput('thicknessTB', `Top/Bottom (${units === 'metric' ? 'mm' : 'in'})`)}
+                    {renderInput('thicknessSide', `Sides (${units === 'metric' ? 'mm' : 'in'})`)}
+                    {renderInput('thicknessBack', `Back (${units === 'metric' ? 'mm' : 'in'})`)}
+                </div>
+            </>
+        );
+    } else if (meta.builder === 'box') {
         controls = (
             <>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
@@ -109,15 +124,61 @@ const ParametricControls = ({ groupId, meta }) => {
         controls = (
             <>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                    {renderInput('width', 'Width (X)')}
-                    {renderInput('height', 'Height (Y)')}
+                    {renderInput('width', 'Width (X)', undefined, undefined, 18)}
+                    {renderInput('height', 'Height (Y)', undefined, undefined, 30)}
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                    {renderInput('thicknessFrame', 'Frame Thick')}
-                    {renderInput('thicknessPanel', 'Panel Thick')}
-                    {renderInput('widthStileRail', 'Stile Width')}
-                    {renderInput('grooveDepth', 'Groove Depth')}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
+                    <div>
+                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Door Style</div>
+                        <select 
+                            value={params.doorStyle || 'overlay'} 
+                            onChange={e => handleChange('doorStyle', e.target.value)}
+                            style={{ 
+                                width: '100%', padding: '5px 8px', 
+                                background: 'var(--bg-color)', color: 'var(--text-main)', 
+                                border: '1px solid var(--border-color)', borderRadius: '6px', 
+                                outline: 'none', fontSize: '0.9rem', cursor: 'pointer'
+                            }}
+                        >
+                            <option value="overlay">Overlay</option>
+                            <option value="inset">Inset</option>
+                        </select>
+                    </div>
+                    <div>
+                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Door Type</div>
+                        <select 
+                            value={params.doorConstruction || 'shaker'} 
+                            onChange={e => handleChange('doorConstruction', e.target.value)}
+                            style={{ 
+                                width: '100%', padding: '5px 8px', 
+                                background: 'var(--bg-color)', color: 'var(--text-main)', 
+                                border: '1px solid var(--border-color)', borderRadius: '6px', 
+                                outline: 'none', fontSize: '0.9rem', cursor: 'pointer'
+                            }}
+                        >
+                            <option value="shaker">Shaker</option>
+                            <option value="flat">Flat / Slab</option>
+                        </select>
+                    </div>
                 </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '8px', marginBottom: '8px' }}>
+                    {params.doorStyle === 'inset' 
+                        ? renderInput('insetClearance', 'Reveal Clearance', 0.03125, 0, 0.125) 
+                        : renderInput('overlayReveal', 'Overlay Reveal', 0.1, 0, 0.25)
+                    }
+                </div>
+                {params.doorConstruction === 'flat' ? (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '8px' }}>
+                        {renderInput('thicknessFrame', 'Door Thickness', undefined, undefined, 0.75)}
+                    </div>
+                ) : (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                        {renderInput('thicknessFrame', 'Frame Thick', undefined, undefined, 0.75)}
+                        {renderInput('thicknessPanel', 'Panel Thick', undefined, undefined, 0.25)}
+                        {renderInput('widthStileRail', 'Stile Width', undefined, undefined, 2)}
+                        {renderInput('grooveDepth', 'Groove Depth', undefined, undefined, 0.375)}
+                    </div>
+                )}
             </>
         );
     } else if (meta.builder === 'drawerStack') {

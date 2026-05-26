@@ -20,7 +20,6 @@ const CabinetBuilderDialog = () => {
     const coreDepth = backStyle === 'flat' ? D - tBack : D;
     const topBottom = { x: W - 2 * tSide, y: tTB, z: coreDepth };
     const sides = { x: tSide, y: H, z: coreDepth };
-    const front = { x: W, y: H, z: tFront };
     const back = { x: W, y: H, z: tBack };
 
     const valid = coreDepth > 0 && W > 2 * tSide && H > 2 * tTB;
@@ -116,7 +115,7 @@ const CabinetBuilderDialog = () => {
                 {/* Panel Thicknesses */}
                 <div className="inspector-card" style={{ margin: 0 }}>
                     <h4>Panel Thickness (in)</h4>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
                         <div>
                             <div style={labelStyle}>Top / Bottom</div>
                             <input type="number" step="0.0625" min="0.125" value={tTB}
@@ -127,12 +126,6 @@ const CabinetBuilderDialog = () => {
                             <div style={labelStyle}>Left / Right Sides</div>
                             <input type="number" step="0.0625" min="0.125" value={tSide}
                                 onChange={e => setDialog(p => ({ ...p, thicknessSide: e.target.value }))}
-                                style={inputStyle} />
-                        </div>
-                        <div>
-                            <div style={labelStyle}>Front</div>
-                            <input type="number" step="0.0625" min="0.125" value={tFront}
-                                onChange={e => setDialog(p => ({ ...p, thicknessFront: e.target.value }))}
                                 style={inputStyle} />
                         </div>
                         <div>
@@ -156,10 +149,9 @@ const CabinetBuilderDialog = () => {
                         <div style={{ fontSize: '0.78rem', color: 'var(--text-main)', lineHeight: 1.6 }}>
                             <div><strong>Top / Bottom:</strong> {fmt(topBottom.x)}" × {fmt(topBottom.y)}" × {fmt(topBottom.z)}" <span style={{ color: 'var(--text-muted)' }}>(fits between sides)</span></div>
                             <div><strong>Left / Right:</strong> {fmt(sides.x)}" × {fmt(sides.y)}" × {fmt(sides.z)}" <span style={{ color: 'var(--text-muted)' }}>(full height)</span></div>
-                            <div><strong>Front:</strong> {fmt(front.x)}" × {fmt(front.y)}" × {fmt(front.z)}" <span style={{ color: 'var(--text-muted)' }}>(flush, no overlap)</span></div>
                             <div><strong>Back:</strong> {fmt(back.x)}" × {fmt(back.y)}" × {fmt(back.z)}" <span style={{ color: 'var(--text-muted)' }}>(flush, no overlap)</span></div>
                             <div style={{ marginTop: '4px', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                                Core depth (between front/back): {fmt(coreDepth)}" · Back-bottom-left at origin
+                                Core depth (excluding back): {fmt(coreDepth)}" · Back-bottom-left at origin
                             </div>
                         </div>
                     ) : (

@@ -67,12 +67,16 @@ export function getOverlappingBoards(boards) {
                 b2.board.operations?.some(op => op.type === 'subtract' && op.cutterId === b1.id);
             if (hasSubtract) continue;
 
-            // Ignore intentional joinery overlaps (dados, grooves, rabbets)
-            // since OBBs do not account for the material removed by these operations.
-            const joineryOps = ['dado', 'groove', 'rabbet'];
-            const b1HasJoinery = b1.board.operations?.some(op => joineryOps.includes(op.type));
-            const b2HasJoinery = b2.board.operations?.some(op => joineryOps.includes(op.type));
-            if ((b1HasJoinery || b2HasJoinery) && b1.board.shape !== 'cylinder' && b2.board.shape !== 'cylinder') continue;
+            // Ignore if they share the same parent group (e.g. carcass sides, door frame stiles/rails/panel)
+            if (b1.board.parentId && b1.board.parentId === b2.board.parentId) continue;
+
+            // Ignore if they are partners in an edge joint or joint operation (e.g. rabbet/dado mating faces)
+            const isPartner = 
+                b1.board.edgeJoints?.some(j => j.partnerId?.toString() === b2.id.toString()) ||
+                b2.board.edgeJoints?.some(j => j.partnerId?.toString() === b1.id.toString()) ||
+                b1.board.operations?.some(op => op.partnerId?.toString() === b2.id.toString()) ||
+                b2.board.operations?.some(op => op.partnerId?.toString() === b1.id.toString());
+            if (isPartner) continue;
 
             // Ignore if they are part of a parent-child relationship (e.g. drawer side and drawer face if implemented that way)
             // But standard boards don't have parent-child physically, so this is fine.

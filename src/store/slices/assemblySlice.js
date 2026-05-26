@@ -498,7 +498,7 @@ export const createAssemblySlice = (set, get) => ({
           parentId: 'Workspace',
           isExpanded: true,
           visible: true,
-          name: 'Shaker Door',
+          name: 'Door',
           meta: {
             builder: 'shaker-door',
             params: savedParams

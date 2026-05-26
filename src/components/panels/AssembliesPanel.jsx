@@ -40,9 +40,9 @@ const ASSEMBLIES = [
     },
     {
         id: 'shakerDoor',
-        label: 'Shaker Door',
+        label: 'Door',
         icon: '🚪',
-        description: 'Five-piece door with frame and central panel',
+        description: 'Custom door with Shaker (5-piece) or Slab (Flat) options',
         color: '#a07850',
     },
     {
@@ -157,18 +157,60 @@ const AssembliesPanel = () => {
                 ...defaultCfg,
             });
         } else if (item.id === 'shakerDoor') {
+            let cabinetGroupId = null;
+            let faceFrameGroupId = null;
+            if (selectedItemIds && selectedItemIds.length === 1) {
+                const selId = selectedItemIds[0];
+                if (groups[selId]) {
+                    const builder = groups[selId].meta?.builder;
+                    if (builder === 'cabinet') {
+                        cabinetGroupId = selId;
+                    } else if (builder === 'face-frame') {
+                        faceFrameGroupId = selId;
+                    }
+                } else {
+                    const b = boards.find(board => board.id.toString() === selId.toString());
+                    if (b && b.parentId && groups[b.parentId]) {
+                        const builder = groups[b.parentId].meta?.builder;
+                        if (builder === 'cabinet') {
+                            cabinetGroupId = b.parentId;
+                        } else if (builder === 'face-frame') {
+                            faceFrameGroupId = b.parentId;
+                        }
+                    }
+                }
+            }
             setShakerDoorDialog({
+                width: bounds ? (bounds.maxX - bounds.minX) : 18,
+                height: bounds ? (bounds.maxY - bounds.minY) : 30,
                 ...defaultCfg,
                 offsetZ: bounds ? bounds.maxZ : 0, // Doors sit on the front
+                cabinetGroupId,
+                faceFrameGroupId
             });
         } else if (item.id === 'drawerStack') {
             setDrawerDialog({
                 ...defaultCfg,
             });
         } else if (item.id === 'faceFrame') {
+            let cabinetGroupId = null;
+            if (selectedItemIds && selectedItemIds.length === 1) {
+                const selId = selectedItemIds[0];
+                if (groups[selId] && groups[selId].meta?.builder === 'cabinet') {
+                    cabinetGroupId = selId;
+                } else {
+                    const b = boards.find(board => board.id.toString() === selId.toString());
+                    if (b && b.parentId && groups[b.parentId] && groups[b.parentId].meta?.builder === 'cabinet') {
+                        cabinetGroupId = b.parentId;
+                    }
+                }
+            }
             setFaceFrameDialog({
                 ...defaultCfg,
+                width: bounds ? (bounds.maxX - bounds.minX) : 24,
+                height: bounds ? (bounds.maxY - bounds.minY) : 30,
                 offsetZ: bounds ? bounds.maxZ : 0, // Face frames sit on the front
+                cabinetGroupId: cabinetGroupId
             });
         } else if (item.id === 'shelving') {
             setShelvingDialog({

@@ -16,6 +16,12 @@ const AssemblyInspector = ({ selectedGroup }) => {
     } = useStore();
 
     const isWorkspace = selectedGroup === 'Workspace';
+    const meta = !isWorkspace && groups[selectedGroup] ? groups[selectedGroup].meta : null;
+    const hasBuilder = !!meta?.builder;
+
+    const supportsX = hasBuilder;
+    const supportsY = hasBuilder && meta.builder !== 'table-top';
+    const supportsZ = hasBuilder && !['shaker-door', 'face-frame'].includes(meta.builder);
 
     // Compute overall dimensions from child boards
     const childBoards = collectChildBoards(selectedGroup, boards, groups);
@@ -35,6 +41,41 @@ const AssemblyInspector = ({ selectedGroup }) => {
             c.type === 'Glue' && childIds.has(c.boardAId) && childIds.has(c.boardBId)
         );
     }
+
+    const handleDimensionChange = (dimension, value) => {
+        if (!meta) return;
+        let key = '';
+        if (dimension === 'X') {
+            key = 'width';
+        } else if (dimension === 'Y') {
+            key = 'height';
+        } else if (dimension === 'Z') {
+            key = 'depth';
+        }
+        
+        let numVal = parseFloat(value);
+        if (units === 'metric' && !isNaN(numVal)) {
+            numVal = numVal / 25.4;
+        }
+        
+        const newParams = { ...(meta.params || {}), [key]: isNaN(numVal) ? value : numVal };
+        const cfg = { ...newParams, editGroupId: selectedGroup };
+        const state = useStore.getState();
+        
+        if (meta.builder === 'cabinet') state.buildCabinet(cfg);
+        else if (meta.builder === 'box') state.buildBox(cfg);
+        else if (meta.builder === 'shaker-door') state.buildShakerDoor(cfg);
+        else if (meta.builder === 'drawerStack') state.buildDrawers(cfg);
+        else if (meta.builder === 'face-frame') {
+            if (state.buildFaceFrame) state.buildFaceFrame(cfg);
+        } else if (meta.builder === 'shelving') {
+            if (state.buildShelving) state.buildShelving(cfg);
+        } else if (meta.builder === 'table-base') {
+            if (state.buildTableBase) state.buildTableBase(cfg);
+        } else if (meta.builder === 'table-top') {
+            if (state.buildTableTop) state.buildTableTop(cfg);
+        }
+    };
 
     // Sticky banner — always rendered when constraint pick mode is active
     const ConstraintBanner = constraintTargetMode?.active ? (
@@ -90,9 +131,39 @@ const AssemblyInspector = ({ selectedGroup }) => {
             <div className="inspector-section">
                 <h4>Overall Dimensions ({units === 'metric' ? 'mm' : 'in'})</h4>
                 <div className="vec3-inputs">
-                    <div style={{ backgroundColor: 'rgba(255, 60, 60, 0.15)' }}>X<input type="number" value={units === 'metric' ? fmt4(overallSize[0] * 25.4) : fmt4(overallSize[0])} disabled style={{ opacity: 0.5, cursor: 'not-allowed' }} /></div>
-                    <div style={{ backgroundColor: 'rgba(60, 200, 90, 0.15)' }}>Y<input type="number" value={units === 'metric' ? fmt4(overallSize[1] * 25.4) : fmt4(overallSize[1])} disabled style={{ opacity: 0.5, cursor: 'not-allowed' }} /></div>
-                    <div style={{ backgroundColor: 'rgba(60, 150, 255, 0.15)' }}>Z<input type="number" value={units === 'metric' ? fmt4(overallSize[2] * 25.4) : fmt4(overallSize[2])} disabled style={{ opacity: 0.5, cursor: 'not-allowed' }} /></div>
+                    <div style={{ backgroundColor: 'rgba(255, 60, 60, 0.15)' }}>
+                        X
+                        <input 
+                            type="number" 
+                            step={units === 'metric' ? '1' : '0.125'} 
+                            value={units === 'metric' ? fmt4(overallSize[0] * 25.4) : fmt4(overallSize[0])} 
+                            disabled={!supportsX} 
+                            onChange={e => handleDimensionChange('X', e.target.value)}
+                            style={!supportsX ? { opacity: 0.5, cursor: 'not-allowed' } : undefined} 
+                        />
+                    </div>
+                    <div style={{ backgroundColor: 'rgba(60, 200, 90, 0.15)' }}>
+                        Y
+                        <input 
+                            type="number" 
+                            step={units === 'metric' ? '1' : '0.125'} 
+                            value={units === 'metric' ? fmt4(overallSize[1] * 25.4) : fmt4(overallSize[1])} 
+                            disabled={!supportsY} 
+                            onChange={e => handleDimensionChange('Y', e.target.value)}
+                            style={!supportsY ? { opacity: 0.5, cursor: 'not-allowed' } : undefined} 
+                        />
+                    </div>
+                    <div style={{ backgroundColor: 'rgba(60, 150, 255, 0.15)' }}>
+                        Z
+                        <input 
+                            type="number" 
+                            step={units === 'metric' ? '1' : '0.125'} 
+                            value={units === 'metric' ? fmt4(overallSize[2] * 25.4) : fmt4(overallSize[2])} 
+                            disabled={!supportsZ} 
+                            onChange={e => handleDimensionChange('Z', e.target.value)}
+                            style={!supportsZ ? { opacity: 0.5, cursor: 'not-allowed' } : undefined} 
+                        />
+                    </div>
                 </div>
             </div>
             {!isWorkspace && (() => {
