@@ -4,6 +4,20 @@ import { computeWorldAABB, collectChildBoards } from '../../utils/sceneGraph';
 
 const ASSEMBLIES = [
     {
+        id: 'tableBase',
+        label: 'Table Base',
+        icon: '🏓',
+        description: 'Tapered legs, aprons, and responsive stringers',
+        color: '#ff7a00',
+    },
+    {
+        id: 'tableTop',
+        label: 'Table Top',
+        icon: '➖',
+        description: 'Slat glue-up with tenons and auto-snap',
+        color: '#ffaa00',
+    },
+    {
         id: 'cabinet',
         label: 'Cabinet',
         icon: '🗄',
@@ -44,20 +58,6 @@ const ASSEMBLIES = [
         icon: '📚',
         description: 'Evenly spaced horizontal shelves for any opening',
         color: '#6d8d53',
-    },
-    {
-        id: 'tableBase',
-        label: 'Table Base',
-        icon: '🏓',
-        description: 'Tapered legs, aprons, and responsive stringers',
-        color: '#ff7a00',
-    },
-    {
-        id: 'tableTop',
-        label: 'Table Top',
-        icon: '➖',
-        description: 'Slat glue-up with tenons, breadboard ends, and auto-snap',
-        color: '#ffaa00',
     },
 ];
 
