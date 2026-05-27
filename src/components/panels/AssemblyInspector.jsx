@@ -6,138 +6,7 @@ import ParametricControls from './ParametricControls';
 // Round to ≤4 decimal places, stripping trailing zeros
 const fmt4 = (v) => parseFloat(v.toFixed(4));
 
-const SmartAssemblyProfiler = ({ targetBoardIds }) => {
-    const { boards, applyAssemblyProfile, clearAssemblyProfile } = useStore();
-    const [profileType, setProfileType] = useState('roundover');
-    const [faceDirection, setFaceDirection] = useState('top');
-    const [radius, setRadius] = useState(0.25);
-    const [width, setWidth] = useState(0.25);
 
-    const selectedBoards = boards.filter(b => targetBoardIds.includes(b.id.toString()));
-    
-    let hasExistingProfile = false;
-    let existingVal = 0.25;
-    let existingType = 'roundover';
-    
-    for (const b of selectedBoards) {
-        const found = b.operations?.find(op => op.source === 'assembly-profile' && op.meta?.faceDirection === faceDirection);
-        if (found) {
-            hasExistingProfile = true;
-            existingVal = found.profile === 'roundover' ? found.radius : found.width;
-            existingType = found.profile;
-            break;
-        }
-    }
-
-    useEffect(() => {
-        if (hasExistingProfile) {
-            setProfileType(existingType);
-            if (existingType === 'roundover') setRadius(existingVal);
-            else setWidth(existingVal);
-        }
-    }, [faceDirection, hasExistingProfile, existingVal, existingType]);
-
-    const handleApply = () => {
-        const params = profileType === 'roundover' ? { radius } : { width };
-        applyAssemblyProfile(targetBoardIds, faceDirection, profileType, params);
-    };
-
-    const handleClear = () => {
-        clearAssemblyProfile(targetBoardIds, faceDirection);
-    };
-
-    return (
-        <div className="inspector-section" style={{
-            background: 'rgba(188, 138, 95, 0.05)',
-            border: '1px solid rgba(188, 138, 95, 0.25)',
-            borderRadius: '8px',
-            padding: '12px',
-            marginTop: '12px',
-            marginBottom: '12px'
-        }}>
-            <h4 style={{ color: 'var(--accent-color)', margin: '0 0 6px 0', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                ⌸ Smart Edge Profiler
-            </h4>
-            <p className="hint" style={{ marginTop: '2px', marginBottom: '8px', fontSize: '0.66rem' }}>
-                Applies a non-destructive profile around the outer perimeter edges of the selected assembly.
-            </p>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <div style={{ display: 'flex', gap: '6px' }}>
-                    <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: '0.64rem', color: 'var(--text-muted)', marginBottom: '3px', fontWeight: 'bold', textTransform: 'uppercase' }}>Profile</div>
-                        <select
-                            value={profileType}
-                            onChange={e => setProfileType(e.target.value)}
-                            style={{
-                                width: '100%', padding: '4px 6px', background: 'var(--bg-color)', color: 'var(--text-main)',
-                                border: '1px solid var(--border-color)', borderRadius: '6px', outline: 'none', fontSize: '0.75rem', cursor: 'pointer'
-                            }}
-                        >
-                            <option value="roundover">Roundover</option>
-                            <option value="chamfer">Chamfer</option>
-                        </select>
-                    </div>
-
-                    <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: '0.64rem', color: 'var(--text-muted)', marginBottom: '3px', fontWeight: 'bold', textTransform: 'uppercase' }}>Target Face</div>
-                        <select
-                            value={faceDirection}
-                            onChange={e => setFaceDirection(e.target.value)}
-                            style={{
-                                width: '100%', padding: '4px 6px', background: 'var(--bg-color)', color: 'var(--text-main)',
-                                border: '1px solid var(--border-color)', borderRadius: '6px', outline: 'none', fontSize: '0.75rem', cursor: 'pointer'
-                            }}
-                        >
-                            <option value="top">Top Face (Y+)</option>
-                            <option value="bottom">Bottom Face (Y-)</option>
-                            <option value="front">Front Face (Z+)</option>
-                            <option value="back">Back Face (Z-)</option>
-                            <option value="left">Left Face (X-)</option>
-                            <option value="right">Right Face (X+)</option>
-                        </select>
-                    </div>
-                </div>
-
-                <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.64rem', color: 'var(--text-muted)', marginBottom: '3px', fontWeight: 'bold', textTransform: 'uppercase' }}>
-                        <span>{profileType === 'roundover' ? 'Roundover Radius' : 'Chamfer Width'}</span>
-                        <span style={{ color: 'var(--text-main)' }}>{profileType === 'roundover' ? radius : width}"</span>
-                    </div>
-                    <input
-                        type="range" min="0.0625" max="1.5" step="0.0625"
-                        value={profileType === 'roundover' ? radius : width}
-                        onChange={e => {
-                            const val = parseFloat(e.target.value);
-                            if (profileType === 'roundover') setRadius(val);
-                            else setWidth(val);
-                        }}
-                        style={{ width: '100%', accentColor: 'var(--accent-color)', height: '4px', cursor: 'pointer', outline: 'none' }}
-                    />
-                </div>
-
-                <div style={{ display: 'flex', gap: '6px', marginTop: '4px' }}>
-                    <button
-                        className="primary-btn"
-                        style={{ flex: 1, padding: '5px 10px', fontSize: '0.72rem', fontWeight: 'bold' }}
-                        onClick={handleApply}
-                    >
-                        {hasExistingProfile ? 'Update Profile' : 'Apply Perimeter Profile'}
-                    </button>
-                    {hasExistingProfile && (
-                        <button
-                            className="nav-btn"
-                            style={{ padding: '5px 10px', fontSize: '0.72rem', color: '#ff3b30', borderColor: 'rgba(255, 59, 48, 0.3)', background: 'rgba(255, 59, 48, 0.05)', cursor: 'pointer' }}
-                            onClick={handleClear}
-                        >
-                            Remove
-                        </button>
-                    )}
-                </div>
-            </div>
-        </div>
-    );
-};
 
 const AssemblyInspector = ({ selectedGroup }) => {
     const {
@@ -343,9 +212,7 @@ const AssemblyInspector = ({ selectedGroup }) => {
                     <p className="hint" style={{ marginTop: '6px' }}>Click to auto-recalculate all 4 walls.</p>
                 </div>
             )}
-            {!isWorkspace && (
-                <SmartAssemblyProfiler targetBoardIds={childBoards.map(b => b.id.toString())} />
-            )}
+
             {!isWorkspace && (
                 <div style={{ marginTop: '16px' }}>
                     <button

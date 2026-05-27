@@ -988,16 +988,23 @@ export const createBoardSlice = (set, get) => ({
     if (['arc', 'cove', 'hole'].includes(finalShape)) {
       finalShape = 'box';
     }
+    const sizes = [newBoardDialog.sizeX, newBoardDialog.sizeY, newBoardDialog.sizeZ];
+    const sortedSizes = [...sizes].sort((a, b) => b - a);
+    const width = sortedSizes[1] ?? 0;
+    const defaultLumberType = width > 12 ? 'plywood' : 'solid';
+
     setBoards(prev => [...prev, {
       id: newId,
       name: newBoardDialog.name || 'New Component',
       parentId: newBoardDialog.parentId,
-      size: [newBoardDialog.sizeX, newBoardDialog.sizeY, newBoardDialog.sizeZ],
+      size: sizes,
       position: newBoardDialog.position,
       material: defaultMaterial,
       joint: 'None',
       shape: finalShape,
       operations,
+      lumberType: defaultLumberType,
+      grainDirection: 'length',
       ...(boardTaper ? {
         taper: boardTaper
       } : {}),

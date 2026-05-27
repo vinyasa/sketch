@@ -6,138 +6,7 @@ import { analyzeTouchConnection } from '../../utils/fastenerAnalyzer';
 // Round to ≤4 decimal places, stripping trailing zeros
 const fmt4 = (v) => parseFloat(v.toFixed(4));
 
-const SmartAssemblyProfiler = ({ targetBoardIds }) => {
-    const { boards, applyAssemblyProfile, clearAssemblyProfile } = useStore();
-    const [profileType, setProfileType] = useState('roundover');
-    const [faceDirection, setFaceDirection] = useState('top');
-    const [radius, setRadius] = useState(0.25);
-    const [width, setWidth] = useState(0.25);
 
-    const selectedBoards = boards.filter(b => targetBoardIds.includes(b.id.toString()));
-    
-    let hasExistingProfile = false;
-    let existingVal = 0.25;
-    let existingType = 'roundover';
-    
-    for (const b of selectedBoards) {
-        const found = b.operations?.find(op => op.source === 'assembly-profile' && op.meta?.faceDirection === faceDirection);
-        if (found) {
-            hasExistingProfile = true;
-            existingVal = found.profile === 'roundover' ? found.radius : found.width;
-            existingType = found.profile;
-            break;
-        }
-    }
-
-    useEffect(() => {
-        if (hasExistingProfile) {
-            setProfileType(existingType);
-            if (existingType === 'roundover') setRadius(existingVal);
-            else setWidth(existingVal);
-        }
-    }, [faceDirection, hasExistingProfile, existingVal, existingType]);
-
-    const handleApply = () => {
-        const params = profileType === 'roundover' ? { radius } : { width };
-        applyAssemblyProfile(targetBoardIds, faceDirection, profileType, params);
-    };
-
-    const handleClear = () => {
-        clearAssemblyProfile(targetBoardIds, faceDirection);
-    };
-
-    return (
-        <div className="inspector-section" style={{
-            background: 'rgba(188, 138, 95, 0.05)',
-            border: '1px solid rgba(188, 138, 95, 0.25)',
-            borderRadius: '8px',
-            padding: '12px',
-            marginTop: '12px',
-            marginBottom: '12px'
-        }}>
-            <h4 style={{ color: 'var(--accent-color)', margin: '0 0 6px 0', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                ⌸ Smart Edge Profiler
-            </h4>
-            <p className="hint" style={{ marginTop: '2px', marginBottom: '8px', fontSize: '0.66rem' }}>
-                Applies a non-destructive profile around the outer perimeter edges of the selected assembly.
-            </p>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <div style={{ display: 'flex', gap: '6px' }}>
-                    <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: '0.64rem', color: 'var(--text-muted)', marginBottom: '3px', fontWeight: 'bold', textTransform: 'uppercase' }}>Profile</div>
-                        <select
-                            value={profileType}
-                            onChange={e => setProfileType(e.target.value)}
-                            style={{
-                                width: '100%', padding: '4px 6px', background: 'var(--bg-color)', color: 'var(--text-main)',
-                                border: '1px solid var(--border-color)', borderRadius: '6px', outline: 'none', fontSize: '0.75rem', cursor: 'pointer'
-                            }}
-                        >
-                            <option value="roundover">Roundover</option>
-                            <option value="chamfer">Chamfer</option>
-                        </select>
-                    </div>
-
-                    <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: '0.64rem', color: 'var(--text-muted)', marginBottom: '3px', fontWeight: 'bold', textTransform: 'uppercase' }}>Target Face</div>
-                        <select
-                            value={faceDirection}
-                            onChange={e => setFaceDirection(e.target.value)}
-                            style={{
-                                width: '100%', padding: '4px 6px', background: 'var(--bg-color)', color: 'var(--text-main)',
-                                border: '1px solid var(--border-color)', borderRadius: '6px', outline: 'none', fontSize: '0.75rem', cursor: 'pointer'
-                            }}
-                        >
-                            <option value="top">Top Face (Y+)</option>
-                            <option value="bottom">Bottom Face (Y-)</option>
-                            <option value="front">Front Face (Z+)</option>
-                            <option value="back">Back Face (Z-)</option>
-                            <option value="left">Left Face (X-)</option>
-                            <option value="right">Right Face (X+)</option>
-                        </select>
-                    </div>
-                </div>
-
-                <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.64rem', color: 'var(--text-muted)', marginBottom: '3px', fontWeight: 'bold', textTransform: 'uppercase' }}>
-                        <span>{profileType === 'roundover' ? 'Roundover Radius' : 'Chamfer Width'}</span>
-                        <span style={{ color: 'var(--text-main)' }}>{profileType === 'roundover' ? radius : width}"</span>
-                    </div>
-                    <input
-                        type="range" min="0.0625" max="1.5" step="0.0625"
-                        value={profileType === 'roundover' ? radius : width}
-                        onChange={e => {
-                            const val = parseFloat(e.target.value);
-                            if (profileType === 'roundover') setRadius(val);
-                            else setWidth(val);
-                        }}
-                        style={{ width: '100%', accentColor: 'var(--accent-color)', height: '4px', cursor: 'pointer', outline: 'none' }}
-                    />
-                </div>
-
-                <div style={{ display: 'flex', gap: '6px', marginTop: '4px' }}>
-                    <button
-                        className="primary-btn"
-                        style={{ flex: 1, padding: '5px 10px', fontSize: '0.72rem', fontWeight: 'bold' }}
-                        onClick={handleApply}
-                    >
-                        {hasExistingProfile ? 'Update Profile' : 'Apply Perimeter Profile'}
-                    </button>
-                    {hasExistingProfile && (
-                        <button
-                            className="nav-btn"
-                            style={{ padding: '5px 10px', fontSize: '0.72rem', color: '#ff3b30', borderColor: 'rgba(255, 59, 48, 0.3)', background: 'rgba(255, 59, 48, 0.05)', cursor: 'pointer' }}
-                            onClick={handleClear}
-                        >
-                            Remove
-                        </button>
-                    )}
-                </div>
-            </div>
-        </div>
-    );
-};
 
 const MultiSelectInspector = () => {
     const [bulkAngleZ, setBulkAngleZ] = useState(2);
@@ -149,7 +18,8 @@ const MultiSelectInspector = () => {
         boards, groups, selectedItemIds,
         setBoards, pushHistory, dropSelectionToFloor, handleMultiDelete,
         constraintTargetMode, setConstraintTargetMode,
-        applySmartFasteners, removeSmartFasteners
+        applySmartFasteners, removeSmartFasteners,
+        updateSelectedBoards
     } = useStore();
 
     // Collect all boards that are part of this selection (direct boards + children of selected groups)
@@ -164,6 +34,12 @@ const MultiSelectInspector = () => {
     });
 
     const selBoards = Array.from(selectedBoardSet);
+
+    // Compute bulk states
+    const allSolid = selBoards.length > 0 && selBoards.every(b => b.lumberType === 'solid');
+    const allPlywood = selBoards.length > 0 && selBoards.every(b => b.lumberType === 'plywood');
+    const allLengthGrain = selBoards.length > 0 && selBoards.every(b => b.grainDirection === 'length');
+    const allWidthGrain = selBoards.length > 0 && selBoards.every(b => b.grainDirection === 'width');
 
     // Analyze touch connection when exactly 2 boards are selected
     let touchAnalysis = null;
@@ -434,6 +310,74 @@ const MultiSelectInspector = () => {
                 <p className="hint">{selBoards.length} board{selBoards.length !== 1 ? 's' : ''} in selection. Use AI Chat for bulk transforms.</p>
                 <button style={{ marginTop: '8px', width: '100%' }} className="primary-btn" onClick={dropSelectionToFloor}>↓ Set on Floor</button>
             </div>
+
+            {/* Bulk Material & Lumber Editing Card */}
+            <div className="inspector-section" style={{ borderTop: '1px solid var(--border-color)', paddingTop: '10px' }}>
+                <h4>Bulk Material & Lumber</h4>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '6px' }}>
+                    {/* Lumber Type */}
+                    <div>
+                        <div style={{ fontSize: '0.68rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.3px', marginBottom: '4px' }}>Lumber Type</div>
+                        <div style={{ display: 'flex', gap: '4px', background: 'rgba(0,0,0,0.2)', padding: '2px', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
+                            <button
+                                className="nav-btn"
+                                style={{
+                                    flex: 1, padding: '4px 0', fontSize: '0.72rem', borderRadius: '4px', border: 'none', cursor: 'pointer',
+                                    background: allSolid ? 'var(--accent-color)' : 'transparent',
+                                    color: allSolid ? 'white' : 'var(--text-muted)',
+                                    fontWeight: allSolid ? 'bold' : 'normal',
+                                }}
+                                onClick={() => updateSelectedBoards('lumberType', 'solid')}
+                            >
+                                Solid Wood
+                            </button>
+                            <button
+                                className="nav-btn"
+                                style={{
+                                    flex: 1, padding: '4px 0', fontSize: '0.72rem', borderRadius: '4px', border: 'none', cursor: 'pointer',
+                                    background: allPlywood ? 'var(--accent-color)' : 'transparent',
+                                    color: allPlywood ? 'white' : 'var(--text-muted)',
+                                    fontWeight: allPlywood ? 'bold' : 'normal',
+                                }}
+                                onClick={() => updateSelectedBoards('lumberType', 'plywood')}
+                            >
+                                Plywood
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Grain Direction */}
+                    <div>
+                        <div style={{ fontSize: '0.68rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.3px', marginBottom: '4px' }}>Grain Direction</div>
+                        <div style={{ display: 'flex', gap: '4px', background: 'rgba(0,0,0,0.2)', padding: '2px', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
+                            <button
+                                className="nav-btn"
+                                style={{
+                                    flex: 1, padding: '4px 0', fontSize: '0.72rem', borderRadius: '4px', border: 'none', cursor: 'pointer',
+                                    background: allLengthGrain ? 'var(--accent-color)' : 'transparent',
+                                    color: allLengthGrain ? 'white' : 'var(--text-muted)',
+                                    fontWeight: allLengthGrain ? 'bold' : 'normal',
+                                }}
+                                onClick={() => updateSelectedBoards('grainDirection', 'length')}
+                            >
+                                ↕ Along Length
+                            </button>
+                            <button
+                                className="nav-btn"
+                                style={{
+                                    flex: 1, padding: '4px 0', fontSize: '0.72rem', borderRadius: '4px', border: 'none', cursor: 'pointer',
+                                    background: allWidthGrain ? 'var(--accent-color)' : 'transparent',
+                                    color: allWidthGrain ? 'white' : 'var(--text-muted)',
+                                    fontWeight: allWidthGrain ? 'bold' : 'normal',
+                                }}
+                                onClick={() => updateSelectedBoards('grainDirection', 'width')}
+                            >
+                                ↔ Along Width
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
             {selBoards.length >= 2 && (() => {
                 const areVertical = selBoards.every(b => b.size[1] > b.size[0] && b.size[1] > b.size[2]);
                 if (!areVertical) return null;
@@ -497,9 +441,7 @@ const MultiSelectInspector = () => {
                     </div>
                 );
             })()}
-            {selBoards.length > 1 && (
-                <SmartAssemblyProfiler targetBoardIds={selBoards.map(b => b.id.toString())} />
-            )}
+
             <div style={{ marginTop: '16px' }}>
                 <button
                     className="nav-btn"

@@ -188,7 +188,7 @@ export default function App() {
                     )}
 
                     {showCutlistPanel && (
-                        <DraggablePanel title="Project Cut List" defaultPosition={getSmartPosition(600, 500, 'center', headerBottom)} defaultSize={{ width: 600 }} topMargin={headerBottom} onClose={() => setShowCutlistPanel(false)}>
+                        <DraggablePanel title="Project Cut List" defaultPosition={getSmartPosition(600, 500, 'force-center', headerBottom)} defaultSize={{ width: 600 }} topMargin={headerBottom} onClose={() => setShowCutlistPanel(false)} zIndex={500}>
                             <CutListPanel />
                         </DraggablePanel>
                     )}

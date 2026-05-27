@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { registerPanel, updatePanel, unregisterPanel } from '../../utils/panelLayout';
 
-const DraggablePanel = ({ title, defaultPosition, onFocusCapture, onClose, children, defaultSize = { width: 250 }, topMargin = 100 }) => {
+const DraggablePanel = ({ title, defaultPosition, onFocusCapture, onClose, children, defaultSize = { width: 250 }, topMargin = 100, zIndex = 100 }) => {
     const [pos, setPos] = useState(defaultPosition);
     const posRef = useRef(pos);
     const [isDragging, setIsDragging] = useState(false);
@@ -109,12 +109,11 @@ const DraggablePanel = ({ title, defaultPosition, onFocusCapture, onClose, child
         setIsDragging(false);
         try { e.target.releasePointerCapture(e.pointerId); } catch (_) {}
     };
-
     return (
         <div ref={panelRef} className="glass-panel" onFocusCapture={onFocusCapture} style={{
             position: 'absolute', left: pos.x, top: pos.y, width: defaultSize.width, maxHeight: '80%',
             padding: '10px', display: 'flex', flexDirection: 'column', borderRadius: '8px',
-            zIndex: 100, pointerEvents: 'auto', resize: 'both', overflow: 'hidden', minWidth: '200px', minHeight: '100px',
+            zIndex: zIndex, pointerEvents: 'auto', resize: 'both', overflow: 'hidden', minWidth: '200px', minHeight: '100px',
             boxShadow: isDragging ? '0 16px 32px rgba(0,0,0,0.4)' : 'var(--shadow)'
         }}>
             <div

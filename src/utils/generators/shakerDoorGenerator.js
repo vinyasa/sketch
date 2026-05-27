@@ -28,6 +28,8 @@ export function generateShakerDoor(cfg, boards, groups, defaultMaterial) {
   const insetClearance = parseNum(cfg.insetClearance, 0.125);
   const overlayReveal = parseNum(cfg.overlayReveal, 0.25);
   const doorConstruction = cfg.doorConstruction || 'shaker';
+  const doorCount = parseNum(cfg.doorCount, 1);
+  const doubleDoorGap = parseNum(cfg.doubleDoorGap, 0.09375); // 3/32" default gap
 
   const cabinetGroupId = cfg.cabinetGroupId;
   const faceFrameGroupId = cfg.faceFrameGroupId;
@@ -102,23 +104,23 @@ export function generateShakerDoor(cfg, boards, groups, defaultMaterial) {
     }
   }
 
-  let finalW = W;
+  let totalSpaceW = W;
   let finalH = H;
-  let finalOffset = [...offset];
+  let startOffset = [...offset];
 
   if ((cabinetGroupId && groups[cabinetGroupId]) || (faceFrameGroupId && groups[faceFrameGroupId])) {
     if (doorStyle === 'inset') {
-      finalW = openingWidth - 2 * insetClearance;
+      totalSpaceW = openingWidth - 2 * insetClearance;
       finalH = openingHeight - 2 * insetClearance;
-      finalOffset = [
+      startOffset = [
         openingMinX + insetClearance,
         openingMinY + insetClearance,
         openingMinZ
       ];
     } else {
-      finalW = openingWidth - 2 * overlayReveal;
+      totalSpaceW = openingWidth - 2 * overlayReveal;
       finalH = openingHeight - 2 * overlayReveal;
-      finalOffset = [
+      startOffset = [
         openingMinX + overlayReveal,
         openingMinY + overlayReveal,
         openingMinZ
@@ -132,159 +134,185 @@ export function generateShakerDoor(cfg, boards, groups, defaultMaterial) {
     if (childBoards.length > 0) {
       const aabb = computeWorldAABB(childBoards);
       if (!cabinetGroupId && !faceFrameGroupId) {
-        finalOffset = [aabb.minX, aabb.minY, aabb.minZ];
-        finalW = aabb.maxX - aabb.minX;
+        startOffset = [aabb.minX, aabb.minY, aabb.minZ];
+        totalSpaceW = aabb.maxX - aabb.minX;
         finalH = aabb.maxY - aabb.minY;
       }
     }
     childBoards.forEach(b => { oldIdMap[b.name] = b.id; });
   }
 
+  const eachDoorW = doorCount === 2 
+    ? (totalSpaceW - doubleDoorGap) / 2
+    : totalSpaceW;
+
+  const doors = [];
+  for (let dIdx = 0; dIdx < doorCount; dIdx++) {
+    const doorOffsetX = startOffset[0] + dIdx * (eachDoorW + doubleDoorGap);
+    doors.push({
+      w: eachDoorW,
+      offset: [doorOffsetX, startOffset[1], startOffset[2]],
+      prefix: doorCount === 2 ? (dIdx === 0 ? 'Left Door ' : 'Right Door ') : ''
+    });
+  }
+
   const midZ = tFrame / 2;
   const baseId = Date.now();
 
   let panelDefs = [];
-  if (doorConstruction === 'flat') {
-    panelDefs = [{
-      name: 'Flat Door Panel',
-      size: [finalW, finalH, tFrame],
-      position: [finalW / 2, finalH / 2, midZ],
-      operations: []
-    }];
-  } else {
-    const panelW = finalW - 2 * wStile + 2 * grooveD - clear;
-    const panelH = finalH - 2 * wStile + 2 * grooveD - clear;
-    const railTotalW = finalW - 2 * wStile + 2 * grooveD;
-    const tenonCutDepth = (tFrame - grooveW) / 2;
-    const tenonOffsetLeft = -(railTotalW / 2) + grooveD / 2;
-    const tenonOffsetRight = railTotalW / 2 - grooveD / 2;
+  doors.forEach((door, dIdx) => {
+    const finalW = door.w;
+    const finalOffset = door.offset;
+    const prefix = door.prefix;
 
-    const makeTenons = idBase => [{
-      id: idBase + 1,
-      type: 'dado',
-      face: 'front',
-      direction: 'y',
-      width: grooveD,
-      depth: tenonCutDepth,
-      offset: tenonOffsetLeft,
-      length: 0,
-      lengthOffset: 0,
-      source: 'shaker'
-    }, {
-      id: idBase + 2,
-      type: 'dado',
-      face: 'front',
-      direction: 'y',
-      width: grooveD,
-      depth: tenonCutDepth,
-      offset: tenonOffsetRight,
-      length: 0,
-      lengthOffset: 0,
-      source: 'shaker'
-    }, {
-      id: idBase + 3,
-      type: 'dado',
-      face: 'back',
-      direction: 'y',
-      width: grooveD,
-      depth: tenonCutDepth,
-      offset: tenonOffsetLeft,
-      length: 0,
-      lengthOffset: 0,
-      source: 'shaker'
-    }, {
-      id: idBase + 4,
-      type: 'dado',
-      face: 'back',
-      direction: 'y',
-      width: grooveD,
-      depth: tenonCutDepth,
-      offset: tenonOffsetRight,
-      length: 0,
-      lengthOffset: 0,
-      source: 'shaker'
-    }];
+    if (doorConstruction === 'flat') {
+      panelDefs.push({
+        name: prefix + 'Flat Door Panel',
+        size: [finalW, finalH, tFrame],
+        position: [finalW / 2, finalH / 2, midZ],
+        offset: finalOffset,
+        operations: []
+      });
+    } else {
+      const panelW = finalW - 2 * wStile + 2 * grooveD - clear;
+      const panelH = finalH - 2 * wStile + 2 * grooveD - clear;
+      const railTotalW = finalW - 2 * wStile + 2 * grooveD;
+      const tenonCutDepth = (tFrame - grooveW) / 2;
+      const tenonOffsetLeft = -(railTotalW / 2) + grooveD / 2;
+      const tenonOffsetRight = railTotalW / 2 - grooveD / 2;
 
-    panelDefs = [{
-      name: 'Left Stile',
-      size: [wStile, finalH, tFrame],
-      position: [wStile / 2, finalH / 2, midZ],
-      operations: [{
-        id: baseId + 10,
+      const makeTenons = idBase => [{
+        id: idBase + 1,
         type: 'dado',
-        face: 'right',
+        face: 'front',
         direction: 'y',
-        width: grooveW,
-        depth: grooveD,
-        offset: 0,
+        width: grooveD,
+        depth: tenonCutDepth,
+        offset: tenonOffsetLeft,
         length: 0,
         lengthOffset: 0,
         source: 'shaker'
-      }]
-    }, {
-      name: 'Right Stile',
-      size: [wStile, finalH, tFrame],
-      position: [finalW - wStile / 2, finalH / 2, midZ],
-      operations: [{
-        id: baseId + 20,
+      }, {
+        id: idBase + 2,
         type: 'dado',
-        face: 'left',
+        face: 'front',
         direction: 'y',
-        width: grooveW,
-        depth: grooveD,
-        offset: 0,
+        width: grooveD,
+        depth: tenonCutDepth,
+        offset: tenonOffsetRight,
         length: 0,
         lengthOffset: 0,
         source: 'shaker'
-      }]
-    }, {
-      name: 'Top Rail',
-      size: [railTotalW, wStile, tFrame],
-      position: [finalW / 2, finalH - wStile / 2, midZ],
-      operations: [{
-        id: baseId + 30,
+      }, {
+        id: idBase + 3,
         type: 'dado',
-        face: 'bottom',
-        direction: 'x',
-        width: grooveW,
-        depth: grooveD,
-        offset: 0,
+        face: 'back',
+        direction: 'y',
+        width: grooveD,
+        depth: tenonCutDepth,
+        offset: tenonOffsetLeft,
         length: 0,
         lengthOffset: 0,
         source: 'shaker'
-      }, ...makeTenons(baseId + 30)]
-    }, {
-      name: 'Bottom Rail',
-      size: [railTotalW, wStile, tFrame],
-      position: [finalW / 2, wStile / 2, midZ],
-      operations: [{
-        id: baseId + 40,
+      }, {
+        id: idBase + 4,
         type: 'dado',
-        face: 'top',
-        direction: 'x',
-        width: grooveW,
-        depth: grooveD,
-        offset: 0,
+        face: 'back',
+        direction: 'y',
+        width: grooveD,
+        depth: tenonCutDepth,
+        offset: tenonOffsetRight,
         length: 0,
         lengthOffset: 0,
         source: 'shaker'
-      }, ...makeTenons(baseId + 40)]
-    }, {
-      name: 'Panel',
-      size: [panelW, panelH, tPanel],
-      position: [finalW / 2, finalH / 2, midZ],
-      operations: []
-    }];
-  }
+      }];
+
+      panelDefs.push({
+        name: prefix + 'Left Stile',
+        size: [wStile, finalH, tFrame],
+        position: [wStile / 2, finalH / 2, midZ],
+        offset: finalOffset,
+        operations: [{
+          id: baseId + dIdx * 100 + 10,
+          type: 'dado',
+          face: 'right',
+          direction: 'y',
+          width: grooveW,
+          depth: grooveD,
+          offset: 0,
+          length: 0,
+          lengthOffset: 0,
+          source: 'shaker'
+        }]
+      }, {
+        name: prefix + 'Right Stile',
+        size: [wStile, finalH, tFrame],
+        position: [finalW - wStile / 2, finalH / 2, midZ],
+        offset: finalOffset,
+        operations: [{
+          id: baseId + dIdx * 100 + 20,
+          type: 'dado',
+          face: 'left',
+          direction: 'y',
+          width: grooveW,
+          depth: grooveD,
+          offset: 0,
+          length: 0,
+          lengthOffset: 0,
+          source: 'shaker'
+        }]
+      }, {
+        name: prefix + 'Top Rail',
+        size: [railTotalW, wStile, tFrame],
+        position: [finalW / 2, finalH - wStile / 2, midZ],
+        offset: finalOffset,
+        operations: [{
+          id: baseId + dIdx * 100 + 30,
+          type: 'dado',
+          face: 'bottom',
+          direction: 'x',
+          width: grooveW,
+          depth: grooveD,
+          offset: 0,
+          length: 0,
+          lengthOffset: 0,
+          source: 'shaker'
+        }, ...makeTenons(baseId + dIdx * 100 + 30)]
+      }, {
+        name: prefix + 'Bottom Rail',
+        size: [railTotalW, wStile, tFrame],
+        position: [finalW / 2, wStile / 2, midZ],
+        offset: finalOffset,
+        operations: [{
+          id: baseId + dIdx * 100 + 40,
+          type: 'dado',
+          face: 'top',
+          direction: 'x',
+          width: grooveW,
+          depth: grooveD,
+          offset: 0,
+          length: 0,
+          lengthOffset: 0,
+          source: 'shaker'
+        }, ...makeTenons(baseId + dIdx * 100 + 40)]
+      }, {
+        name: prefix + 'Panel',
+        size: [panelW, panelH, tPanel],
+        position: [finalW / 2, finalH / 2, midZ],
+        offset: finalOffset,
+        operations: []
+      });
+    }
+  });
 
   const newBoards = panelDefs.map((pd, i) => {
-    const assignedId = oldIdMap[pd.name] || baseId + 100 + i;
+    const assignedId = oldIdMap[pd.name] || baseId + 500 + i;
     return {
       id: assignedId,
       name: pd.name,
       parentId: groupId,
       size: pd.size,
-      position: [pd.position[0] + finalOffset[0], pd.position[1] + finalOffset[1], pd.position[2] + finalOffset[2]],
+      position: [pd.position[0] + pd.offset[0], pd.position[1] + pd.offset[1], pd.position[2] + pd.offset[2]],
       material: defaultMaterial,
       joint: 'None',
       shape: 'box',

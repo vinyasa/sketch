@@ -207,7 +207,7 @@ const SettingsPanel = () => {
 
             <div className="inspector-card">
                 <label style={labelStyle}>Interface Mode</label>
-                <select value={panelLayoutMode || 'standard'} onChange={(e) => setPanelLayoutMode(e.target.value)} style={selectStyle}>
+                <select value={panelLayoutMode || 'advanced'} onChange={(e) => setPanelLayoutMode(e.target.value)} style={selectStyle}>
                     <option value="standard" style={optionStyle}>Standard (Simplified Woodworking)</option>
                     <option value="advanced" style={optionStyle}>Advanced (All Features)</option>
                 </select>
@@ -228,7 +228,7 @@ const SettingsPanel = () => {
 
             <div className="inspector-card">
                 <label style={labelStyle}>Workspace Layout</label>
-                <select value={workspaceLayout || 'docked'} onChange={(e) => setWorkspaceLayout(e.target.value)} style={selectStyle}>
+                <select value={workspaceLayout || 'floating'} onChange={(e) => setWorkspaceLayout(e.target.value)} style={selectStyle}>
                     <option value="docked" style={optionStyle}>Docked Sidebar (Recommended)</option>
                     <option value="floating" style={optionStyle}>Classic Floating Panels</option>
                 </select>

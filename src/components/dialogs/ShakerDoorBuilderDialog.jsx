@@ -28,6 +28,8 @@ const ShakerDoorBuilderDialog = () => {
     const insetClearance = parse(dialog.insetClearance, 0.125);
     const overlayReveal = parse(dialog.overlayReveal, 0.25);
     const doorConstruction = dialog.doorConstruction || 'shaker';
+    const doorCount = parse(dialog.doorCount, 1);
+    const doubleDoorGap = parse(dialog.doubleDoorGap, 0.09375); // 3/32" gap default
 
     let openingW = W;
     let openingH = H;
@@ -47,9 +49,14 @@ const ShakerDoorBuilderDialog = () => {
         }
     }
 
-    const actualDoorW = doorStyle === 'inset'
+    const totalDoorSpaceW = doorStyle === 'inset'
         ? (openingW - 2 * insetClearance)
         : ((hasCabinet || hasFaceFrame) ? (W - 2 * overlayReveal) : W);
+
+    const actualDoorW = doorCount === 2
+        ? (totalDoorSpaceW - doubleDoorGap) / 2
+        : totalDoorSpaceW;
+
     const actualDoorH = doorStyle === 'inset'
         ? (openingH - 2 * insetClearance)
         : ((hasCabinet || hasFaceFrame) ? (H - 2 * overlayReveal) : H);
@@ -64,7 +71,7 @@ const ShakerDoorBuilderDialog = () => {
 
     const valid = doorConstruction === 'flat' 
         ? (W > 0 && H > 0)
-        : (W > 2 * wStileRail && H > 2 * wStileRail && tFrame >= grooveWidth);
+        : (actualDoorW > 2 * wStileRail && actualDoorH > 2 * wStileRail && tFrame >= grooveWidth);
 
     const inputStyle = {
         width: '100%', padding: '5px 8px',
@@ -111,7 +118,7 @@ const ShakerDoorBuilderDialog = () => {
                         lineHeight: 1.4
                     }}>
                         <strong>✓ Cabinet Group Selected ("{cabinetName}")</strong><br/>
-                        The door will be placed flush against the front of the selected cabinet, pre-populated to match its carcass size.
+                        The doors will be placed flush against the front of the selected cabinet, pre-populated to match its carcass size.
                     </div>
                 )}
                 {hasFaceFrame && (
@@ -123,7 +130,7 @@ const ShakerDoorBuilderDialog = () => {
                         lineHeight: 1.4
                     }}>
                         <strong>✓ Face Frame Selected ("{faceFrameName}")</strong><br/>
-                        The door will be placed flush against the front of the face frame, pre-populated to match its outer dimensions.
+                        The doors will be placed flush against the front of the face frame, pre-populated to match its outer dimensions.
                     </div>
                 )}
                 {!hasCabinet && !hasFaceFrame && (
@@ -156,6 +163,47 @@ const ShakerDoorBuilderDialog = () => {
                                 style={inputStyle} />
                         </div>
                     </div>
+                </div>
+
+                {/* Door Quantity */}
+                <div className="inspector-card" style={{ margin: 0 }}>
+                    <h4>Door Quantity</h4>
+                    <div style={{ display: 'flex', gap: '4px', background: 'rgba(0,0,0,0.2)', padding: '2px', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
+                        <button
+                            className="nav-btn"
+                            type="button"
+                            style={{
+                                flex: 1, padding: '5px 0', fontSize: '0.78rem', borderRadius: '4px', border: 'none', cursor: 'pointer',
+                                background: doorCount === 1 ? 'var(--accent-color)' : 'transparent',
+                                color: doorCount === 1 ? 'white' : 'var(--text-muted)',
+                                fontWeight: doorCount === 1 ? 'bold' : 'normal',
+                            }}
+                            onClick={() => setDialog(p => ({ ...p, doorCount: 1 }))}
+                        >
+                            Single Door
+                        </button>
+                        <button
+                            className="nav-btn"
+                            type="button"
+                            style={{
+                                flex: 1, padding: '5px 0', fontSize: '0.78rem', borderRadius: '4px', border: 'none', cursor: 'pointer',
+                                background: doorCount === 2 ? 'var(--accent-color)' : 'transparent',
+                                color: doorCount === 2 ? 'white' : 'var(--text-muted)',
+                                fontWeight: doorCount === 2 ? 'bold' : 'normal',
+                            }}
+                            onClick={() => setDialog(p => ({ ...p, doorCount: 2 }))}
+                        >
+                            Double Doors
+                        </button>
+                    </div>
+                    {doorCount === 2 && (
+                        <div style={{ marginTop: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={labelStyle}>Gap between doors (in)</span>
+                            <input type="number" step="0.03125" min="0" value={dialog.doubleDoorGap !== undefined ? dialog.doubleDoorGap : 0.09375}
+                                onChange={e => setDialog(p => ({ ...p, doubleDoorGap: e.target.value }))}
+                                style={{ ...inputStyle, width: '90px', marginLeft: 'auto', padding: '4px 6px' }} />
+                        </div>
+                    )}
                 </div>
 
                 {/* Construction Style */}
@@ -293,18 +341,19 @@ const ShakerDoorBuilderDialog = () => {
                     {valid ? (
                         <div style={{ fontSize: '0.78rem', color: 'var(--text-main)', lineHeight: 1.6 }}>
                             {doorConstruction === 'flat' ? (
-                                <div><strong>Flat Slab Door:</strong> {fmt(actualDoorW)}" × {fmt(actualDoorH)}" × {fmt(tFrame)}" <span style={{ color: 'var(--text-muted)' }}>(single solid panel)</span></div>
+                                <div><strong>Flat Slab Door{doorCount === 2 ? 's (×2)' : ''}:</strong> {fmt(actualDoorW)}" × {fmt(actualDoorH)}" × {fmt(tFrame)}" <span style={{ color: 'var(--text-muted)' }}>({doorCount === 2 ? 'two single solid panels' : 'single solid panel'})</span></div>
                             ) : (
                                 <>
-                                    <div><strong>Stiles (×2):</strong> {fmt(stile.x)}" × {fmt(stile.y)}" × {fmt(stile.z)}" <span style={{ color: 'var(--text-muted)' }}>(full height)</span></div>
-                                    <div><strong>Rails (×2):</strong> {fmt(rail.x)}" × {fmt(rail.y)}" × {fmt(rail.z)}" <span style={{ color: 'var(--text-muted)' }}>(between stiles)</span></div>
-                                    <div><strong>Center Panel:</strong> {fmt(panel.x)}" × {fmt(panel.y)}" × {fmt(panel.z)}" <span style={{ color: 'var(--text-muted)' }}>(with {fmt(panelClearance)}" clearance)</span></div>
+                                    <div style={{ color: 'var(--accent-color)', fontWeight: 'bold', marginBottom: '3px' }}>Sizes per Door ({doorCount === 2 ? '2 Doors total' : '1 Door'}):</div>
+                                    <div><strong>Stiles (×{2 * doorCount}):</strong> {fmt(stile.x)}" × {fmt(stile.y)}" × {fmt(stile.z)}" <span style={{ color: 'var(--text-muted)' }}>(vertical frame)</span></div>
+                                    <div><strong>Rails (×{2 * doorCount}):</strong> {fmt(rail.x)}" × {fmt(rail.y)}" × {fmt(rail.z)}" <span style={{ color: 'var(--text-muted)' }}>(horizontal stiles fit)</span></div>
+                                    <div><strong>Center Panel{doorCount === 2 ? 's (×2)' : ''}:</strong> {fmt(panel.x)}" × {fmt(panel.y)}" × {fmt(panel.z)}" <span style={{ color: 'var(--text-muted)' }}>(inner panels)</span></div>
                                 </>
                             )}
                         </div>
                     ) : (
                         <div style={{ fontSize: '0.78rem', color: '#ff3b30' }}>
-                            {doorConstruction === 'flat' ? 'Please specify a valid door thickness.' : 'Dimensions are invalid. Stile/rail width must be less than half the total width/height.'}
+                            {doorConstruction === 'flat' ? 'Please specify a valid door thickness.' : 'Dimensions are invalid. Individual stile/rail width must be less than half of each door width/height.'}
                         </div>
                     )}
                 </div>
@@ -322,7 +371,7 @@ const ShakerDoorBuilderDialog = () => {
                     }}
                         disabled={!valid}
                         onClick={handleBuild}>
-                        🚪 Build Door
+                        🚪 Build Door{doorCount === 2 ? 's' : ''}
                     </button>
                 </div>
             </div>

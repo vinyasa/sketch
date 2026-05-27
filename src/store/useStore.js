@@ -25,13 +25,19 @@ const loadState = (key, def) => {
                     return p[key].map(b => {
                         // Migrate legacy `rotation` → `orientation`
                         const { rotation, ...rest } = b;
+                        const sizes = Array.isArray(b.size) && b.size.length === 3 ? b.size : [1, 1, 1];
+                        const sorted = [...sizes].sort((x, y) => y - x);
+                        const width = sorted[1] ?? 0;
+                        const defaultLumberType = width > 12 ? 'plywood' : 'solid';
                         return {
                             ...rest,
-                            size: Array.isArray(b.size) && b.size.length === 3 ? b.size : [1, 1, 1],
+                            size: sizes,
                             position: Array.isArray(b.position) && b.position.length === 3 ? b.position : [0, 0.5, 0],
                             operations: Array.isArray(b.operations) ? b.operations : [],
                             shape: b.shape || 'box',
                             parentId: b.parentId || 'Workspace',
+                            lumberType: b.lumberType || defaultLumberType,
+                            grainDirection: b.grainDirection || 'length',
                             ...(rotation && !b.orientation ? { orientation: rotation } : {}),
                         };
                     });
@@ -109,7 +115,7 @@ const useStore = create((set, get) => ({
     autosaveInterval: loadState('autosaveInterval', '10'),
     setAutosaveInterval: (v) => set({ autosaveInterval: typeof v === 'function' ? v(get().autosaveInterval) : v }),
 
-    panelLayoutMode: loadState('panelLayoutMode', 'standard'),
+    panelLayoutMode: loadState('panelLayoutMode', 'advanced'),
     setPanelLayoutMode: (v) => {
         const next = typeof v === 'function' ? v(get().panelLayoutMode) : v;
         set({ panelLayoutMode: next });
@@ -121,7 +127,7 @@ const useStore = create((set, get) => ({
         } catch (e) {}
     },
 
-    workspaceLayout: loadState('workspaceLayout', 'docked'),
+    workspaceLayout: loadState('workspaceLayout', 'floating'),
     setWorkspaceLayout: (v) => {
         const next = typeof v === 'function' ? v(get().workspaceLayout) : v;
         set({ workspaceLayout: next });
@@ -490,11 +496,11 @@ const useStore = create((set, get) => ({
     // Position: [x, y, z] = center of the board in world space
     // Note: boards no longer carry a constraints[] array — see root `constraints` map.
     boards: loadState('boards', [
-        { id: 1, name: 'Table Top', parentId: 'Table Base', size: [36, 0.75, 24], position: [0, 12.375, 0], material: 'pine', joint: 'Butt 1', shape: 'box', operations: [] },
-        { id: 2, name: 'Leg A',     parentId: 'Table Base', size: [1.5, 12, 1.5], position: [16.5, 6, 10.5],   material: 'white-oak', joint: 'Butt 1', shape: 'box', operations: [] },
-        { id: 3, name: 'Leg B',     parentId: 'Table Base', size: [1.5, 12, 1.5], position: [-16.5, 6, 10.5],  material: 'white-oak', joint: 'Butt 1', shape: 'box', operations: [] },
-        { id: 4, name: 'Leg C',     parentId: 'Table Base', size: [1.5, 12, 1.5], position: [16.5, 6, -10.5],  material: 'white-oak', joint: 'Butt 1', shape: 'box', operations: [] },
-        { id: 5, name: 'Leg D',     parentId: 'Table Base', size: [1.5, 12, 1.5], position: [-16.5, 6, -10.5], material: 'white-oak', joint: 'Butt 1', shape: 'box', operations: [] },
+        { id: 1, name: 'Table Top', parentId: 'Table Base', size: [36, 0.75, 24], position: [0, 12.375, 0], material: 'pine', joint: 'Butt 1', shape: 'box', operations: [], lumberType: 'plywood', grainDirection: 'length' },
+        { id: 2, name: 'Leg A',     parentId: 'Table Base', size: [1.5, 12, 1.5], position: [16.5, 6, 10.5],   material: 'white-oak', joint: 'Butt 1', shape: 'box', operations: [], lumberType: 'solid', grainDirection: 'length' },
+        { id: 3, name: 'Leg B',     parentId: 'Table Base', size: [1.5, 12, 1.5], position: [-16.5, 6, 10.5],  material: 'white-oak', joint: 'Butt 1', shape: 'box', operations: [], lumberType: 'solid', grainDirection: 'length' },
+        { id: 4, name: 'Leg C',     parentId: 'Table Base', size: [1.5, 12, 1.5], position: [16.5, 6, -10.5],  material: 'white-oak', joint: 'Butt 1', shape: 'box', operations: [], lumberType: 'solid', grainDirection: 'length' },
+        { id: 5, name: 'Leg D',     parentId: 'Table Base', size: [1.5, 12, 1.5], position: [-16.5, 6, -10.5], material: 'white-oak', joint: 'Butt 1', shape: 'box', operations: [], lumberType: 'solid', grainDirection: 'length' },
     ]),
     setBoards: (v) => {
         const nextBoards = typeof v === 'function' ? v(get().boards) : v;

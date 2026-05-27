@@ -57,6 +57,14 @@ function rectsOverlap(ax, ay, aw, ah, bx, by, bw, bh, pad) {
 export function getSmartPosition(width = 250, heightHint = 300, preference = 'left', topMargin = 100) {
     if (typeof window === 'undefined') return { x: 0, y: 0 };
 
+    if (preference === 'force-center') {
+        const vWidth = window.innerWidth;
+        const vHeight = window.innerHeight;
+        const x = Math.round((vWidth - width) / 2);
+        const y = Math.max(topMargin, Math.round((vHeight - heightHint) / 2) - 50);
+        return { x, y };
+    }
+
     const PADDING = 14;
     const TOP_MARGIN = topMargin;
     const vWidth = window.innerWidth;

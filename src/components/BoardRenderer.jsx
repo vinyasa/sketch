@@ -840,6 +840,53 @@ const BoardMesh = ({ b, selectedItemIds, toggleSelection, textures, showEdges, c
   const isSnapped = snappedAxes.x || snappedAxes.y || snappedAxes.z;
   const { camera, gl } = useThree();
 
+  // Premium per-board cloned texture layout optimizer
+  const matDesc = useMemo(() => normalizeMaterial(b.material), [b.material]);
+  const baseTex = textures[matDesc.id] ?? textures['pine'];
+  const [clonedTex, setClonedTex] = useState(null);
+
+  useEffect(() => {
+    if (!baseTex) return;
+    const tex = baseTex.clone();
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    tex.center.set(0.5, 0.5);
+
+    const sizeX = b.size[0] || 1;
+    const sizeY = b.size[1] || 1;
+    const sizeZ = b.size[2] || 1;
+    const maxDim = Math.max(sizeX, sizeY, sizeZ);
+    // Physically scale texture repeat every 16 inches of board length to prevent stretching
+    const repeatVal = Math.max(1, Math.round(maxDim / 16));
+    
+    // Determine which axis represents the board's length
+    const maxDimIndex = b.size.indexOf(maxDim);
+    const isWidth = b.grainDirection === 'width';
+    
+    let rotateTexture = false;
+    if (maxDimIndex === 1) {
+      // For vertical boards (longest along Y), grain along length needs 90° rotation, grain along width needs 0°
+      rotateTexture = !isWidth;
+    } else {
+      // For horizontal/depth-wise boards (longest along X or Z), grain along length needs 0° rotation, grain along width needs 90°
+      rotateTexture = isWidth;
+    }
+    
+    if (rotateTexture) {
+      tex.rotation = Math.PI / 2;
+      tex.repeat.set(1.5, repeatVal);
+    } else {
+      tex.rotation = 0;
+      tex.repeat.set(repeatVal, 1.5);
+    }
+    
+    tex.needsUpdate = true;
+    setClonedTex(tex);
+    
+    return () => {
+      tex.dispose();
+    };
+  }, [baseTex, b.grainDirection, b.size[0], b.size[1], b.size[2]]);
+
   useEffect(() => {
     if (draggingInfo) {
       document.body.style.cursor = 'grabbing';
@@ -1251,7 +1298,7 @@ const BoardMesh = ({ b, selectedItemIds, toggleSelection, textures, showEdges, c
             <meshStandardMaterial
               key={matKey}
               color="#ffffff"
-              map={textures[matDesc.id] ?? textures['pine']}
+              map={clonedTex || baseTex}
               roughness={spec.roughness}
               {...commonProps}
             />

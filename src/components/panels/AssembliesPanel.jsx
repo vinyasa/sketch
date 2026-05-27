@@ -186,11 +186,49 @@ const AssembliesPanel = () => {
                 ...defaultCfg,
                 offsetZ: bounds ? bounds.maxZ : 0, // Doors sit on the front
                 cabinetGroupId,
-                faceFrameGroupId
+                faceFrameGroupId,
+                doorCount: 1,
+                doubleDoorGap: 0.09375
             });
         } else if (item.id === 'drawerStack') {
+            let cabinetGroupId = null;
+            if (selectedItemIds && selectedItemIds.length > 0) {
+                selectedItemIds.forEach(selId => {
+                    if (groups[selId] && groups[selId].meta?.builder === 'cabinet') {
+                        cabinetGroupId = selId;
+                    } else {
+                        const b = boards.find(board => board.id.toString() === selId.toString());
+                        if (b && b.parentId && groups[b.parentId] && groups[b.parentId].meta?.builder === 'cabinet') {
+                            cabinetGroupId = b.parentId;
+                        }
+                    }
+                });
+            }
+
+            let cabW = 24, cabH = 30, cabD = 20;
+            if (cabinetGroupId && groups[cabinetGroupId]) {
+                const cabParams = groups[cabinetGroupId].meta?.params || {};
+                const w = parseFloat(cabParams.width || 24);
+                const h = parseFloat(cabParams.height || 30);
+                const d = parseFloat(cabParams.depth || 14);
+                const tSide = parseFloat(cabParams.thicknessSide || 0.75);
+                const tTB = parseFloat(cabParams.thicknessTB || 0.75);
+                const tBack = parseFloat(cabParams.thicknessBack || 0.25);
+                const cabCoreDepth = d - tBack;
+
+                cabW = w - 2 * tSide;
+                cabH = h - 2 * tTB;
+                cabD = cabCoreDepth;
+            }
+
             setDrawerDialog({
                 ...defaultCfg,
+                width: cabW,
+                height: cabH,
+                depth: cabD,
+                cabinetGroupId: cabinetGroupId,
+                gap: 0.125,
+                reveal: 0.375
             });
         } else if (item.id === 'faceFrame') {
             let cabinetGroupId = null;

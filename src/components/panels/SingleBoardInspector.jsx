@@ -42,7 +42,7 @@ const SingleBoardInspector = ({ selectedBoard }) => {
         constraintTargetMode, setConstraintTargetMode,
         setShowToolsPanel,
         removeHardware, updateHardware, selectedHardwareId, setSelectedHardwareId,
-        lumberyardSnapEnabled
+        lumberyardSnapEnabled, updateSelectedBoards
     } = useStore();
 
     // Cancel constraint mode if selection no longer includes the source board
@@ -565,7 +565,7 @@ const SingleBoardInspector = ({ selectedBoard }) => {
                 )}
             </div>
 
-            {/* ── Material ── */}
+            {/* ── Material & Lumber Classification ── */}
             {(() => {
                 const mat = normalizeMaterial(selectedBoard.material);
                 const swatchColor = getMaterialDisplayColor(selectedBoard.material);
@@ -574,8 +574,8 @@ const SingleBoardInspector = ({ selectedBoard }) => {
                     : (WOOD_CATALOGUE[mat.id]?.label ?? mat.id);
                 return (
                     <div className="inspector-card">
-                        <h4>Material</h4>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '4px' }}>
+                        <h4>Material & Lumber</h4>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '4px', marginBottom: '12px' }}>
                             <div style={{
                                 width: '28px', height: '28px', borderRadius: '6px', flexShrink: 0,
                                 background: swatchColor,
@@ -589,6 +589,70 @@ const SingleBoardInspector = ({ selectedBoard }) => {
                                 </span>
                             </div>
                         </div>
+
+                        {/* Lumber Type Segmented Control */}
+                        <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            <div style={{ fontSize: '0.68rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.3px' }}>Lumber Type</div>
+                            <div style={{ display: 'flex', gap: '4px', background: 'rgba(0,0,0,0.2)', padding: '2px', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
+                                <button
+                                    className="nav-btn"
+                                    style={{
+                                        flex: 1, padding: '4px 0', fontSize: '0.72rem', borderRadius: '4px', border: 'none', cursor: 'pointer',
+                                        background: selectedBoard.lumberType === 'solid' ? 'var(--accent-color)' : 'transparent',
+                                        color: selectedBoard.lumberType === 'solid' ? 'white' : 'var(--text-muted)',
+                                        fontWeight: selectedBoard.lumberType === 'solid' ? 'bold' : 'normal',
+                                    }}
+                                    onClick={() => updateSelectedBoards('lumberType', 'solid')}
+                                >
+                                    Solid Wood
+                                </button>
+                                <button
+                                    className="nav-btn"
+                                    style={{
+                                        flex: 1, padding: '4px 0', fontSize: '0.72rem', borderRadius: '4px', border: 'none', cursor: 'pointer',
+                                        background: selectedBoard.lumberType === 'plywood' ? 'var(--accent-color)' : 'transparent',
+                                        color: selectedBoard.lumberType === 'plywood' ? 'white' : 'var(--text-muted)',
+                                        fontWeight: selectedBoard.lumberType === 'plywood' ? 'bold' : 'normal',
+                                    }}
+                                    onClick={() => updateSelectedBoards('lumberType', 'plywood')}
+                                >
+                                    Plywood
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Grain Direction Segmented Control */}
+                        {mat.type !== 'color' && (
+                            <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                <div style={{ fontSize: '0.68rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.3px' }}>Grain Direction</div>
+                                <div style={{ display: 'flex', gap: '4px', background: 'rgba(0,0,0,0.2)', padding: '2px', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
+                                    <button
+                                        className="nav-btn"
+                                        style={{
+                                            flex: 1, padding: '4px 0', fontSize: '0.72rem', borderRadius: '4px', border: 'none', cursor: 'pointer',
+                                            background: selectedBoard.grainDirection !== 'width' ? 'var(--accent-color)' : 'transparent',
+                                            color: selectedBoard.grainDirection !== 'width' ? 'white' : 'var(--text-muted)',
+                                            fontWeight: selectedBoard.grainDirection !== 'width' ? 'bold' : 'normal',
+                                        }}
+                                        onClick={() => updateSelectedBoards('grainDirection', 'length')}
+                                    >
+                                        ↕ Along Length
+                                    </button>
+                                    <button
+                                        className="nav-btn"
+                                        style={{
+                                            flex: 1, padding: '4px 0', fontSize: '0.72rem', borderRadius: '4px', border: 'none', cursor: 'pointer',
+                                            background: selectedBoard.grainDirection === 'width' ? 'var(--accent-color)' : 'transparent',
+                                            color: selectedBoard.grainDirection === 'width' ? 'white' : 'var(--text-muted)',
+                                            fontWeight: selectedBoard.grainDirection === 'width' ? 'bold' : 'normal',
+                                        }}
+                                        onClick={() => updateSelectedBoards('grainDirection', 'width')}
+                                    >
+                                        ↔ Along Width
+                                    </button>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 );
             })()}

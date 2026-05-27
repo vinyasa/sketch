@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import useStore from '../../store/useStore';
 
 const ParametricControls = ({ groupId, meta }) => {
-    const { buildCabinet, buildBox, buildShakerDoor, buildDrawers, gridSnap, units } = useStore();
+    const { buildCabinet, buildBox, buildShakerDoor, buildDrawers, setDrawerDialog, gridSnap, units } = useStore();
     const [params, setParams] = useState(meta.params || {});
 
     let defaultStep = 0.5;
@@ -129,6 +129,27 @@ const ParametricControls = ({ groupId, meta }) => {
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
                     <div>
+                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Door Quantity</div>
+                        <select 
+                            value={params.doorCount || 1} 
+                            onChange={e => handleChange('doorCount', e.target.value)}
+                            style={{ 
+                                width: '100%', padding: '5px 8px', 
+                                background: 'var(--bg-color)', color: 'var(--text-main)', 
+                                border: '1px solid var(--border-color)', borderRadius: '6px', 
+                                outline: 'none', fontSize: '0.9rem', cursor: 'pointer'
+                            }}
+                        >
+                            <option value={1}>Single Door</option>
+                            <option value={2}>Double Doors</option>
+                        </select>
+                    </div>
+                    {parseInt(params.doorCount || 1, 10) === 2 && (
+                        renderInput('doubleDoorGap', 'Middle Gap', 0.03125, 0, 0.09375)
+                    )}
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
+                    <div>
                         <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Door Style</div>
                         <select 
                             value={params.doorStyle || 'overlay'} 
@@ -183,19 +204,31 @@ const ParametricControls = ({ groupId, meta }) => {
         );
     } else if (meta.builder === 'drawerStack') {
         controls = (
-            <>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
-                    {renderInput('width', 'Width (X)')}
-                    {renderInput('height', 'Height (Y)')}
-                    {renderInput('depth', 'Depth (Z)')}
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                    {renderInput('count', 'Drawer Count', 1, 1)}
-                    {renderInput('clearance', 'Clearance')}
-                    {renderInput('thickness', 'Material')}
-                    {renderInput('slideWidth', 'Slide Width')}
-                </div>
-            </>
+            <button
+                className="primary-btn"
+                style={{
+                    marginTop: '8px',
+                    width: '100%',
+                    padding: '10px 12px',
+                    fontWeight: 'bold',
+                    cursor: 'pointer',
+                    fontSize: '0.8rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px',
+                    boxShadow: '0 4px 10px rgba(0,0,0,0.2)',
+                    transition: 'all 0.2s'
+                }}
+                onClick={() => {
+                    setDrawerDialog({
+                        ...meta.params,
+                        editGroupId: groupId
+                    });
+                }}
+            >
+                🗃️ Open Drawer Builder Panel
+            </button>
         );
     } else if (meta.builder === 'face-frame') {
         controls = (
