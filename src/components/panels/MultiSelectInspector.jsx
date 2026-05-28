@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { computeWorldAABB, collectChildBoards } from '../../utils/sceneGraph';
 import useStore from '../../store/useStore';
 import { analyzeTouchConnection } from '../../utils/fastenerAnalyzer';
+import NumericInput from '../NumericInput';
 
 // Round to ≤4 decimal places, stripping trailing zeros
 const fmt4 = (v) => parseFloat(v.toFixed(4));
@@ -273,9 +274,7 @@ const MultiSelectInspector = () => {
                     const cz = fmt4(selBoards.reduce((s, b) => s + b.position[2], 0) / selBoards.length);
                     const centroid = [cx, cy, cz];
 
-                    const handleCentroidChange = (axis, newVal) => {
-                        const v = parseFloat(newVal);
-                        if (isNaN(v)) return;
+                    const handleCentroidChange = (axis, v) => {
                         const delta = v - centroid[axis];
                         if (Math.abs(delta) < 0.0001) return;
                         pushHistory();
@@ -291,16 +290,16 @@ const MultiSelectInspector = () => {
                     return (
                         <div className="vec3-inputs">
                             <div style={{ backgroundColor: 'rgba(255, 60, 60, 0.15)' }}>
-                                X<input type="number" step="0.125" value={centroid[0]}
-                                    onChange={e => handleCentroidChange(0, e.target.value)} />
+                                X<NumericInput step="0.125" value={centroid[0]}
+                                    onChange={val => handleCentroidChange(0, val)} />
                             </div>
                             <div style={{ backgroundColor: 'rgba(60, 200, 90, 0.15)' }}>
-                                Y<input type="number" step="0.125" value={centroid[1]}
-                                    onChange={e => handleCentroidChange(1, e.target.value)} />
+                                Y<NumericInput step="0.125" value={centroid[1]}
+                                    onChange={val => handleCentroidChange(1, val)} />
                             </div>
                             <div style={{ backgroundColor: 'rgba(60, 150, 255, 0.15)' }}>
-                                Z<input type="number" step="0.125" value={centroid[2]}
-                                    onChange={e => handleCentroidChange(2, e.target.value)} />
+                                Z<NumericInput step="0.125" value={centroid[2]}
+                                    onChange={val => handleCentroidChange(2, val)} />
                             </div>
                         </div>
                     );

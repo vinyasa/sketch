@@ -2,6 +2,7 @@ import React from 'react';
 import { taperValidation, normalizeTaper } from '../../utils/geometryBuilders';
 import useStore from '../../store/useStore';
 import { parseLumberyardNominal } from '../../utils/lumberyard';
+import NumericInput from '../NumericInput';
 
 const NewBoardDialog = () => {
     const { newBoardDialog: dialog, setNewBoardDialog: setDialog, groups, handleNewBoardConfirm: onConfirm, units, lumberyardSnapEnabled } = useStore();
@@ -207,19 +208,19 @@ const NewBoardDialog = () => {
                 <div className="inspector-card" style={{ margin: 0 }}>
                     <h4>Size ({units === 'metric' ? 'mm' : 'in'}) — Bounding Box</h4>
                     <div className="vec3-inputs">
-                        <div style={{ backgroundColor: 'rgba(255, 60, 60, 0.15)' }} title="X: width">X<input type="number" step={units === 'metric' ? '1' : '0.5'} value={units === 'metric' ? parseFloat((dialog.sizeX * 25.4).toFixed(2)) : dialog.sizeX} onChange={e => { const v = parseFloat(e.target.value) || 0; setDialog(p => ({ ...p, sizeX: units === 'metric' ? v / 25.4 : v })) }} /></div>
-                        <div style={{ backgroundColor: 'rgba(60, 200, 90, 0.15)' }} title="Y: height">Y<input type="number" step={units === 'metric' ? '1' : '0.5'} value={units === 'metric' ? parseFloat((dialog.sizeY * 25.4).toFixed(2)) : dialog.sizeY} onChange={e => { const v = parseFloat(e.target.value) || 0; setDialog(p => ({ ...p, sizeY: units === 'metric' ? v / 25.4 : v })) }} /></div>
-                        <div style={{ backgroundColor: 'rgba(60, 150, 255, 0.15)' }} title="Z: depth">Z<input type="number" step={units === 'metric' ? '1' : '0.5'} value={units === 'metric' ? parseFloat((dialog.sizeZ * 25.4).toFixed(2)) : dialog.sizeZ} onChange={e => { const v = parseFloat(e.target.value) || 0; setDialog(p => ({ ...p, sizeZ: units === 'metric' ? v / 25.4 : v })) }} /></div>
+                        <div style={{ backgroundColor: 'rgba(255, 60, 60, 0.15)' }} title="X: width">X<NumericInput step={units === 'metric' ? '1' : '0.5'} value={units === 'metric' ? parseFloat((dialog.sizeX * 25.4).toFixed(2)) : dialog.sizeX} onChange={val => setDialog(p => ({ ...p, sizeX: units === 'metric' ? val / 25.4 : val }))} /></div>
+                        <div style={{ backgroundColor: 'rgba(60, 200, 90, 0.15)' }} title="Y: height">Y<NumericInput step={units === 'metric' ? '1' : '0.5'} value={units === 'metric' ? parseFloat((dialog.sizeY * 25.4).toFixed(2)) : dialog.sizeY} onChange={val => setDialog(p => ({ ...p, sizeY: units === 'metric' ? val / 25.4 : val }))} /></div>
+                        <div style={{ backgroundColor: 'rgba(60, 150, 255, 0.15)' }} title="Z: depth">Z<NumericInput step={units === 'metric' ? '1' : '0.5'} value={units === 'metric' ? parseFloat((dialog.sizeZ * 25.4).toFixed(2)) : dialog.sizeZ} onChange={val => setDialog(p => ({ ...p, sizeZ: units === 'metric' ? val / 25.4 : val }))} /></div>
                     </div>
                     <p className="hint" style={{ marginTop: '4px' }}>X = Red (left/right) · Y = Green (height) · Z = Blue (depth)</p>
                 </div>
 
                 <div className="inspector-card" style={{ margin: 0 }}>
-                    <h4>Spawn Position ({units === 'metric' ? 'mm' : 'in'})</h4>
+                    <h4>Position ({units === 'metric' ? 'mm' : 'in'})</h4>
                     <div className="vec3-inputs">
-                        <div style={{ backgroundColor: 'rgba(255, 60, 60, 0.15)' }}>X<input type="number" step={units === 'metric' ? '10' : '1'} value={units === 'metric' ? parseFloat((dialog.position[0] * 25.4).toFixed(2)) : dialog.position[0]} onChange={e => { const v = parseFloat(e.target.value) || 0; setDialog(p => ({ ...p, position: [units === 'metric' ? v / 25.4 : v, p.position[1], p.position[2]] })) }} /></div>
-                        <div style={{ backgroundColor: 'rgba(60, 200, 90, 0.15)' }}>Y<input type="number" step={units === 'metric' ? '10' : '1'} value={units === 'metric' ? parseFloat((dialog.position[1] * 25.4).toFixed(2)) : dialog.position[1]} onChange={e => { const v = parseFloat(e.target.value) || 0; setDialog(p => ({ ...p, position: [p.position[0], units === 'metric' ? v / 25.4 : v, p.position[2]] })) }} /></div>
-                        <div style={{ backgroundColor: 'rgba(60, 150, 255, 0.15)' }}>Z<input type="number" step={units === 'metric' ? '10' : '1'} value={units === 'metric' ? parseFloat((dialog.position[2] * 25.4).toFixed(2)) : dialog.position[2]} onChange={e => { const v = parseFloat(e.target.value) || 0; setDialog(p => ({ ...p, position: [p.position[0], p.position[1], units === 'metric' ? v / 25.4 : v] })) }} /></div>
+                        <div style={{ backgroundColor: 'rgba(255, 60, 60, 0.15)' }}>X<NumericInput step={units === 'metric' ? '10' : '1'} value={units === 'metric' ? parseFloat((dialog.position[0] * 25.4).toFixed(2)) : dialog.position[0]} onChange={val => setDialog(p => ({ ...p, position: [units === 'metric' ? val / 25.4 : val, p.position[1], p.position[2]] }))} /></div>
+                        <div style={{ backgroundColor: 'rgba(60, 200, 90, 0.15)' }}>Y<NumericInput step={units === 'metric' ? '10' : '1'} value={units === 'metric' ? parseFloat((dialog.position[1] * 25.4).toFixed(2)) : dialog.position[1]} onChange={val => setDialog(p => ({ ...p, position: [p.position[0], units === 'metric' ? val / 25.4 : val, p.position[2]] }))} /></div>
+                        <div style={{ backgroundColor: 'rgba(60, 150, 255, 0.15)' }}>Z<NumericInput step={units === 'metric' ? '10' : '1'} value={units === 'metric' ? parseFloat((dialog.position[2] * 25.4).toFixed(2)) : dialog.position[2]} onChange={val => setDialog(p => ({ ...p, position: [p.position[0], p.position[1], units === 'metric' ? val / 25.4 : val] }))} /></div>
                     </div>
                 </div>
 

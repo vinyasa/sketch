@@ -723,7 +723,7 @@ export const createBoardSlice = (set, get) => ({
       sizeX: 12,
       sizeY: 0.75,
       sizeZ: 12,
-      position: [0, 0.375, 0]
+      position: [0, 0, 0]
     });
   },
   manualAddCylinder: () => {

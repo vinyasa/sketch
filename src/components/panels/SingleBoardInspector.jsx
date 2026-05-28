@@ -3,6 +3,7 @@ import { normalizeMaterial, getMaterialDisplayColor, WOOD_CATALOGUE } from '../.
 import useStore from '../../store/useStore';
 import ParametricControls from './ParametricControls';
 import { parseLumberyardNominal } from '../../utils/lumberyard';
+import NumericInput from '../NumericInput';
 
 // ── Build a compact summary string for each tool type ────────────────────────
 function getToolSummary(op) {
@@ -191,9 +192,9 @@ const SingleBoardInspector = ({ selectedBoard }) => {
             <div className="inspector-card">
                 <h4>Size ({units === 'metric' ? 'mm' : 'in'})</h4>
                 <div className="vec3-inputs">
-                    <div style={{ backgroundColor: 'rgba(255, 60, 60, 0.15)' }}>X<input type="number" step={units === 'metric' ? '1' : '0.125'} value={units === 'metric' ? fmt4(selectedBoard.size[0] * 25.4) : fmt4(selectedBoard.size[0])} onChange={e => updateVector('size', 0, units === 'metric' ? parseFloat(e.target.value) / 25.4 : e.target.value)} /></div>
-                    <div style={{ backgroundColor: 'rgba(60, 200, 90, 0.15)' }}>Y<input type="number" step={units === 'metric' ? '1' : '0.125'} value={units === 'metric' ? fmt4(selectedBoard.size[1] * 25.4) : fmt4(selectedBoard.size[1])} onChange={e => updateVector('size', 1, units === 'metric' ? parseFloat(e.target.value) / 25.4 : e.target.value)} /></div>
-                    <div style={{ backgroundColor: 'rgba(60, 150, 255, 0.15)' }}>Z<input type="number" step={units === 'metric' ? '1' : '0.125'} value={units === 'metric' ? fmt4(selectedBoard.size[2] * 25.4) : fmt4(selectedBoard.size[2])} onChange={e => updateVector('size', 2, units === 'metric' ? parseFloat(e.target.value) / 25.4 : e.target.value)} /></div>
+                    <div style={{ backgroundColor: 'rgba(255, 60, 60, 0.15)' }}>X<NumericInput step={units === 'metric' ? '1' : '0.125'} value={units === 'metric' ? fmt4(selectedBoard.size[0] * 25.4) : fmt4(selectedBoard.size[0])} onChange={val => updateVector('size', 0, units === 'metric' ? val / 25.4 : val)} /></div>
+                    <div style={{ backgroundColor: 'rgba(60, 200, 90, 0.15)' }}>Y<NumericInput step={units === 'metric' ? '1' : '0.125'} value={units === 'metric' ? fmt4(selectedBoard.size[1] * 25.4) : fmt4(selectedBoard.size[1])} onChange={val => updateVector('size', 1, units === 'metric' ? val / 25.4 : val)} /></div>
+                    <div style={{ backgroundColor: 'rgba(60, 150, 255, 0.15)' }}>Z<NumericInput step={units === 'metric' ? '1' : '0.125'} value={units === 'metric' ? fmt4(selectedBoard.size[2] * 25.4) : fmt4(selectedBoard.size[2])} onChange={val => updateVector('size', 2, units === 'metric' ? val / 25.4 : val)} /></div>
                 </div>
                 <div className="hint" style={{ marginTop: '6px', fontSize: '0.75rem' }}>
                     {sorted.map((d, i) => {
@@ -206,9 +207,9 @@ const SingleBoardInspector = ({ selectedBoard }) => {
             <div className="inspector-card">
                 <h4>Position ({units === 'metric' ? 'mm' : 'in'})</h4>
                 <div className="vec3-inputs">
-                    <div style={{ backgroundColor: 'rgba(255, 60, 60, 0.15)' }}>X<input type="number" step={units === 'metric' ? '1' : '0.125'} value={units === 'metric' ? fmt4(selectedBoard.position[0] * 25.4) : fmt4(selectedBoard.position[0])} onChange={e => updateVector('position', 0, units === 'metric' ? parseFloat(e.target.value) / 25.4 : e.target.value)} /></div>
-                    <div style={{ backgroundColor: 'rgba(60, 200, 90, 0.15)' }}>Y<input type="number" step={units === 'metric' ? '1' : '0.125'} value={units === 'metric' ? fmt4(selectedBoard.position[1] * 25.4) : fmt4(selectedBoard.position[1])} onChange={e => updateVector('position', 1, units === 'metric' ? parseFloat(e.target.value) / 25.4 : e.target.value)} /></div>
-                    <div style={{ backgroundColor: 'rgba(60, 150, 255, 0.15)' }}>Z<input type="number" step={units === 'metric' ? '1' : '0.125'} value={units === 'metric' ? fmt4(selectedBoard.position[2] * 25.4) : fmt4(selectedBoard.position[2])} onChange={e => updateVector('position', 2, units === 'metric' ? parseFloat(e.target.value) / 25.4 : e.target.value)} /></div>
+                    <div style={{ backgroundColor: 'rgba(255, 60, 60, 0.15)' }}>X<NumericInput step={units === 'metric' ? '1' : '0.125'} value={units === 'metric' ? fmt4(selectedBoard.position[0] * 25.4) : fmt4(selectedBoard.position[0])} onChange={val => updateVector('position', 0, units === 'metric' ? val / 25.4 : val)} /></div>
+                    <div style={{ backgroundColor: 'rgba(60, 200, 90, 0.15)' }}>Y<NumericInput step={units === 'metric' ? '1' : '0.125'} value={units === 'metric' ? fmt4(selectedBoard.position[1] * 25.4) : fmt4(selectedBoard.position[1])} onChange={val => updateVector('position', 1, units === 'metric' ? val / 25.4 : val)} /></div>
+                    <div style={{ backgroundColor: 'rgba(60, 150, 255, 0.15)' }}>Z<NumericInput step={units === 'metric' ? '1' : '0.125'} value={units === 'metric' ? fmt4(selectedBoard.position[2] * 25.4) : fmt4(selectedBoard.position[2])} onChange={val => updateVector('position', 2, units === 'metric' ? val / 25.4 : val)} /></div>
                 </div>
                 <button style={{ marginTop: '8px', width: '100%' }} className="primary-btn" onClick={dropBoardToFloor}>↓ Set on Floor</button>
             </div>
