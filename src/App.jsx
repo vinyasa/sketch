@@ -75,6 +75,7 @@ export default function App() {
         enableCollisions,
         panelLayoutMode,
         workspaceLayout,
+        addRecordedStep,
     } = useStore();
 
     const isDocked = workspaceLayout === 'docked';
@@ -295,10 +296,16 @@ export default function App() {
                             <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '12px', flexWrap: 'wrap' }}>
                                 <button className="nav-btn" style={{ padding: '8px 16px', border: '1px solid var(--border-color)' }} onClick={() => setShowNewWorkspaceDialog(false)}>Cancel</button>
                                 <button className="nav-btn" style={{ padding: '8px 16px', background: 'rgba(255, 59, 48, 0.15)', color: '#ff3b30', border: '1px solid rgba(255, 59, 48, 0.3)', fontWeight: 'bold' }} onClick={() => {
+                                    if (addRecordedStep) {
+                                        addRecordedStep('Click the **File** menu in the header. Click **New Project** and then click **Discard (Clear Workspace)**.');
+                                    }
                                     newWorkspace();
                                     setShowNewWorkspaceDialog(false);
                                 }}>Discard (Clear Workspace)</button>
                                 <button className="nav-btn primary" style={{ padding: '8px 16px', background: 'var(--accent-color)', color: '#fff', border: 'none', fontWeight: 'bold' }} onClick={() => {
+                                    if (addRecordedStep) {
+                                        addRecordedStep('Click the **File** menu in the header. Click **New Project** and then click **Save Local & Clear**.');
+                                    }
                                     if (currentFileName) {
                                         saveWorkspace(currentFileName);
                                         newWorkspace();
@@ -312,6 +319,9 @@ export default function App() {
                                     }
                                 }}>Save Local & Clear</button>
                                 <button className="nav-btn primary" style={{ padding: '8px 16px', background: 'var(--accent-color)', color: '#fff', border: 'none', fontWeight: 'bold' }} onClick={async () => {
+                                    if (addRecordedStep) {
+                                        addRecordedStep('Click the **File** menu in the header. Click **New Project** and then click **Save to Disk & Clear**.');
+                                    }
                                     const success = await useStore.getState().exportWorkspace();
                                     if (success) {
                                         newWorkspace();
