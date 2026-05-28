@@ -20,7 +20,7 @@ const MultiSelectInspector = () => {
         setBoards, pushHistory, dropSelectionToFloor, handleMultiDelete,
         constraintTargetMode, setConstraintTargetMode,
         applySmartFasteners, removeSmartFasteners,
-        updateSelectedBoards
+        updateSelectedBoards, units, addRecordedStep
     } = useStore();
 
     // Collect all boards that are part of this selection (direct boards + children of selected groups)
@@ -278,6 +278,19 @@ const MultiSelectInspector = () => {
                         const delta = v - centroid[axis];
                         if (Math.abs(delta) < 0.0001) return;
                         pushHistory();
+
+                        if (addRecordedStep) {
+                            const formatVal = (val) => {
+                                if (units === 'metric') {
+                                    return `${(val * 25.4).toFixed(0)} mm`;
+                                }
+                                const standardFraction = val === 0.75 ? ' (3/4")' : val === 0.5 ? ' (1/2")' : val === 0.25 ? ' (1/4")' : val === 0.375 ? ' (3/8")' : '';
+                                return `${parseFloat(val.toFixed(4))}"${standardFraction}`;
+                            };
+                            const axisLabel = axis === 0 ? 'X/Red' : axis === 1 ? 'Y/Green' : 'Z/Blue';
+                            addRecordedStep(`In the Multi-Select Inspector Panel, set **Position/${axisLabel} dimension** to ${formatVal(v)}.`);
+                        }
+
                         const selIds = new Set(selBoards.map(b => b.id));
                         setBoards(prev => prev.map(b => {
                             if (!selIds.has(b.id)) return b;

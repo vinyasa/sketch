@@ -31,6 +31,7 @@ const AppHeader = () => {
         currentFileName,
         setHeaderBottom,
         panelLayoutMode,
+        showRecorderPanel, setShowRecorderPanel, isRecording
     } = useStore();
 
     const isAdvanced = panelLayoutMode !== 'standard';
@@ -147,6 +148,24 @@ const AppHeader = () => {
                             <input type="checkbox" checked={showMeasurements} onChange={e => setShowMeasurements(e.target.checked)} style={{ accentColor: 'var(--accent-color)', width: '12px', height: '12px', cursor: 'pointer' }} />
                             Dims
                         </label>
+                        <button 
+                            className={`nav-btn ${showRecorderPanel ? 'active' : ''}`} 
+                            onClick={() => setShowRecorderPanel(!showRecorderPanel)}
+                            title="Step-by-Step Tutorial Recorder"
+                            style={{ 
+                                display: 'flex', alignItems: 'center', justifyContent: 'center', 
+                                gap: '4px', cursor: 'pointer', fontSize: '0.71rem', userSelect: 'none', 
+                                margin: 0, padding: '3px 8px', gridColumn: 5, gridRow: 3, border: 'none', background: 'transparent'
+                            }}
+                        >
+                            {isRecording ? (
+                                <span className="rec-dot-pulse" style={{
+                                    width: '8px', height: '8px', background: '#ff3b30', borderRadius: '50%',
+                                    display: 'inline-block', boxShadow: '0 0 6px #ff3b30'
+                                }} />
+                            ) : '🔴'}
+                            Record
+                        </button>
 
                     </nav>
                 </div>

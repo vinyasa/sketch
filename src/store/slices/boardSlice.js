@@ -374,11 +374,21 @@ export const createBoardSlice = (set, get) => ({
       constraints,
       setBoards,
       units,
-      showToast
+      showToast,
+      addRecordedStep
     } = get();
     if (selectedItemIds.length === 0) return;
     pushHistory();
     const floatVal = parseFloat(value) || 0;
+
+    const formatVal = (val) => {
+      if (units === 'metric') {
+        return `${(val * 25.4).toFixed(0)} mm`;
+      }
+      const standardFraction = val === 0.75 ? ' (3/4")' : val === 0.5 ? ' (1/2")' : val === 0.25 ? ' (1/4")' : val === 0.375 ? ' (3/8")' : '';
+      return `${parseFloat(val.toFixed(4))}"${standardFraction}`;
+    };
+
     if (key === 'position') {
       // Find the primary board to compute delta
       const primaryBoard = boards.find(bd => selectedItemIds.includes(bd.id.toString()));
@@ -392,6 +402,12 @@ export const createBoardSlice = (set, get) => ({
       } else if (floatVal > 5000) {
         clampedVal = 5000;
         wasClamped = true;
+      }
+
+      if (addRecordedStep) {
+        const axisLabel = index === 0 ? 'X/Red' : index === 1 ? 'Y/Green' : 'Z/Blue';
+        const boardName = primaryBoard.name || 'Component';
+        addRecordedStep(`In the Inspector Panel for \`${boardName}\`, set **Position/${axisLabel} dimension** to ${formatVal(clampedVal)}.`);
       }
 
       if (wasClamped) {
@@ -454,6 +470,13 @@ export const createBoardSlice = (set, get) => ({
           const unitLabel = units === 'metric' ? 'mm' : 'in';
           const displayVal = units === 'metric' ? (clampedVal * 25.4).toFixed(1) : clampedVal.toFixed(3);
           showToast(`⚠️ ${dimLabel} clamped to safe limit of ${displayVal} ${unitLabel}`);
+        }
+
+        if (addRecordedStep) {
+          const primaryBoard = boards.find(bd => selectedItemIds.includes(bd.id.toString()));
+          const boardName = primaryBoard ? primaryBoard.name : 'Component';
+          const sizeLabel = index === 0 ? 'Length/X/Red dimension' : index === 1 ? 'Thickness/Y/Green dimension' : 'Width/Z/Blue dimension';
+          addRecordedStep(`In the Inspector Panel for \`${boardName}\`, set **${sizeLabel}** to ${formatVal(clampedVal)}.`);
         }
       }
 
@@ -618,7 +641,8 @@ export const createBoardSlice = (set, get) => ({
       selectedItemIds,
       boards,
       pushHistory,
-      setBoards
+      setBoards,
+      addRecordedStep
     } = get();
     const selectedBoard = selectedItemIds.length === 1 && boards.find(b => b.id.toString() === selectedItemIds[0]);
     if (!selectedBoard) return;
@@ -628,6 +652,10 @@ export const createBoardSlice = (set, get) => ({
     const aabb = computeWorldAABB([selectedBoard]);
     const bottomY = aabb.minY;
     const delta = -bottomY; // shift so bottom sits at Y=0
+
+    if (addRecordedStep) {
+      addRecordedStep(`Look at the Inspector Panel for \`${selectedBoard.name}\` and click on the button that says, "Set on Floor", and it will move the board to the working surface 'floor'.`);
+    }
 
     setBoards(boards.map(b => {
       if (selectedItemIds.includes(b.id.toString())) {
@@ -677,7 +705,8 @@ export const createBoardSlice = (set, get) => ({
       boards,
       groups,
       pushHistory,
-      setBoards
+      setBoards,
+      addRecordedStep
     } = get();
     if (selectedItemIds.length === 0) return;
 
@@ -701,6 +730,11 @@ export const createBoardSlice = (set, get) => ({
     const delta = -lowestY; // shift so lowest point lands on Y=0
     if (delta === 0) return;
     pushHistory();
+
+    if (addRecordedStep) {
+      addRecordedStep(`In the Multi-Select Inspector Panel, click **Set on Floor** to move the selected boards to the floor.`);
+    }
+
     const selIds = new Set(selBoards.map(b => b.id.toString()));
     setBoards(boards.map(b => selIds.has(b.id.toString()) ? {
       ...b,
@@ -954,7 +988,9 @@ export const createBoardSlice = (set, get) => ({
       setBoards,
       defaultMaterial,
       setSelectedItemIds,
-      setNewBoardDialog
+      setNewBoardDialog,
+      units,
+      addRecordedStep
     } = get();
     pushHistory();
     const newId = Date.now();
@@ -992,6 +1028,35 @@ export const createBoardSlice = (set, get) => ({
     const sortedSizes = [...sizes].sort((a, b) => b - a);
     const width = sortedSizes[1] ?? 0;
     const defaultLumberType = width > 12 ? 'plywood' : 'solid';
+
+    if (addRecordedStep) {
+      const formatVal = (val) => {
+        if (units === 'metric') {
+          return `${(val * 25.4).toFixed(0)} mm`;
+        }
+        const standardFraction = val === 0.75 ? ' (3/4")' : val === 0.5 ? ' (1/2")' : val === 0.25 ? ' (1/4")' : val === 0.375 ? ' (3/8")' : '';
+        return `${parseFloat(val.toFixed(4))}"${standardFraction}`;
+      };
+
+      const name = newBoardDialog.name || 'New Component';
+      const posX = formatVal(newBoardDialog.position[0]);
+      const posY = formatVal(newBoardDialog.position[1]);
+      const posZ = formatVal(newBoardDialog.position[2]);
+      const sizeX = formatVal(newBoardDialog.sizeX);
+      const sizeY = formatVal(newBoardDialog.sizeY);
+      const sizeZ = formatVal(newBoardDialog.sizeZ);
+
+      const stepText = `Click the **Components** button in the header bar.\n` +
+        `Click **Custom Board** and set its properties:\n` +
+        `*   **Name:** \`${name}\`\n` +
+        `*   **Length/X/Red dimension:** ${sizeX}\n` +
+        `*   **Width/Z/Blue dimension:** ${sizeZ}\n` +
+        `*   **Thickness/Y/Green dimension:** ${sizeY}\n` +
+        `*   **Position:** [X: ${posX}, Y: ${posY}, Z: ${posZ}]\n` +
+        `Click **Add Component**.`;
+
+      addRecordedStep(stepText);
+    }
 
     setBoards(prev => [...prev, {
       id: newId,
