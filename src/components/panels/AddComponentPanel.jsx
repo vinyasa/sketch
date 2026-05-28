@@ -106,6 +106,18 @@ const DimensionalLumberCard = ({ expanded, onToggle }) => {
     const [length, setLength] = useState(96);
     const [orientation, setOrientation] = useState("Flat");
 
+    const controlStyle = {
+        width: '100%',
+        padding: '5px 8px',
+        background: 'var(--bg-color)',
+        color: 'var(--text-main)',
+        border: '1px solid var(--border-color)',
+        borderRadius: '6px',
+        outline: 'none',
+        fontSize: '0.78rem',
+        cursor: 'pointer'
+    };
+
     const handleSpawn = () => {
         const t = parseFloat(thicknessStr);
         const w = parseFloat(widthStr);
@@ -136,7 +148,7 @@ const DimensionalLumberCard = ({ expanded, onToggle }) => {
                     <div style={{ display: 'flex', gap: '8px' }}>
                         <div style={{ flex: 1 }}>
                             <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>Type (Thickness)</div>
-                            <select className="nav-btn" style={{ width: '100%', padding: '4px', fontSize: '0.8rem' }} value={thicknessStr} onChange={e => setThicknessStr(e.target.value)}>
+                            <select style={controlStyle} value={thicknessStr} onChange={e => setThicknessStr(e.target.value)}>
                                 <option value="0.75">1x (0.75" actual)</option>
                                 <option value="1.5">2x (1.5" actual)</option>
                                 <option value="3.5">4x (3.5" actual)</option>
@@ -144,7 +156,7 @@ const DimensionalLumberCard = ({ expanded, onToggle }) => {
                         </div>
                         <div style={{ flex: 1 }}>
                             <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>Width</div>
-                            <select className="nav-btn" style={{ width: '100%', padding: '4px', fontSize: '0.8rem' }} value={widthStr} onChange={e => setWidthStr(e.target.value)}>
+                            <select style={controlStyle} value={widthStr} onChange={e => setWidthStr(e.target.value)}>
                                 <option value="1.5">2" (1.5" actual)</option>
                                 <option value="2.5">3" (2.5" actual)</option>
                                 <option value="3.5">4" (3.5" actual)</option>
@@ -158,11 +170,11 @@ const DimensionalLumberCard = ({ expanded, onToggle }) => {
                     <div style={{ display: 'flex', gap: '8px' }}>
                         <div style={{ flex: 1 }}>
                             <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>Length (in)</div>
-                            <input type="number" step="1" className="nav-btn" style={{ width: '100%', padding: '4px', fontSize: '0.8rem' }} value={length} onChange={e => setLength(e.target.value)} />
+                            <input type="number" step="1" style={{ ...controlStyle, cursor: 'text' }} value={length} onChange={e => setLength(e.target.value)} />
                         </div>
                         <div style={{ flex: 1 }}>
                             <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>Orientation</div>
-                            <select className="nav-btn" style={{ width: '100%', padding: '4px', fontSize: '0.8rem' }} value={orientation} onChange={e => setOrientation(e.target.value)}>
+                            <select style={controlStyle} value={orientation} onChange={e => setOrientation(e.target.value)}>
                                 <option value="Flat">Flat</option>
                                 <option value="On Edge">On Edge</option>
                                 <option value="Vertical">Vertical</option>
@@ -181,6 +193,18 @@ const PlywoodCard = ({ expanded, onToggle }) => {
     const [width, setWidth] = useState(48);
     const [length, setLength] = useState(96);
     const [orientation, setOrientation] = useState("Flat");
+
+    const controlStyle = {
+        width: '100%',
+        padding: '5px 8px',
+        background: 'var(--bg-color)',
+        color: 'var(--text-main)',
+        border: '1px solid var(--border-color)',
+        borderRadius: '6px',
+        outline: 'none',
+        fontSize: '0.78rem',
+        cursor: 'pointer'
+    };
 
     const handleSpawn = () => {
         const t = parseFloat(thicknessStr);
@@ -214,7 +238,7 @@ const PlywoodCard = ({ expanded, onToggle }) => {
                     <div style={{ display: 'flex', gap: '8px' }}>
                         <div style={{ flex: 1 }}>
                             <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>Thickness</div>
-                            <select className="nav-btn" style={{ width: '100%', padding: '4px', fontSize: '0.8rem' }} value={thicknessStr} onChange={e => setThicknessStr(e.target.value)}>
+                            <select style={controlStyle} value={thicknessStr} onChange={e => setThicknessStr(e.target.value)}>
                                 <option value="0.25">1/4" (0.25")</option>
                                 <option value="0.375">3/8" (0.375")</option>
                                 <option value="0.5">1/2" (0.5")</option>
@@ -224,17 +248,17 @@ const PlywoodCard = ({ expanded, onToggle }) => {
                         </div>
                         <div style={{ flex: 1 }}>
                             <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>Width (in)</div>
-                            <input type="number" step="1" className="nav-btn" style={{ width: '100%', padding: '4px', fontSize: '0.8rem' }} value={width} onChange={e => setWidth(e.target.value)} />
+                            <input type="number" step="1" style={{ ...controlStyle, cursor: 'text' }} value={width} onChange={e => setWidth(e.target.value)} />
                         </div>
                     </div>
                     <div style={{ display: 'flex', gap: '8px' }}>
                         <div style={{ flex: 1 }}>
                             <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>Length (in)</div>
-                            <input type="number" step="1" className="nav-btn" style={{ width: '100%', padding: '4px', fontSize: '0.8rem' }} value={length} onChange={e => setLength(e.target.value)} />
+                            <input type="number" step="1" style={{ ...controlStyle, cursor: 'text' }} value={length} onChange={e => setLength(e.target.value)} />
                         </div>
                         <div style={{ flex: 1 }}>
                             <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>Orientation</div>
-                            <select className="nav-btn" style={{ width: '100%', padding: '4px', fontSize: '0.8rem' }} value={orientation} onChange={e => setOrientation(e.target.value)}>
+                            <select style={controlStyle} value={orientation} onChange={e => setOrientation(e.target.value)}>
                                 <option value="Flat">Flat</option>
                                 <option value="Vertical Portrait">Vertical Portrait</option>
                                 <option value="Vertical Landscape">Vertical Landscape</option>

@@ -130,7 +130,18 @@ export const createAssemblySlice = (set, get) => ({
           allGroupIdsToDel.forEach(id => delete nextGroups[id]);
           return nextGroups;
         });
-        setBoards(prev => prev.filter(bd => !allBoardIdsToDel.has(bd.id)));
+        setBoards(prev => prev
+          .filter(bd => !allBoardIdsToDel.has(bd.id))
+          .map(bd => {
+            if (bd.operations && bd.operations.length > 0) {
+              const cleanedOps = bd.operations.filter(op => !allGroupIdsToDel.has(op.parentGroupId));
+              if (cleanedOps.length !== bd.operations.length) {
+                return { ...bd, operations: cleanedOps };
+              }
+            }
+            return bd;
+          })
+        );
         setSelectedItemIds(prev => prev.filter(id => !allBoardIdsToDel.has(parseInt(id)) && !allGroupIdsToDel.has(id)));
         setConfirmDialog(null);
       }

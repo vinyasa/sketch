@@ -2,8 +2,15 @@ import React from 'react';
 import useStore from '../../store/useStore';
 
 const ShelvingBuilderDialog = () => {
-    const { shelvingDialog: dialog, setShelvingDialog: setDialog, buildShelving } = useStore();
+    const { shelvingDialog: dialog, setShelvingDialog: setDialog, buildShelving, groups } = useStore();
     if (!dialog) return null;
+
+    const cabinetGroupId = dialog.cabinetGroupId;
+    const boxGroupId = dialog.boxGroupId;
+    const hasParent = !!cabinetGroupId || !!boxGroupId;
+    const parentName = cabinetGroupId 
+        ? (groups[cabinetGroupId]?.name || 'Selected Cabinet') 
+        : (boxGroupId ? (groups[boxGroupId]?.name || 'Selected Box') : '');
 
     const parseNum = (v, def) => { const n = parseFloat(v); return isNaN(n) ? def : n; };
     const parseIntSafe = (v, def) => { const n = parseInt(v, 10); return isNaN(n) ? def : n; };
@@ -46,8 +53,33 @@ const ShelvingBuilderDialog = () => {
             }} onClick={e => e.stopPropagation()}>
 
                 <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ fontSize: '1.2rem' }}>📚</span> Parametric Shelving
+                    <span style={{ fontSize: '1.2rem' }}>📚</span> {dialog.editGroupId ? 'Edit Shelving' : 'Parametric Shelving'}
                 </h2>
+
+                {/* Parent Detection Banner */}
+                {hasParent ? (
+                    <div style={{
+                        padding: '10px 12px',
+                        background: 'rgba(52, 199, 89, 0.1)',
+                        border: '1px dashed rgba(52, 199, 89, 0.4)',
+                        borderRadius: '8px', fontSize: '0.75rem', color: '#34c759',
+                        lineHeight: 1.4
+                    }}>
+                        <strong>✓ Parent Group Selected ("{parentName}")</strong><br/>
+                        The shelves will be placed and auto-sized precisely to fit the internal opening of the selected {cabinetGroupId ? 'cabinet' : 'box'}.
+                    </div>
+                ) : (
+                    <div style={{
+                        padding: '10px 12px',
+                        background: 'rgba(188, 138, 95, 0.08)',
+                        border: '1px dashed var(--border-color)',
+                        borderRadius: '8px', fontSize: '0.75rem', color: 'var(--text-muted)',
+                        lineHeight: 1.4
+                    }}>
+                        <strong>No Cabinet or Box selected.</strong><br/>
+                        Building standalone shelving. You can input custom dimensions directly below.
+                    </div>
+                )}
 
                 <div className="inspector-card" style={{ margin: 0 }}>
                     <h4>Opening Dimensions (in)</h4>
@@ -92,6 +124,20 @@ const ShelvingBuilderDialog = () => {
                                 style={inputStyle} />
                         </div>
                     </div>
+                    {hasParent && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '12px' }}>
+                            <input
+                                type="checkbox"
+                                checked={!!dialog.addShelfPins}
+                                onChange={e => setDialog(p => ({ ...p, addShelfPins: e.target.checked }))}
+                                style={{ width: '14px', height: '14px', accentColor: 'var(--accent-color)', cursor: 'pointer' }}
+                                id="dialog-add-shelf-pins"
+                            />
+                            <label htmlFor="dialog-add-shelf-pins" style={{ fontSize: '0.75rem', color: 'var(--text-main)', cursor: 'pointer', fontWeight: '500', display: 'flex', alignItems: 'center' }}>
+                                Drill Shelf Pin Holes
+                            </label>
+                        </div>
+                    )}
                 </div>
 
                 {!valid && (
@@ -115,7 +161,7 @@ const ShelvingBuilderDialog = () => {
                     }}
                         disabled={!valid}
                         onClick={handleBuild}>
-                        📚 Build Shelves
+                        {dialog.editGroupId ? '📚 Update Shelves' : '📚 Build Shelves'}
                     </button>
                 </div>
             </div>

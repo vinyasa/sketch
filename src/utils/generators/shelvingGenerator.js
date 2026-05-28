@@ -18,13 +18,57 @@ export function generateShelving(cfg, boards, groups, defaultMaterial) {
     parseNum(cfg.offsetY, 0),
     parseNum(cfg.offsetZ, 0)
   ];
-  const oldIdMap = {};
-  if (isEditing) {
+
+  let cabinetGroupId = cfg.cabinetGroupId;
+  let boxGroupId = cfg.boxGroupId;
+  if (!cabinetGroupId && !boxGroupId && isEditing) {
+    const parentId = groups[groupId]?.parentId;
+    if (parentId && groups[parentId]?.meta?.builder === 'cabinet') {
+      cabinetGroupId = parentId;
+    } else if (parentId && groups[parentId]?.meta?.builder === 'box') {
+      boxGroupId = parentId;
+    }
+  }
+
+  let rootParent = 'Workspace';
+  if (cabinetGroupId && groups[cabinetGroupId]) {
+    const cabParams = groups[cabinetGroupId].meta?.params || {};
+    const tSide = parseNum(cabParams.thicknessSide, 0.75);
+    const tTB = parseNum(cabParams.thicknessTB, 0.75);
+    const tBack = parseNum(cabParams.thicknessBack, 0.25);
+    const cabBoards = collectChildBoards(cabinetGroupId, boards, groups);
+    if (cabBoards.length > 0) {
+      const cabAABB = computeWorldAABB(cabBoards);
+      offset[0] = cabAABB.minX + tSide;
+      offset[1] = cabAABB.minY + tTB;
+      offset[2] = cabAABB.minZ + tBack;
+    }
+    rootParent = cabinetGroupId;
+  } else if (boxGroupId && groups[boxGroupId]) {
+    const boxParams = groups[boxGroupId].meta?.params || {};
+    const tSide = parseNum(boxParams.thicknessSide, 0.5);
+    const tTB = parseNum(boxParams.thicknessTB, 0.5);
+    const tBack = parseNum(boxParams.thicknessBack, 0.5);
+    const boxBoards = collectChildBoards(boxGroupId, boards, groups);
+    if (boxBoards.length > 0) {
+      const boxAABB = computeWorldAABB(boxBoards);
+      offset[0] = boxAABB.minX + tSide;
+      offset[1] = boxAABB.minY + tTB;
+      offset[2] = boxAABB.minZ + tBack;
+    }
+    rootParent = boxGroupId;
+  } else if (isEditing) {
     const childBoards = collectChildBoards(groupId, boards, groups);
     if (childBoards.length > 0) {
       const aabb = computeWorldAABB(childBoards);
       offset = [aabb.minX, aabb.minY, aabb.minZ];
     }
+    rootParent = groups[groupId]?.parentId || 'Workspace';
+  }
+
+  const oldIdMap = {};
+  if (isEditing) {
+    const childBoards = collectChildBoards(groupId, boards, groups);
     childBoards.forEach((b, i) => { oldIdMap[i] = b.id; });
   }
 
@@ -56,6 +100,9 @@ export function generateShelving(cfg, boards, groups, defaultMaterial) {
     groupId,
     savedParams,
     newBoards,
-    isEditing
+    isEditing,
+    rootParent,
+    cabinetGroupId,
+    boxGroupId
   };
 }

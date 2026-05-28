@@ -3,6 +3,7 @@ import { propagateMove } from '../../utils/constraintSolver';
 import { calculateProceduralBoxWalls } from '../../utils/procedural';
 import { WOOD_CATALOGUE, PAINT_PALETTE } from '../../utils/materialCatalogue';
 import { processSiCommand } from '../../services/siCommandProcessor';
+import { generateSmartMeasurementsHelper } from '../../utils/measurementUpdaters';
 
 export const createIoSlice = (set, get) => ({
   newWorkspace: () => {
@@ -745,5 +746,27 @@ export const createIoSlice = (set, get) => ({
     } = get();
     pushHistory();
     setMeasurements([]);
+  },
+  generateSmartMeasurements: (groupId) => {
+    const {
+      boards,
+      groups,
+      setMeasurements,
+      pushHistory
+    } = get();
+    pushHistory();
+    const newMeasurements = generateSmartMeasurementsHelper(groupId, boards, groups);
+    setMeasurements(prev => {
+      const filtered = prev.filter(m => !m.id.startsWith('smart_') || !m.id.endsWith(groupId));
+      return [...filtered, ...newMeasurements];
+    });
+  },
+  clearSmartMeasurements: (groupId) => {
+    const {
+      setMeasurements,
+      pushHistory
+    } = get();
+    pushHistory();
+    setMeasurements(prev => prev.filter(m => !m.id.startsWith('smart_') || !m.id.endsWith(groupId)));
   }
 });

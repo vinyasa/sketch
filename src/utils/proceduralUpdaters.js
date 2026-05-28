@@ -150,18 +150,22 @@ export const buildShelvingHelper = (cfg, boards, groups, defaultMaterial) => {
     groupId,
     savedParams,
     newBoards,
-    isEditing
+    isEditing,
+    rootParent,
+    cabinetGroupId,
+    boxGroupId
   } = generateShelving(cfg, boards, groups, defaultMaterial);
 
   const updatedGroups = { ...groups };
   if (isEditing) {
     updatedGroups[groupId] = {
       ...groups[groupId],
+      parentId: rootParent || groups[groupId].parentId || 'Workspace',
       meta: { builder: 'shelving', params: savedParams }
     };
   } else {
     updatedGroups[groupId] = {
-      parentId: 'Workspace',
+      parentId: rootParent || 'Workspace',
       isExpanded: true,
       visible: true,
       name: 'Shelves',
@@ -171,7 +175,141 @@ export const buildShelvingHelper = (cfg, boards, groups, defaultMaterial) => {
 
   const newBoardIds = new Set(newBoards.map(nb => nb.id));
   const filteredBoards = boards.filter(b => !newBoardIds.has(b.id) && b.parentId !== groupId);
-  const updatedBoards = [...filteredBoards, ...newBoards];
+  let updatedBoards = [...filteredBoards, ...newBoards];
+
+  // ── Shelf Pin Holes Generation ──────────────────────────────────────────
+  const parentGroupId = cabinetGroupId || boxGroupId;
+  if (parentGroupId) {
+    const parentBoards = updatedBoards.filter(b => b.parentId === parentGroupId);
+    const leftSide = parentBoards.find(b => b.name === 'Left Side');
+    const rightSide = parentBoards.find(b => b.name === 'Right Side');
+
+    if (leftSide && rightSide) {
+      // First, always clear existing pin operations for this shelving assembly to prevent duplicates or clean them up if turned off
+      updatedBoards = updatedBoards.map(b => {
+        if (b.id === leftSide.id || b.id === rightSide.id) {
+          return {
+            ...b,
+            operations: (b.operations || []).filter(op => op.parentGroupId !== groupId)
+          };
+        }
+        return b;
+      });
+
+      const shouldAddPins = savedParams.addShelfPins === true || savedParams.addShelfPins === 'true';
+      if (shouldAddPins) {
+        const count = parseInt(savedParams.count ?? 3, 10);
+        const H = parseFloat(savedParams.height || 48);
+        const t = parseFloat(savedParams.thickness || 0.75);
+        const D = parseFloat(savedParams.depth || 11);
+
+        const parentGroup = groups[parentGroupId];
+        const parentParams = parentGroup?.meta?.params || {};
+        const parentH = parseFloat(parentParams.height || H);
+        const parentD = parseFloat(parentParams.depth || D);
+        const parentTSide = parseFloat(parentParams.thicknessSide || 0.75);
+        const parentTTB = parseFloat(parentParams.thicknessTB || 0.75);
+        const backStyle = parentParams.backStyle || 'flat';
+        const tBack = parseFloat(parentParams.thicknessBack || 0.25);
+        const tFront = parseFloat(parentParams.thicknessFront || 0.5);
+        const shelfD = parentGroup?.meta?.builder === 'box'
+          ? parentD - tFront - tBack
+          : parentD - tBack;
+
+        const shelfCenterLocalZ = parentGroup?.meta?.builder === 'box'
+          ? (tBack - tFront) / 2
+          : (backStyle === 'flat' ? 0 : tBack / 2);
+
+        const availableHeight = H - (count * t);
+        const gap = availableHeight / (count + 1);
+
+        const pinOpsLeft = [];
+        const pinOpsRight = [];
+        const holeRadius = 0.125; // 1/4" diameter
+        const holeDepth = Math.min(0.375, parentTSide / 2);
+
+        const pinOffset = Math.min(2.0, shelfD / 4);
+        const zFront = shelfCenterLocalZ + (shelfD / 2 - pinOffset);
+        const zBack = shelfCenterLocalZ - (shelfD / 2 - pinOffset);
+
+        for (let i = 0; i < count; i++) {
+          const yCenter = gap * (i + 1) + t * i + (t / 2);
+          // We drill 5 holes around yCenter spaced 1.25" apart
+          for (let hIdx = -2; hIdx <= 2; hIdx++) {
+            const yHole = yCenter + hIdx * 1.25;
+            const localY = parentTTB + yHole - parentH / 2;
+
+            const opIdFront = `shelving_pin_${groupId}_${i}_${hIdx}_f`;
+            const opIdBack = `shelving_pin_${groupId}_${i}_${hIdx}_b`;
+
+            // Left Side (face: 'right' inward)
+            pinOpsLeft.push({
+              id: opIdFront,
+              type: 'hole',
+              face: 'right',
+              depth: holeDepth,
+              radius: holeRadius,
+              offset: localY,
+              offsetY: zFront,
+              source: 'shelving-pin-holes',
+              parentGroupId: groupId
+            });
+            pinOpsLeft.push({
+              id: opIdBack,
+              type: 'hole',
+              face: 'right',
+              depth: holeDepth,
+              radius: holeRadius,
+              offset: localY,
+              offsetY: zBack,
+              source: 'shelving-pin-holes',
+              parentGroupId: groupId
+            });
+
+            // Right Side (face: 'left' inward)
+            pinOpsRight.push({
+              id: opIdFront,
+              type: 'hole',
+              face: 'left',
+              depth: holeDepth,
+              radius: holeRadius,
+              offset: localY,
+              offsetY: zFront,
+              source: 'shelving-pin-holes',
+              parentGroupId: groupId
+            });
+            pinOpsRight.push({
+              id: opIdBack,
+              type: 'hole',
+              face: 'left',
+              depth: holeDepth,
+              radius: holeRadius,
+              offset: localY,
+              offsetY: zBack,
+              source: 'shelving-pin-holes',
+              parentGroupId: groupId
+            });
+          }
+        }
+
+        updatedBoards = updatedBoards.map(b => {
+          if (b.id === leftSide.id) {
+            return {
+              ...b,
+              operations: [...b.operations, ...pinOpsLeft]
+            };
+          }
+          if (b.id === rightSide.id) {
+            return {
+              ...b,
+              operations: [...b.operations, ...pinOpsRight]
+            };
+          }
+          return b;
+        });
+      }
+    }
+  }
 
   return {
     groupId,

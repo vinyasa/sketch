@@ -56,7 +56,7 @@ const CabinetBuilderDialog = () => {
             }} onClick={e => e.stopPropagation()}>
 
                 <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ fontSize: '1.2rem' }}>🗄</span> Cabinet Builder
+                    <span style={{ fontSize: '1.2rem' }}>🗄</span> {dialog.editGroupId ? 'Edit Cabinet' : 'Cabinet Builder'}
                 </h2>
 
                 {/* Overall Dimensions */}
@@ -174,7 +174,7 @@ const CabinetBuilderDialog = () => {
                     }}
                         disabled={!valid}
                         onClick={handleBuild}>
-                        🗄 Build Cabinet
+                        {dialog.editGroupId ? '🗄 Update Cabinet' : '🗄 Build Cabinet'}
                     </button>
                 </div>
             </div>

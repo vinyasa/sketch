@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import useStore from '../../store/useStore';
 
 const ParametricControls = ({ groupId, meta }) => {
-    const { buildCabinet, buildBox, buildShakerDoor, buildDrawers, setDrawerDialog, gridSnap, units } = useStore();
+    const { buildCabinet, buildBox, buildShakerDoor, buildDrawers, setDrawerDialog, setCabinetDialog, setShelvingDialog, gridSnap, units, generateSmartMeasurements, clearSmartMeasurements, measurements, groups } = useStore();
     const [params, setParams] = useState(meta.params || {});
 
     let defaultStep = 0.5;
@@ -56,6 +56,14 @@ const ParametricControls = ({ groupId, meta }) => {
             const { buildTableTop } = useStore.getState();
             if (buildTableTop) buildTableTop(cfg);
         }
+
+        const activeSmart = measurements.some(m => m.id.startsWith('smart_') && m.id.endsWith(groupId));
+        if (activeSmart) {
+            setTimeout(() => {
+                const { generateSmartMeasurements } = useStore.getState();
+                if (generateSmartMeasurements) generateSmartMeasurements(groupId);
+            }, 0);
+        }
     };
 
     const renderInput = (key, label, customStep, customMin, fallbackVal) => {
@@ -90,17 +98,62 @@ const ParametricControls = ({ groupId, meta }) => {
     let controls = null;
 
     if (meta.builder === 'cabinet') {
+        const hasSmartMeas = measurements.some(m => m.id.startsWith('smart_') && m.id.endsWith(groupId));
         controls = (
             <>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
-                    {renderInput('width', 'Width (X)')}
-                    {renderInput('height', 'Height (Y)')}
-                    {renderInput('depth', 'Depth (Z)')}
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
-                    {renderInput('thicknessTB', `Top/Bottom (${units === 'metric' ? 'mm' : 'in'})`)}
-                    {renderInput('thicknessSide', `Sides (${units === 'metric' ? 'mm' : 'in'})`)}
-                    {renderInput('thicknessBack', `Back (${units === 'metric' ? 'mm' : 'in'})`)}
+                <button
+                    className="primary-btn"
+                    style={{
+                        marginTop: '8px',
+                        width: '100%',
+                        padding: '10px 12px',
+                        fontWeight: 'bold',
+                        cursor: 'pointer',
+                        fontSize: '0.8rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '8px',
+                        boxShadow: '0 4px 10px rgba(0,0,0,0.2)',
+                        transition: 'all 0.2s'
+                    }}
+                    onClick={() => {
+                        if (setCabinetDialog) {
+                            setCabinetDialog({
+                                ...meta.params,
+                                editGroupId: groupId
+                            });
+                        }
+                    }}
+                >
+                    🗄️ Open Cabinet Builder Panel
+                </button>
+                <div style={{ marginTop: '12px', display: 'flex', gap: '8px' }}>
+                    <button
+                        className="primary-btn"
+                        onClick={() => generateSmartMeasurements(groupId)}
+                        style={{
+                            flex: 1, padding: '8px 12px', fontWeight: 'bold', cursor: 'pointer',
+                            fontSize: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            gap: '4px', background: 'var(--accent-color)', color: '#fff', border: 'none', borderRadius: '6px'
+                        }}
+                    >
+                        📐 Smart Measure
+                    </button>
+                    {hasSmartMeas && (
+                        <button
+                            className="nav-btn"
+                            onClick={() => clearSmartMeasurements(groupId)}
+                            style={{
+                                padding: '8px 12px', fontWeight: 'bold', cursor: 'pointer',
+                                fontSize: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                gap: '4px', background: 'rgba(255,59,48,0.15)', color: '#ff3b30', border: '1px solid rgba(255,59,48,0.3)', borderRadius: '6px'
+                            }}
+                            title="Clear smart measurements"
+                        >
+                            🗑️ Clear
+                        </button>
+                    )}
                 </div>
             </>
         );
@@ -203,32 +256,96 @@ const ParametricControls = ({ groupId, meta }) => {
             </>
         );
     } else if (meta.builder === 'drawerStack') {
+        const hasSmartMeas = measurements.some(m => m.id.startsWith('smart_') && m.id.endsWith(groupId));
         controls = (
-            <button
-                className="primary-btn"
-                style={{
-                    marginTop: '8px',
-                    width: '100%',
-                    padding: '10px 12px',
-                    fontWeight: 'bold',
-                    cursor: 'pointer',
-                    fontSize: '0.8rem',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '8px',
-                    boxShadow: '0 4px 10px rgba(0,0,0,0.2)',
-                    transition: 'all 0.2s'
-                }}
-                onClick={() => {
-                    setDrawerDialog({
-                        ...meta.params,
-                        editGroupId: groupId
-                    });
-                }}
-            >
-                🗃️ Open Drawer Builder Panel
-            </button>
+            <>
+                <button
+                    className="primary-btn"
+                    style={{
+                        marginTop: '8px',
+                        width: '100%',
+                        padding: '10px 12px',
+                        fontWeight: 'bold',
+                        cursor: 'pointer',
+                        fontSize: '0.8rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '8px',
+                        boxShadow: '0 4px 10px rgba(0,0,0,0.2)',
+                        transition: 'all 0.2s'
+                    }}
+                    onClick={() => {
+                        let updatedParams = { ...meta.params };
+                        const parentId = groups[groupId]?.parentId;
+                        const parentGroup = parentId ? groups[parentId] : null;
+                        if (parentGroup && (parentGroup.meta?.builder === 'cabinet' || parentGroup.meta?.builder === 'box')) {
+                            const parentParams = parentGroup.meta?.params || {};
+                            const w = parseFloat(parentParams.width || 24);
+                            const h = parseFloat(parentParams.height || 30);
+                            const d = parseFloat(parentParams.depth || 14);
+                            
+                            let tSide = 0.75;
+                            let tTB = 0.75;
+                            let tBack = 0.25;
+                            let tFront = 0.5;
+                            
+                            if (parentGroup.meta?.builder === 'cabinet') {
+                                tSide = parseFloat(parentParams.thicknessSide || 0.75);
+                                tTB = parseFloat(parentParams.thicknessTB || 0.75);
+                                tBack = parseFloat(parentParams.thicknessBack || 0.25);
+                                const cabCoreDepth = d - tBack;
+                                
+                                updatedParams.width = w - 2 * tSide;
+                                updatedParams.height = h - 2 * tTB;
+                                updatedParams.depth = cabCoreDepth;
+                            } else {
+                                tSide = parseFloat(parentParams.thicknessSide || 0.5);
+                                tTB = parseFloat(parentParams.thicknessTB || 0.5);
+                                tFront = parseFloat(parentParams.thicknessFront || 0.5);
+                                tBack = parseFloat(parentParams.thicknessBack || 0.5);
+                                
+                                updatedParams.width = w - 2 * tSide;
+                                updatedParams.height = h - 2 * tTB;
+                                updatedParams.depth = d - tFront - tBack;
+                            }
+                        }
+                        setDrawerDialog({
+                            ...updatedParams,
+                            editGroupId: groupId
+                        });
+                    }}
+                >
+                    🗃️ Open Drawer Builder Panel
+                </button>
+                <div style={{ marginTop: '12px', display: 'flex', gap: '8px' }}>
+                    <button
+                        className="primary-btn"
+                        onClick={() => generateSmartMeasurements(groupId)}
+                        style={{
+                            flex: 1, padding: '8px 12px', fontWeight: 'bold', cursor: 'pointer',
+                            fontSize: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            gap: '4px', background: 'var(--accent-color)', color: '#fff', border: 'none', borderRadius: '6px'
+                        }}
+                    >
+                        📐 Smart Measure
+                    </button>
+                    {hasSmartMeas && (
+                        <button
+                            className="nav-btn"
+                            onClick={() => clearSmartMeasurements(groupId)}
+                            style={{
+                                padding: '8px 12px', fontWeight: 'bold', cursor: 'pointer',
+                                fontSize: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                gap: '4px', background: 'rgba(255,59,48,0.15)', color: '#ff3b30', border: '1px solid rgba(255,59,48,0.3)', borderRadius: '6px'
+                            }}
+                            title="Clear smart measurements"
+                        >
+                            🗑️ Clear
+                        </button>
+                    )}
+                </div>
+            </>
         );
     } else if (meta.builder === 'face-frame') {
         controls = (
@@ -245,16 +362,118 @@ const ParametricControls = ({ groupId, meta }) => {
             </>
         );
     } else if (meta.builder === 'shelving') {
+        const hasSmartMeas = measurements.some(m => m.id.startsWith('smart_') && m.id.endsWith(groupId));
+        const parentId = groups[groupId]?.parentId;
+        const parentGroup = parentId ? groups[parentId] : null;
+        const hasParent = parentGroup && (parentGroup.meta?.builder === 'cabinet' || parentGroup.meta?.builder === 'box');
         controls = (
             <>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
-                    {renderInput('width', 'Width (X)')}
-                    {renderInput('height', 'Height (Y)')}
-                    {renderInput('depth', 'Depth (Z)')}
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                    {renderInput('count', 'Shelf Count', 1, 1)}
-                    {renderInput('thickness', 'Thickness')}
+                <button
+                    className="primary-btn"
+                    style={{
+                        marginTop: '8px',
+                        width: '100%',
+                        padding: '10px 12px',
+                        fontWeight: 'bold',
+                        cursor: 'pointer',
+                        fontSize: '0.8rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '8px',
+                        boxShadow: '0 4px 10px rgba(0,0,0,0.2)',
+                        transition: 'all 0.2s'
+                    }}
+                    onClick={() => {
+                        if (setShelvingDialog) {
+                            let updatedParams = { ...meta.params };
+                            const parentId = groups[groupId]?.parentId;
+                            const parentGroup = parentId ? groups[parentId] : null;
+                            if (parentGroup && (parentGroup.meta?.builder === 'cabinet' || parentGroup.meta?.builder === 'box')) {
+                                const parentParams = parentGroup.meta?.params || {};
+                                const w = parseFloat(parentParams.width || 24);
+                                const h = parseFloat(parentParams.height || 30);
+                                const d = parseFloat(parentParams.depth || 14);
+                                
+                                let tSide = 0.75;
+                                let tTB = 0.75;
+                                let tBack = 0.25;
+                                let tFront = 0.5;
+                                
+                                if (parentGroup.meta?.builder === 'cabinet') {
+                                    tSide = parseFloat(parentParams.thicknessSide || 0.75);
+                                    tTB = parseFloat(parentParams.thicknessTB || 0.75);
+                                    tBack = parseFloat(parentParams.thicknessBack || 0.25);
+                                    const cabCoreDepth = d - tBack;
+                                    
+                                    updatedParams.width = w - 2 * tSide;
+                                    updatedParams.height = h - 2 * tTB;
+                                    updatedParams.depth = cabCoreDepth;
+                                } else {
+                                    tSide = parseFloat(parentParams.thicknessSide || 0.5);
+                                    tTB = parseFloat(parentParams.thicknessTB || 0.5);
+                                    tFront = parseFloat(parentParams.thicknessFront || 0.5);
+                                    tBack = parseFloat(parentParams.thicknessBack || 0.5);
+                                    
+                                    updatedParams.width = w - 2 * tSide;
+                                    updatedParams.height = h - 2 * tTB;
+                                    updatedParams.depth = d - tFront - tBack;
+                                }
+                            }
+                            setShelvingDialog({
+                                ...updatedParams,
+                                editGroupId: groupId
+                            });
+                        }
+                    }}
+                >
+                    📚 Open Shelving Builder Panel
+                </button>
+                {hasParent && (
+                    <div style={{ marginTop: '12px', marginBottom: '8px' }}>
+                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Cumulative Measure Reference</div>
+                        <select 
+                            value={params.measureRef || 'top'} 
+                            onChange={e => handleChange('measureRef', e.target.value)}
+                            style={{ 
+                                width: '100%', padding: '5px 8px', 
+                                background: 'var(--bg-color)', color: 'var(--text-main)', 
+                                border: '1px solid var(--border-color)', borderRadius: '6px', 
+                                outline: 'none', fontSize: '0.9rem', cursor: 'pointer'
+                            }}
+                        >
+                            <option value="top">Top (Underside of Top)</option>
+                            <option value="bottom">Bottom (Absolute / Floor)</option>
+                            <option value="top-of-bottom">Top of Bottom (Inside Cabinet)</option>
+                        </select>
+                    </div>
+                )}
+                <div style={{ marginTop: '12px', display: 'flex', gap: '8px' }}>
+                    <button
+                        className="primary-btn"
+                        onClick={() => generateSmartMeasurements(groupId)}
+                        style={{
+                            flex: 1, padding: '8px 12px', fontWeight: 'bold', cursor: 'pointer',
+                            fontSize: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            gap: '4px', background: 'var(--accent-color)', color: '#fff', border: 'none', borderRadius: '6px'
+                        }}
+                    >
+                        📐 Smart Measure
+                    </button>
+                    {hasSmartMeas && (
+                        <button
+                            className="nav-btn"
+                            onClick={() => clearSmartMeasurements(groupId)}
+                            style={{
+                                padding: '8px 12px', fontWeight: 'bold', cursor: 'pointer',
+                                fontSize: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                gap: '4px', background: 'rgba(255,59,48,0.15)', color: '#ff3b30', border: '1px solid rgba(255,59,48,0.3)', borderRadius: '6px'
+                            }}
+                            title="Clear smart measurements"
+                        >
+                            🗑️ Clear
+                        </button>
+                    )}
                 </div>
             </>
         );

@@ -251,8 +251,94 @@ const AssembliesPanel = () => {
                 cabinetGroupId: cabinetGroupId
             });
         } else if (item.id === 'shelving') {
+            let cabinetGroupId = null;
+            let boxGroupId = null;
+            if (selectedItemIds && selectedItemIds.length === 1) {
+                const selId = selectedItemIds[0];
+                if (groups[selId]) {
+                    const builder = groups[selId].meta?.builder;
+                    if (builder === 'cabinet') {
+                        cabinetGroupId = selId;
+                    } else if (builder === 'box') {
+                        boxGroupId = selId;
+                    }
+                } else {
+                    const b = boards.find(board => board.id.toString() === selId.toString());
+                    if (b && b.parentId && groups[b.parentId]) {
+                        const builder = groups[b.parentId].meta?.builder;
+                        if (builder === 'cabinet') {
+                            cabinetGroupId = b.parentId;
+                        } else if (builder === 'box') {
+                            boxGroupId = b.parentId;
+                        }
+                    }
+                }
+            }
+
+            let cabW = 30;
+            let cabH = 48;
+            let cabD = 11;
+            let tSide = 0.75;
+            let tTB = 0.75;
+            let tBack = 0.25;
+            let tFront = 0.5;
+
+            let finalOffsetX = bounds ? bounds.minX : 0;
+            let finalOffsetY = bounds ? bounds.minY : 0;
+            let finalOffsetZ = bounds ? bounds.minZ : 0;
+
+            if (cabinetGroupId && groups[cabinetGroupId]) {
+                const cabParams = groups[cabinetGroupId].meta?.params || {};
+                const w = parseFloat(cabParams.width || 24);
+                const h = parseFloat(cabParams.height || 30);
+                const d = parseFloat(cabParams.depth || 14);
+                tSide = parseFloat(cabParams.thicknessSide || 0.75);
+                tTB = parseFloat(cabParams.thicknessTB || 0.75);
+                tBack = parseFloat(cabParams.thicknessBack || 0.25);
+                const cabCoreDepth = d - tBack;
+
+                cabW = w - 2 * tSide;
+                cabH = h - 2 * tTB;
+                cabD = cabCoreDepth;
+
+                finalOffsetX = finalOffsetX + tSide;
+                finalOffsetY = finalOffsetY + tTB;
+                finalOffsetZ = finalOffsetZ + tBack;
+            } else if (boxGroupId && groups[boxGroupId]) {
+                const boxParams = groups[boxGroupId].meta?.params || {};
+                const w = parseFloat(boxParams.width || 18);
+                const h = parseFloat(boxParams.height || 12);
+                const d = parseFloat(boxParams.depth || 12);
+                tSide = parseFloat(boxParams.thicknessSide || 0.5);
+                tTB = parseFloat(boxParams.thicknessTB || 0.5);
+                tFront = parseFloat(boxParams.thicknessFront || 0.5);
+                tBack = parseFloat(boxParams.thicknessBack || 0.5);
+
+                cabW = w - 2 * tSide;
+                cabH = h - 2 * tTB;
+                cabD = d - tFront - tBack;
+
+                finalOffsetX = finalOffsetX + tSide;
+                finalOffsetY = finalOffsetY + tTB;
+                finalOffsetZ = finalOffsetZ + tBack;
+            } else if (bounds) {
+                cabW = Math.abs(bounds.maxX - bounds.minX);
+                cabH = Math.abs(bounds.maxY - bounds.minY);
+                cabD = Math.abs(bounds.maxZ - bounds.minZ);
+            }
+
             setShelvingDialog({
                 ...defaultCfg,
+                width: cabW,
+                height: cabH,
+                depth: cabD,
+                offsetX: finalOffsetX,
+                offsetY: finalOffsetY,
+                offsetZ: finalOffsetZ,
+                cabinetGroupId,
+                boxGroupId,
+                addShelfPins: false,
+                measureRef: 'top'
             });
         } else if (item.id === 'tableBase') {
             setTableBaseDialog({
