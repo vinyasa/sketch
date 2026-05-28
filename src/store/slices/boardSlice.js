@@ -122,7 +122,8 @@ export const createBoardSlice = (set, get) => ({
       setBoards,
       selectedItemIds,
       setSelectedItemIds,
-      showToast
+      showToast,
+      addRecordedStep
     } = get();
     const strId = id.toString();
     if (constraintTargetMode && constraintTargetMode.active) {
@@ -158,6 +159,10 @@ export const createBoardSlice = (set, get) => ({
         }));
         setConstraintTargetMode(null);
         showToast(`Glued "${boardA.name}" to "${boardB.name}"`);
+
+        if (addRecordedStep) {
+          addRecordedStep(`Select \`${boardA.name}\`. In the Inspector Panel, click **+ Add Glue**, and then click on \`${boardB.name}\` to rigidly join them together.`);
+        }
         return;
       }
 
@@ -221,6 +226,14 @@ export const createBoardSlice = (set, get) => ({
         }));
         setConstraintTargetMode(null);
         showToast(`Flush constraint added on ${['X', 'Y', 'Z'][axis]} axis.`);
+
+        if (addRecordedStep) {
+          addRecordedStep(
+            `Select \`${boardA.name}\`. In the Inspector Panel, click **+ Add Flush Alignment**.\n` +
+            `*   Click the **${constraintTargetMode.sourceFace}** face on \`${boardA.name}\`.\n` +
+            `*   Click the **${faceStr}** face on \`${boardB.name}\` to align them.`
+          );
+        }
       }
       return;
     }
