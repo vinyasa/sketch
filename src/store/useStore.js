@@ -81,7 +81,13 @@ const useStore = create((set, get) => ({
     setHeaderBottom: (val) => set({ headerBottom: val }),
 
     showCutlistPanel: false,
-    setShowCutlistPanel: (v) => set({ showCutlistPanel: typeof v === 'function' ? v(get().showCutlistPanel) : v }),
+    setShowCutlistPanel: (v) => {
+        const next = typeof v === 'function' ? v(get().showCutlistPanel) : v;
+        if (next !== get().showCutlistPanel && get().addRecordedStep) {
+            get().addRecordedStep(next ? 'Click the **Cut List** panel button to open the cut list sheet.' : 'Close the **Cut List** panel.');
+        }
+        set({ showCutlistPanel: next });
+    },
 
     // ── Computing overlay ────────────────────────────────────────────────────
     computingMessage: null,
@@ -155,25 +161,67 @@ const useStore = create((set, get) => ({
     setDKeyPressed: (v) => set({ dKeyPressed: typeof v === 'function' ? v(get().dKeyPressed) : v }),
 
     showSettingsPanel: false,
-    setShowSettingsPanel: (v) => set({ showSettingsPanel: typeof v === 'function' ? v(get().showSettingsPanel) : v }),
+    setShowSettingsPanel: (v) => {
+        const next = typeof v === 'function' ? v(get().showSettingsPanel) : v;
+        if (next !== get().showSettingsPanel && get().addRecordedStep) {
+            get().addRecordedStep(next ? 'Click the **Settings** panel button to open settings.' : 'Close the **Settings** panel.');
+        }
+        set({ showSettingsPanel: next });
+    },
 
     showLightingPanel: false,
-    setShowLightingPanel: (v) => set({ showLightingPanel: typeof v === 'function' ? v(get().showLightingPanel) : v }),
+    setShowLightingPanel: (v) => {
+        const next = typeof v === 'function' ? v(get().showLightingPanel) : v;
+        if (next !== get().showLightingPanel && get().addRecordedStep) {
+            get().addRecordedStep(next ? 'Click the **Lighting** panel button.' : 'Close the **Lighting** panel.');
+        }
+        set({ showLightingPanel: next });
+    },
 
     showMaterialsPanel: false,
-    setShowMaterialsPanel: (v) => set({ showMaterialsPanel: typeof v === 'function' ? v(get().showMaterialsPanel) : v }),
+    setShowMaterialsPanel: (v) => {
+        const next = typeof v === 'function' ? v(get().showMaterialsPanel) : v;
+        if (next !== get().showMaterialsPanel && get().addRecordedStep) {
+            get().addRecordedStep(next ? 'Click the **Materials** panel button to open the Paint & Materials tray.' : 'Close the **Materials** panel.');
+        }
+        set({ showMaterialsPanel: next });
+    },
 
     showAddComponentPanel: false,
-    setShowAddComponentPanel: (v) => set({ showAddComponentPanel: typeof v === 'function' ? v(get().showAddComponentPanel) : v }),
+    setShowAddComponentPanel: (v) => {
+        const next = typeof v === 'function' ? v(get().showAddComponentPanel) : v;
+        if (next !== get().showAddComponentPanel && get().addRecordedStep) {
+            get().addRecordedStep(next ? 'Click the **Components** panel button.' : 'Close the **Components** panel.');
+        }
+        set({ showAddComponentPanel: next });
+    },
 
     showToolsPanel: false,
-    setShowToolsPanel: (v) => set({ showToolsPanel: typeof v === 'function' ? v(get().showToolsPanel) : v }),
+    setShowToolsPanel: (v) => {
+        const next = typeof v === 'function' ? v(get().showToolsPanel) : v;
+        if (next !== get().showToolsPanel && get().addRecordedStep) {
+            get().addRecordedStep(next ? 'Click the **Tools** panel button.' : 'Close the **Tools** panel.');
+        }
+        set({ showToolsPanel: next });
+    },
 
     showHardwarePanel: false,
-    setShowHardwarePanel: (v) => set({ showHardwarePanel: typeof v === 'function' ? v(get().showHardwarePanel) : v }),
+    setShowHardwarePanel: (v) => {
+        const next = typeof v === 'function' ? v(get().showHardwarePanel) : v;
+        if (next !== get().showHardwarePanel && get().addRecordedStep) {
+            get().addRecordedStep(next ? 'Click the **Hardware** panel button.' : 'Close the **Hardware** panel.');
+        }
+        set({ showHardwarePanel: next });
+    },
 
     showAnimationPanel: false,
-    setShowAnimationPanel: (v) => set({ showAnimationPanel: typeof v === 'function' ? v(get().showAnimationPanel) : v }),
+    setShowAnimationPanel: (v) => {
+        const next = typeof v === 'function' ? v(get().showAnimationPanel) : v;
+        if (next !== get().showAnimationPanel && get().addRecordedStep) {
+            get().addRecordedStep(next ? 'Click the **Animate** panel button.' : 'Close the **Animate** panel.');
+        }
+        set({ showAnimationPanel: next });
+    },
 
     // ─── Animation state ──────────────────────────────────────────────────────
     animation: {
@@ -237,7 +285,13 @@ const useStore = create((set, get) => ({
     setEditingToolOpId: (v) => set({ editingToolOpId: typeof v === 'function' ? v(get().editingToolOpId) : v }),
 
     showOutlinerPanel: true,
-    setShowOutlinerPanel: (v) => set({ showOutlinerPanel: typeof v === 'function' ? v(get().showOutlinerPanel) : v }),
+    setShowOutlinerPanel: (v) => {
+        const next = typeof v === 'function' ? v(get().showOutlinerPanel) : v;
+        if (next !== get().showOutlinerPanel && get().addRecordedStep) {
+            get().addRecordedStep(next ? 'Click the **Outliner** panel button.' : 'Close the **Outliner** panel.');
+        }
+        set({ showOutlinerPanel: next });
+    },
 
     isRightPanelOpen: true,
     setIsRightPanelOpen: (v) => set({ isRightPanelOpen: typeof v === 'function' ? v(get().isRightPanelOpen) : v }),
@@ -245,7 +299,13 @@ const useStore = create((set, get) => ({
     fileMenuOpen: false,
     setFileMenuOpen: (v) => set({ fileMenuOpen: typeof v === 'function' ? v(get().fileMenuOpen) : v }),
     showAssembliesPanel: false,
-    setShowAssembliesPanel: (v) => set({ showAssembliesPanel: typeof v === 'function' ? v(get().showAssembliesPanel) : v }),
+    setShowAssembliesPanel: (v) => {
+        const next = typeof v === 'function' ? v(get().showAssembliesPanel) : v;
+        if (next !== get().showAssembliesPanel && get().addRecordedStep) {
+            get().addRecordedStep(next ? 'Click the **Builders** panel button.' : 'Close the **Builders** panel.');
+        }
+        set({ showAssembliesPanel: next });
+    },
 
     toast: null,
     setToast: (v) => set({ toast: v }),
@@ -304,7 +364,13 @@ const useStore = create((set, get) => ({
     setAssemblyLibrary: (v) => set({ assemblyLibrary: typeof v === 'function' ? v(get().assemblyLibrary) : v }),
 
     showAssemblyLibrary: false,
-    setShowAssemblyLibrary: (v) => set({ showAssemblyLibrary: typeof v === 'function' ? v(get().showAssemblyLibrary) : v }),
+    setShowAssemblyLibrary: (v) => {
+        const next = typeof v === 'function' ? v(get().showAssemblyLibrary) : v;
+        if (next !== get().showAssemblyLibrary && get().addRecordedStep) {
+            get().addRecordedStep(next ? 'Click the **Library** panel button.' : 'Close the **Library** panel.');
+        }
+        set({ showAssemblyLibrary: next });
+    },
 
     // User-defined category list — persisted in localStorage
     assemblyCategories: loadState('assemblyCategories', ['Uncategorized', 'Cabinet', 'Box', 'Chair', 'Table', 'Leg Set', 'Shelf', 'Drawer', 'Frame', 'Other']),

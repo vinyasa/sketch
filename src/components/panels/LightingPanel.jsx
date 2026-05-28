@@ -219,7 +219,7 @@ const LIGHT_TYPES = [
 
 // ─── Main Panel ───────────────────────────────────────────────────────────────
 const LightingPanel = () => {
-    const { lighting, setLighting } = useStore();
+    const { lighting, setLighting, addRecordedStep } = useStore();
     const [expandedId, setExpandedId] = useState(null);
     const [showAddMenu, setShowAddMenu] = useState(false);
 
@@ -250,11 +250,18 @@ const LightingPanel = () => {
         const p = clonePreset(key);
         setLighting({ presetKey: key, shadows: p.shadows, lights: p.lights });
         setExpandedId(null);
-    }, [setLighting]);
+        if (addRecordedStep) {
+            const label = PRESETS[key]?.label || key;
+            addRecordedStep(`In the **Lighting** panel, select the **${label}** lighting preset.`);
+        }
+    }, [setLighting, addRecordedStep]);
 
     const toggleShadows = useCallback(() => {
         setLighting(prev => ({ ...prev, shadows: !prev.shadows }));
-    }, [setLighting]);
+        if (addRecordedStep) {
+            addRecordedStep(shadowsOn ? 'In the **Lighting** panel, turn **Shadows OFF**.' : 'In the **Lighting** panel, turn **Shadows ON**.');
+        }
+    }, [setLighting, shadowsOn, addRecordedStep]);
 
     const addLight = useCallback((typeEntry) => {
         const newLight = {
@@ -267,7 +274,10 @@ const LightingPanel = () => {
         setLighting(prev => ({ ...prev, lights: [...prev.lights, newLight] }));
         setExpandedId(newLight.id);
         setShowAddMenu(false);
-    }, [setLighting]);
+        if (addRecordedStep) {
+            addRecordedStep(`In the **Lighting** panel, click **+ Add Light** and add a **${typeEntry.label}** light.`);
+        }
+    }, [setLighting, addRecordedStep]);
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', height: '100%' }}>

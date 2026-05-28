@@ -149,12 +149,24 @@ export const createAssemblySlice = (set, get) => ({
   },
   // ─── Cabinet Builder ──────────────────────────────────────────────────────
   buildCabinet: cfg => {
-    const { pushHistory, boards, groups, setBoards, setGroups, setSelectedItemIds } = get();
+    const { pushHistory, boards, groups, setBoards, setGroups, setSelectedItemIds, addRecordedStep } = get();
     pushHistory();
     const res = buildCabinetHelper(cfg, boards, groups);
     setGroups(res.updatedGroups);
     setBoards(res.updatedBoards);
     setSelectedItemIds([res.groupId]);
+
+    if (addRecordedStep) {
+      addRecordedStep(
+        `Click **Builders** in the header drawer.\n` +
+        `Click the **Cabinet Builder** icon and set the outer properties:\n` +
+        `*   **Width (X):** \`${cfg.width}"\`\n` +
+        `*   **Height (Y):** \`${cfg.height}"\`\n` +
+        `*   **Depth (Z):** \`${cfg.depth}"\`\n` +
+        `*   **Back Style:** \`${cfg.backStyle || 'flat'}\`\n` +
+        `Click **Build Cabinet** to generate the nested assembly.`
+      );
+    }
 
     setTimeout(() => {
       const { setBoards } = get();
@@ -206,68 +218,151 @@ export const createAssemblySlice = (set, get) => ({
   },
   // ─── Box Builder ──────────────────────────────────────────────────────────
   buildBox: cfg => {
-    const { pushHistory, boards, groups, setBoards, setGroups, setSelectedItemIds } = get();
+    const { pushHistory, boards, groups, setBoards, setGroups, setSelectedItemIds, addRecordedStep } = get();
     pushHistory();
     const res = buildBoxHelper(cfg, boards, groups);
     setGroups(res.updatedGroups);
     setBoards(res.updatedBoards);
     setSelectedItemIds([res.groupId]);
+
+    if (addRecordedStep) {
+      addRecordedStep(
+        `Click **Builders** in the header drawer.\n` +
+        `Click the **Box Builder** icon and set the outer properties:\n` +
+        `*   **Width (X):** \`${cfg.width}"\`\n` +
+        `*   **Height (Y):** \`${cfg.height}"\`\n` +
+        `*   **Depth (Z):** \`${cfg.depth}"\`\n` +
+        `*   **Box Style:** \`${cfg.style || 'five-panel'}\`\n` +
+        `Click **Build Box** to generate the assembly.`
+      );
+    }
   },
   // ─── Face Frame Builder ───────────────────────────────────────────────────
   buildFaceFrame: cfg => {
-    const { pushHistory, boards, groups, setBoards, setGroups, setSelectedItemIds, defaultMaterial } = get();
+    const { pushHistory, boards, groups, setBoards, setGroups, setSelectedItemIds, defaultMaterial, addRecordedStep } = get();
     pushHistory();
     const res = buildFaceFrameHelper(cfg, boards, groups, defaultMaterial);
     setGroups(res.updatedGroups);
     setBoards(res.updatedBoards);
     setSelectedItemIds([res.groupId]);
+
+    if (addRecordedStep) {
+      addRecordedStep(
+        `Click **Builders** in the header drawer.\n` +
+        `Click the **Face Frame Builder** icon and set the properties:\n` +
+        `*   **Width (X):** \`${cfg.width}"\`\n` +
+        `*   **Height (Y):** \`${cfg.height}"\`\n` +
+        `*   **Stile Width:** \`${cfg.stileWidth}"\`\n` +
+        `*   **Rail Width:** \`${cfg.railWidth}"\`\n` +
+        `Click **Build Face Frame**.`
+      );
+    }
   },
   // ─── Shelving Builder ─────────────────────────────────────────────────────
   buildShelving: cfg => {
-    const { pushHistory, boards, groups, setBoards, setGroups, setSelectedItemIds, defaultMaterial } = get();
+    const { pushHistory, boards, groups, setBoards, setGroups, setSelectedItemIds, defaultMaterial, addRecordedStep } = get();
     pushHistory();
     const res = buildShelvingHelper(cfg, boards, groups, defaultMaterial);
     setGroups(res.updatedGroups);
     setBoards(res.updatedBoards);
     setSelectedItemIds([res.groupId]);
+
+    if (addRecordedStep) {
+      addRecordedStep(
+        `Click **Builders** in the header drawer.\n` +
+        `Click the **Shelving Builder** icon and set the properties:\n` +
+        `*   **Width (X):** \`${cfg.width}"\`\n` +
+        `*   **Height (Y):** \`${cfg.height}"\`\n` +
+        `*   **Depth (Z):** \`${cfg.depth}"\`\n` +
+        `*   **Shelves Count:** \`${cfg.shelvesCount}\`\n` +
+        `Click **Build Shelving**.`
+      );
+    }
   },
   // ─── Shaker Door Builder ──────────────────────────────────────────────────
   buildShakerDoor: cfg => {
-    const { pushHistory, boards, groups, setBoards, setGroups, setSelectedItemIds, defaultMaterial } = get();
+    const { pushHistory, boards, groups, setBoards, setGroups, setSelectedItemIds, defaultMaterial, addRecordedStep } = get();
     pushHistory();
     const res = buildShakerDoorHelper(cfg, boards, groups, defaultMaterial);
     setGroups(res.updatedGroups);
     setBoards(res.updatedBoards);
     setSelectedItemIds([res.groupId]);
+
+    if (addRecordedStep) {
+      addRecordedStep(
+        `Click **Builders** in the header drawer.\n` +
+        `Click the **Shaker Door Builder** icon and set the properties:\n` +
+        `*   **Width (X):** \`${cfg.width}"\`\n` +
+        `*   **Height (Y):** \`${cfg.height}"\`\n` +
+        `*   **Stile Width:** \`${cfg.stileWidth}"\`\n` +
+        `*   **Rail Width:** \`${cfg.railWidth}"\`\n` +
+        `Click **Build Shaker Door**.`
+      );
+    }
   },
   // ─── Drawer Stack Builder ─────────────────────────────────────────────────
   buildDrawers: cfg => {
-    const { pushHistory, boards, groups, setBoards, setGroups, setSelectedItemIds, defaultMaterial } = get();
+    const { pushHistory, boards, groups, setBoards, setGroups, setSelectedItemIds, defaultMaterial, addRecordedStep } = get();
     pushHistory();
     const res = buildDrawersHelper(cfg, boards, groups, defaultMaterial);
     setGroups(res.updatedGroups);
     setBoards(res.updatedBoards);
     setSelectedItemIds([res.rootGroupId]);
+
+    if (addRecordedStep) {
+      addRecordedStep(
+        `Click **Builders** in the header drawer.\n` +
+        `Click the **Drawer Stack Builder** icon and set the properties:\n` +
+        `*   **Width (X):** \`${cfg.width}"\`\n` +
+        `*   **Height (Y):** \`${cfg.height}"\`\n` +
+        `*   **Depth (Z):** \`${cfg.depth}"\`\n` +
+        `*   **Drawers Count:** \`${cfg.drawerCount}\`\n` +
+        `Click **Build Drawers**.`
+      );
+    }
   },
   // ─── Table Base Builder ───────────────────────────────────────────────────
   buildTableBase: cfg => {
-    const { pushHistory, boards, groups, setBoards, setGroups, setConstraints, setSelectedItemIds, defaultMaterial } = get();
+    const { pushHistory, boards, groups, setBoards, setGroups, setConstraints, setSelectedItemIds, defaultMaterial, addRecordedStep } = get();
     pushHistory();
     const res = buildTableBaseHelper(cfg, boards, groups, get().constraints, defaultMaterial);
     setGroups(res.updatedGroups);
     setBoards(res.updatedBoards);
     setConstraints(res.updatedConstraints);
     setSelectedItemIds([res.groupId]);
+
+    if (addRecordedStep) {
+      addRecordedStep(
+        `Click **Builders** in the header drawer.\n` +
+        `Click the **Table Base Builder** icon and set the properties:\n` +
+        `*   **Width (X):** \`${cfg.width}"\`\n` +
+        `*   **Height (Y):** \`${cfg.height}"\`\n` +
+        `*   **Depth (Z):** \`${cfg.depth}"\`\n` +
+        `*   **Apron Width:** \`${cfg.apronWidth}"\`\n` +
+        `Click **Build Table Base**.`
+      );
+    }
   },
   // ─── Table Top Builder ────────────────────────────────────────────────────
   buildTableTop: cfg => {
-    const { pushHistory, boards, groups, setBoards, setGroups, setConstraints, setSelectedItemIds, defaultMaterial, showToast } = get();
+    const { pushHistory, boards, groups, setBoards, setGroups, setConstraints, setSelectedItemIds, defaultMaterial, showToast, addRecordedStep } = get();
     pushHistory();
     const res = buildTableTopHelper(cfg, boards, groups, get().constraints, defaultMaterial);
     setGroups(res.updatedGroups);
     setBoards(res.updatedBoards);
     setConstraints(res.updatedConstraints);
     setSelectedItemIds([res.groupId]);
+
+    if (addRecordedStep) {
+      addRecordedStep(
+        `Click **Builders** in the header drawer.\n` +
+        `Click the **Table Top Builder** icon and set the properties:\n` +
+        `*   **Width (X):** \`${cfg.width}"\`\n` +
+        `*   **Depth (Z):** \`${cfg.depth}"\`\n` +
+        `*   **Thickness (Y):** \`${cfg.thickness}"\`\n` +
+        `Click **Build Table Top**.`
+      );
+    }
 
     // Establish structural rigid glue constraints
     setTimeout(() => {

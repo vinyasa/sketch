@@ -63,13 +63,19 @@ export const createBoardSlice = (set, get) => ({
       setRecentColors,
       recentColors,
       pushHistory,
-      showToast
+      showToast,
+      addRecordedStep
     } = get();
     if (selectedItemIds.length === 0) {
       // No selection — update the global default for future new boards
       setDefaultMaterial(matDesc);
       const label = matDesc.type === 'color' ? matDesc.hex : matDesc.id;
       showToast(`Default material → ${label}`);
+
+      if (addRecordedStep) {
+        const matLabel = matDesc.type === 'color' ? `color \`${matDesc.hex}\`` : `wood type \`${matDesc.id}\``;
+        addRecordedStep(`In the **Materials** panel, set the default material for new boards to ${matLabel}.`);
+      }
     } else {
       pushHistory();
 
@@ -88,6 +94,14 @@ export const createBoardSlice = (set, get) => ({
       } : b));
       const label = matDesc.type === 'color' ? matDesc.hex : matDesc.id;
       showToast(`Material → ${label} ✓`);
+
+      if (addRecordedStep) {
+        const matLabel = matDesc.type === 'color' ? `color \`${matDesc.hex}\`` : `wood type \`${matDesc.id}\``;
+        const selectedNames = boards.filter(b => boardIds.has(b.id.toString())).map(b => `\`${b.name}\``).join(', ');
+        if (selectedNames) {
+          addRecordedStep(`In the **Materials** panel, apply the ${matLabel} to the selected board(s): ${selectedNames}.`);
+        }
+      }
     }
 
     // Track recent custom colours (max 8, newest first)
