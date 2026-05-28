@@ -43,7 +43,7 @@ const SingleBoardInspector = ({ selectedBoard }) => {
         constraintTargetMode, setConstraintTargetMode,
         setShowToolsPanel,
         removeHardware, updateHardware, selectedHardwareId, setSelectedHardwareId,
-        lumberyardSnapEnabled, updateSelectedBoards
+        lumberyardSnapEnabled, updateSelectedBoards, addRecordedStep
     } = useStore();
 
     // Cancel constraint mode if selection no longer includes the source board
@@ -128,6 +128,31 @@ const SingleBoardInspector = ({ selectedBoard }) => {
         });
 
         newBoard.name = `${baseName} ${maxIdx > 0 ? maxIdx + 1 : 2}`;
+
+        if (addRecordedStep) {
+            const formatVal = (val) => {
+                if (units === 'metric') {
+                    return `${(val * 25.4).toFixed(0)} mm`;
+                }
+                const standardFraction = val === 0.75 ? ' (3/4")' : val === 0.5 ? ' (1/2")' : val === 0.25 ? ' (1/4")' : val === 0.375 ? ' (3/8")' : '';
+                return `${parseFloat(val.toFixed(4))}"${standardFraction}`;
+            };
+
+            const offsetStr = formatVal(cloneOffset);
+            let modeBtn = 'Local (Auto)';
+            if (cloneMode === 'worldX') modeBtn = 'World X';
+            else if (cloneMode === 'worldY') modeBtn = 'World Y';
+            else if (cloneMode === 'worldZ') modeBtn = 'World Z';
+
+            const btnName = cloneMode === 'local' ? 'Clone (Thin Axis)' : `Clone along ${cloneMode.replace('world', '')}`;
+
+            const stepText = `In the Inspector Panel for \`${selectedBoard.name}\`, under **Clone Component**:\n` +
+                `*   Click the **${modeBtn}** button.\n` +
+                `*   Set the **Offset** to \`${offsetStr}\`.\n` +
+                `Click **${btnName}** to create a clone named \`${newBoard.name}\`.`;
+
+            addRecordedStep(stepText);
+        }
 
         pushHistory();
         setBoards([...boards, newBoard]);
