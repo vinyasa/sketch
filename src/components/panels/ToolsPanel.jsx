@@ -937,16 +937,76 @@ const ToolsPanel = () => {
                                             style={{ width: '100%', marginTop: '4px', accentColor: 'var(--accent-color)' }} />
                                     </div>
 
-                                    {/* Bevel Angle input */}
-                                    <div style={{ gridColumn: '1 / -1' }}>
-                                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Bevel (°) — blade tilt, + from bottom, − from top</div>
-                                        <input type="number" min="-60" max="60" step="1" value={displayOp.bevel ?? 0}
-                                            onChange={e => upd({ bevel: Math.max(-60, Math.min(60, parseFloat(e.target.value) || 0)) })}
-                                            style={inputStyle} />
-                                        <input type="range" min="-60" max="60" step="1" value={displayOp.bevel ?? 0}
-                                            onChange={e => upd({ bevel: parseFloat(e.target.value) })}
-                                            style={{ width: '100%', marginTop: '4px', accentColor: 'var(--accent-color)' }} />
-                                    </div>
+                                    {/* Bevel Angle & Direction UI */}
+                                    {(() => {
+                                        const rawBevel = displayOp.bevel ?? 0;
+                                        const bevelDir = rawBevel >= 0 ? 'left' : 'right';
+                                        const bevelAngle = Math.abs(rawBevel);
+
+                                        const changeBevel = (angle, dir) => {
+                                            const sign = dir === 'right' ? -1 : 1;
+                                            upd({ bevel: sign * angle });
+                                        };
+
+                                        return (
+                                            <div style={{ gridColumn: '1 / -1', marginTop: '6px' }}>
+                                                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
+                                                    Bevel Angle (°) & Direction
+                                                </div>
+                                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '8px' }}>
+                                                    <input type="number" min="0" max="60" step="1" value={bevelAngle}
+                                                        onChange={e => {
+                                                            const val = Math.max(0, Math.min(60, parseFloat(e.target.value) || 0));
+                                                            changeBevel(val, bevelDir);
+                                                        }}
+                                                        style={{ ...inputStyle, flex: 1, minWidth: '0' }} />
+
+                                                    {/* Direction toggle */}
+                                                    <div style={{ display: 'flex', gap: '2px', background: 'rgba(255,255,255,0.05)', padding: '2px', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
+                                                        <button 
+                                                            type="button"
+                                                            onClick={() => changeBevel(bevelAngle, 'left')} 
+                                                            style={{
+                                                                padding: '4px 8px', fontSize: '0.72rem', borderRadius: '4px', border: 'none', cursor: 'pointer', transition: 'all 0.15s',
+                                                                background: bevelDir === 'left' ? 'var(--accent-color)' : 'transparent',
+                                                                color: bevelDir === 'left' ? '#fff' : 'var(--text-muted)',
+                                                                fontWeight: bevelDir === 'left' ? 700 : 400
+                                                            }}
+                                                            title="Blade tilts left: the top face gets cut shorter, bottom stays the same."
+                                                        >
+                                                            ⬅ Tilt Left
+                                                        </button>
+                                                        <button 
+                                                            type="button"
+                                                            onClick={() => changeBevel(bevelAngle, 'right')} 
+                                                            style={{
+                                                                padding: '4px 8px', fontSize: '0.72rem', borderRadius: '4px', border: 'none', cursor: 'pointer', transition: 'all 0.15s',
+                                                                background: bevelDir === 'right' ? 'var(--accent-color)' : 'transparent',
+                                                                color: bevelDir === 'right' ? '#fff' : 'var(--text-muted)',
+                                                                fontWeight: bevelDir === 'right' ? 700 : 400
+                                                            }}
+                                                            title="Blade tilts right: the top stays the same, bottom gets cut shorter."
+                                                        >
+                                                            Tilt Right ➡
+                                                        </button>
+                                                    </div>
+                                                </div>
+
+                                                <input type="range" min="0" max="60" step="1" value={bevelAngle}
+                                                    onChange={e => {
+                                                        const val = parseFloat(e.target.value);
+                                                        changeBevel(val, bevelDir);
+                                                    }}
+                                                    style={{ width: '100%', accentColor: 'var(--accent-color)', height: '4px', background: 'rgba(255,255,255,0.1)', borderRadius: '2px', outline: 'none', margin: '4px 0' }} />
+
+                                                <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontStyle: 'italic', marginTop: '2px' }}>
+                                                    {bevelDir === 'left' 
+                                                        ? '💡 Left tilt: top face gets cut shorter, bottom stays original length.' 
+                                                        : '💡 Right tilt: top stays original length, bottom gets cut shorter.'}
+                                                </div>
+                                            </div>
+                                        );
+                                    })()}
 
                                     <p className="hint" style={{ gridColumn: '1 / -1', marginTop: '0' }}>
                                         Miter swings the cut across the face. Bevel tilts the blade sideways. Combine both for a compound miter.
@@ -1225,7 +1285,8 @@ function getToolSummary(op) {
             return `${op.startAngle ?? 0}°–${op.endAngle ?? 90}° · ${(op.axis || 'y').toUpperCase()} axis`;
         case 'miter': {
             const bevel = op.bevel ?? 0;
-            return `${faceLabel(op.face || 'x+')} · ${op.angle ?? 45}°${bevel > 0 ? ` · Bevel ${bevel}°` : ''}`;
+            const bevelText = bevel !== 0 ? ` · Bevel ${Math.abs(bevel)}° ${bevel > 0 ? 'Left' : 'Right'}` : '';
+            return `${faceLabel(op.face || 'x+')} · ${op.angle ?? 45}°${bevelText}`;
         }
         case 'subtract':
             return `Subtracting "${op.cutterName || 'unknown'}" · ${op.cutterShape || 'box'}`;

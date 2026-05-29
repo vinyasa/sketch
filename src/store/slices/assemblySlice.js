@@ -512,7 +512,8 @@ export const createAssemblySlice = (set, get) => ({
       groups,
       boards,
       setGroups,
-      setSelectedItemIds
+      setSelectedItemIds,
+      addRecordedStep
     } = get();
     const selectedBoard = selectedItemIds.length === 1 && boards.find(b => b.id.toString() === selectedItemIds[0]);
     const selectedGroup = selectedItemIds.length === 1 && Object.keys(groups).find(k => k === selectedItemIds[0]);
@@ -528,6 +529,9 @@ export const createAssemblySlice = (set, get) => ({
       }
     }));
     setSelectedItemIds([newId]);
+    if (addRecordedStep) {
+      addRecordedStep(`In the **Outliner** panel, click **+ Assembly** to create a new assembly \`${newId}\`.`);
+    }
   },
   // ─── Assembly Gluing ──────────────────────────────────────────────────────────
 

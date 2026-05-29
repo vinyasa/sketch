@@ -19,7 +19,8 @@ const SettingsPanel = () => {
         workspaceLayout, setWorkspaceLayout,
         lumberyardSnapEnabled, setLumberyardSnapEnabled,
         measurementStyle, setMeasurementStyle,
-        setShowAttributionDialog
+        setShowAttributionDialog,
+        setShowUserManualDialog
     } = useStore();
     const [confirmWipe, setConfirmWipe] = useState(false);
 
@@ -241,6 +242,31 @@ const SettingsPanel = () => {
                     Lumberyard Snapping
                 </label>
                 <p className="hint" style={hintStyle}>Auto-convert standard names like "2x4" into actual lumber size.</p>
+            </div>
+
+            <div className="inspector-card" style={{ gridColumn: 'span 2', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <label style={labelStyle}>User Manual & Shop Guide</label>
+                <p className="hint" style={hintStyle}>Open the official step-by-step woodworking manual, guide to workbench coordinates, and tools reference guide.</p>
+                <button
+                    className="nav-btn"
+                    style={{
+                        width: 'fit-content',
+                        padding: '6px 14px',
+                        fontSize: '0.72rem',
+                        fontWeight: 'bold',
+                        marginTop: '4px',
+                        borderColor: 'var(--accent-color)',
+                        color: 'var(--accent-color)',
+                        background: 'rgba(255, 122, 0, 0.05)',
+                        transition: 'all 0.2s',
+                        cursor: 'pointer'
+                    }}
+                    onMouseEnter={e => e.target.style.background = 'rgba(255, 122, 0, 0.15)'}
+                    onMouseLeave={e => e.target.style.background = 'rgba(255, 122, 0, 0.05)'}
+                    onClick={() => setShowUserManualDialog(true)}
+                >
+                    📖 Open User's Guide
+                </button>
             </div>
 
             <div className="inspector-card" style={{ gridColumn: 'span 2', display: 'flex', flexDirection: 'column', gap: '4px' }}>

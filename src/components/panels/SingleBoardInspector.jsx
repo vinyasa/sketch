@@ -19,7 +19,8 @@ function getToolSummary(op) {
         case 'miter': {
             const fl = { 'z+': 'Front', 'z-': 'Back', 'x+': 'Right', 'x-': 'Left' }[op.face] || op.face;
             const bv = op.bevel ?? 0;
-            return `${fl} end · ${op.angle ?? 45}°${bv > 0 ? ` · Bevel ${bv}°` : ''}`;
+            const bevelText = bv !== 0 ? ` · Bevel ${Math.abs(bv)}° ${bv > 0 ? 'Left' : 'Right'}` : '';
+            return `${fl} end · ${op.angle ?? 45}°${bevelText}`;
         }
         default:
             return op.type;

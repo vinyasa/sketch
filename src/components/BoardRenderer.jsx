@@ -233,6 +233,12 @@ const _buildMiterTool = (size, op) => {
   pivot[fenceAxis] = fenceSign * size[fenceAxis] / 2;
   const shiftToPivot = new THREE.Matrix4().makeTranslation(pivot[0], pivot[1], pivot[2]);
 
+  const m = new THREE.Matrix4()
+    .multiply(shiftToPivot)
+    .multiply(miterMatrix)
+    .multiply(bevelMatrix)
+    .multiply(shiftToOrigin);
+
   geo.applyMatrix4(m);
   return geo;
 };

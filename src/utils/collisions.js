@@ -77,8 +77,8 @@ export function getOverlappingBoards(boards) {
                 b2.board.operations?.some(op => op.type === 'subtract' && op.cutterId === b1.id);
             if (hasSubtract) continue;
 
-            // Ignore if they share the same parent group (e.g. carcass sides, door frame stiles/rails/panel)
-            if (b1.board.parentId && b1.board.parentId === b2.board.parentId) continue;
+            // Ignore if they share the same parent group (disabled to allow collision warnings inside cabinet/carcass groups)
+            // if (b1.board.parentId && b1.board.parentId === b2.board.parentId) continue;
 
             // Ignore if they are partners in an edge joint or joint operation (e.g. rabbet/dado mating faces)
             const isPartner = 

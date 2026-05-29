@@ -110,7 +110,7 @@ export const createBoardSlice = (set, get) => ({
       setRecentColors(updated);
     }
   },
-  toggleSelection: (id, isMulti, faceStr = null) => {
+  toggleSelection: (id, isMulti, faceStr = null, source = null) => {
     const {
       constraintTargetMode,
       setConstraintTargetMode,
@@ -237,6 +237,25 @@ export const createBoardSlice = (set, get) => ({
       }
       return;
     }
+
+    if (addRecordedStep) {
+      const board = boards.find(b => b.id.toString() === strId);
+      const group = groups[strId];
+      const name = board ? board.name : (group ? group.name || strId : strId);
+      if (source === 'outliner') {
+        const isDeselecting = selectedItemIds.includes(strId);
+        if (isDeselecting) {
+          addRecordedStep(`In the **Outliner** panel, click on \`${name}\` to deselect it.`);
+        } else if (isMulti) {
+          addRecordedStep(`In the **Outliner** panel, click on \`${name}\` to add it to the selection.`);
+        } else {
+          addRecordedStep(`In the **Outliner** panel, click on \`${name}\` to select it.`);
+        }
+      } else {
+        addRecordedStep(`Select \`${name}\`.`);
+      }
+    }
+
     if (isMulti) {
       setSelectedItemIds(prev => prev.includes(strId) ? prev.filter(x => x !== strId) : [...prev, strId]);
     } else {
@@ -370,8 +389,15 @@ export const createBoardSlice = (set, get) => ({
   },
   toggleBoardVisibility: id => {
     const {
-      setBoards
+      setBoards,
+      boards,
+      addRecordedStep
     } = get();
+    const board = boards.find(b => b.id === id);
+    if (board && addRecordedStep) {
+      const nextVisible = board.visible === false ? 'show' : 'hide';
+      addRecordedStep(`In the **Outliner** panel, click the visibility icon for \`${board.name}\` to ${nextVisible} it.`);
+    }
     setBoards(bds => bds.map(b => b.id === id ? {
       ...b,
       visible: b.visible === false ? true : false
@@ -379,8 +405,16 @@ export const createBoardSlice = (set, get) => ({
   },
   toggleGroupVisibility: groupId => {
     const {
-      setGroups
+      setGroups,
+      groups,
+      addRecordedStep
     } = get();
+    const cur = groups[groupId] || {};
+    if (addRecordedStep) {
+      const nextVisible = cur.visible === false ? 'show' : 'hide';
+      const name = cur.name || groupId;
+      addRecordedStep(`In the **Outliner** panel, click the visibility icon for the \`${name}\` assembly to ${nextVisible} it.`);
+    }
     setGroups(prev => {
       const cur = prev[groupId] || {};
       return {
@@ -625,7 +659,8 @@ export const createBoardSlice = (set, get) => ({
       setBoards,
       setGroups,
       groups,
-      boards
+      boards,
+      addRecordedStep
     } = get();
     e.preventDefault();
     e.stopPropagation();
@@ -645,6 +680,18 @@ export const createBoardSlice = (set, get) => ({
     pushHistory();
     const boardIds = new Set(ids.filter(id => boards.some(b => b.id.toString() === id)));
     const groupIds = ids.filter(id => groups[id] !== undefined);
+
+    if (addRecordedStep) {
+      const draggedNames = ids.map(id => {
+        const b = boards.find(x => x.id.toString() === id);
+        return b ? b.name : (groups[id] ? groups[id].name || id : id);
+      });
+      const namesList = draggedNames.map(name => `\`${name}\``).join(', ');
+      const parentName = newParentId === 'Workspace' ? 'Workspace' : (groups[newParentId] ? groups[newParentId].name || newParentId : newParentId);
+      const destLabel = newParentId === 'Workspace' ? 'Workspace root' : `\`${parentName}\` assembly`;
+      addRecordedStep(`In the **Outliner** panel, drag the component(s): ${namesList} and drop under the ${destLabel} to group them.`);
+    }
+
     setBoards(prev => prev.map(b => boardIds.has(b.id.toString()) ? {
       ...b,
       parentId: newParentId

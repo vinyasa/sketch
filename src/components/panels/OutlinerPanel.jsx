@@ -9,6 +9,7 @@ const OutlinerPanel = () => {
         setGroups, handleDragStart: onDragStart, handleDrop: onDrop,
         manualAddAssembly: onAddAssembly,
         overlappingBoardIds,
+        addRecordedStep,
     } = useStore();
 
     const onDragOver = (e) => { e.preventDefault(); e.stopPropagation(); };
@@ -49,12 +50,19 @@ const OutlinerPanel = () => {
                     onDragStart={e => onDragStart(e, nodeId.toString(), isGroup ? 'group' : 'board')}
                     onDragOver={onDragOver}
                     onDrop={e => { if (isGroup) onDrop(e, nodeId); }}
-                    onClick={(e) => toggleSelection(nodeId.toString(), e.shiftKey || e.ctrlKey || e.metaKey)}
+                    onClick={(e) => toggleSelection(nodeId.toString(), e.shiftKey || e.ctrlKey || e.metaKey, null, 'outliner')}
                 >
                     <span style={{ flex: 1, cursor: 'pointer', whiteSpace: 'nowrap' }}>
                         {isGroup && hasChildren && (
                             <span
-                                onClick={(e) => { e.stopPropagation(); setGroups(p => ({ ...p, [nodeId]: { ...p[nodeId], isExpanded: !p[nodeId].isExpanded } })); }}
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    const nextExpanded = !g.isExpanded;
+                                    if (addRecordedStep) {
+                                        addRecordedStep(`In the **Outliner** panel, click to ${nextExpanded ? 'expand' : 'collapse'} the \`${g.name || nodeId}\` assembly.`);
+                                    }
+                                    setGroups(p => ({ ...p, [nodeId]: { ...p[nodeId], isExpanded: nextExpanded } }));
+                                }}
                                 style={{ marginRight: '4px', display: 'inline-block', width: '12px' }}
                             >
                                 {g.isExpanded ? '⏷' : '⏵'}
@@ -105,11 +113,16 @@ const OutlinerPanel = () => {
     const rootNodes = Object.keys(groups).filter(k => groups[k].parentId === null);
 
     return (
-        <div className="tree-view" style={{ flex: 1, overflowY: 'auto', paddingBottom: '8px' }}>
+        <div
+            className="tree-view"
+            style={{ flex: 1, overflowY: 'auto', paddingBottom: '8px' }}
+            onDragOver={onDragOver}
+            onDrop={e => onDrop(e, 'Workspace')}
+        >
             <div className="tree-view" style={{ paddingBottom: '24px' }}>
                 {rootNodes.map(k => renderTree(k))}
 
-                <div style={{ marginTop: '14px', padding: '0 6px' }}>
+                <div style={{ marginTop: '14px', padding: '0 6px' }} onDrop={e => e.stopPropagation()}>
                     <button className="nav-btn" style={{ width: '100%', border: '1px solid var(--border-color)', background: 'rgba(0,0,0,0.05)', fontSize: '0.7rem', padding: '4px 8px' }} onClick={onAddAssembly}>+ Assembly</button>
                 </div>
             </div>

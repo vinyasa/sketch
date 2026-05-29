@@ -28,6 +28,7 @@ import ShelvingBuilderDialog from './components/dialogs/ShelvingBuilderDialog';
 import TableBaseBuilderDialog from './components/dialogs/TableBaseBuilderDialog';
 import TableTopBuilderDialog from './components/dialogs/TableTopBuilderDialog';
 import AiHelpDialog from './components/dialogs/AiHelpDialog';
+import UserManualDialog from './components/dialogs/UserManualDialog';
 import PrintDialog from './components/dialogs/PrintDialog';
 import SavePromptDialog from './components/dialogs/SavePromptDialog';
 import AttributionDialog from './components/dialogs/AttributionDialog';
@@ -185,7 +186,7 @@ export default function App() {
                 <main className="main-workspace">
                     {/* Settings and Cut List always remain floating for width reasons */}
                     {showSettingsPanel && (
-                        <DraggablePanel title="Settings" defaultPosition={getSmartPosition(780, 500, 'center', headerBottom)} defaultSize={{ width: 780 }} topMargin={headerBottom} onClose={() => setShowSettingsPanel(false)}>
+                        <DraggablePanel title="Settings" defaultPosition={getSmartPosition(780, 500, 'center', headerBottom)} defaultSize={{ width: 780 }} topMargin={headerBottom} onClose={() => setShowSettingsPanel(false)} zIndex={1000}>
                             <SettingsPanel />
                         </DraggablePanel>
                     )}
@@ -343,6 +344,7 @@ export default function App() {
                 <TableBaseBuilderDialog />
                 <TableTopBuilderDialog />
                 <AiHelpDialog />
+                <UserManualDialog />
                 <PrintDialog />
                 <SavePromptDialog />
                 <AttributionDialog />

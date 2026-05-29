@@ -352,6 +352,9 @@ const useStore = create((set, get) => ({
     showAiHelpDialog: false,
     setShowAiHelpDialog: (v) => set({ showAiHelpDialog: typeof v === 'function' ? v(get().showAiHelpDialog) : v }),
 
+    showUserManualDialog: false,
+    setShowUserManualDialog: (v) => set({ showUserManualDialog: typeof v === 'function' ? v(get().showUserManualDialog) : v }),
+
     showAttributionDialog: false,
     setShowAttributionDialog: (v) => set({ showAttributionDialog: typeof v === 'function' ? v(get().showAttributionDialog) : v }),
 
