@@ -1,4 +1,4 @@
-# Little Lucey Woodcraft: Versioning & Releases Guide
+# Luceysketch: Versioning & Releases Guide
 
 This document outlines the system and process for managing application versions and cutting new open-source releases on GitHub.
 

@@ -84,6 +84,249 @@ export const createOperationSlice = (set, get) => ({
       cutterCylinder: cutterBoard.cylinder || null,
       relativeMatrix: relativeMatrix.elements.slice() // 16-element Float64 array
     };
+
+    // ── Check if the subtraction splits the board ────────────────────
+    const hw = cutterBoard.size[0] / 2;
+    const hh = cutterBoard.size[1] / 2;
+    const hd = cutterBoard.size[2] / 2;
+    const vertices = [
+      new THREE.Vector3(-hw, -hh, -hd),
+      new THREE.Vector3(hw, -hh, -hd),
+      new THREE.Vector3(-hw, hh, -hd),
+      new THREE.Vector3(hw, hh, -hd),
+      new THREE.Vector3(-hw, -hh, hd),
+      new THREE.Vector3(hw, -hh, hd),
+      new THREE.Vector3(-hw, hh, hd),
+      new THREE.Vector3(hw, hh, hd)
+    ];
+
+    let minX = Infinity, maxX = -Infinity;
+    let minY = Infinity, maxY = -Infinity;
+    let minZ = Infinity, maxZ = -Infinity;
+
+    vertices.forEach(v => {
+      v.applyMatrix4(relativeMatrix);
+      if (v.x < minX) minX = v.x;
+      if (v.x > maxX) maxX = v.x;
+      if (v.y < minY) minY = v.y;
+      if (v.y > maxY) maxY = v.y;
+      if (v.z < minZ) minZ = v.z;
+      if (v.z > maxZ) maxZ = v.z;
+    });
+
+    const targetHw = targetBoard.size[0] / 2;
+    const targetHh = targetBoard.size[1] / 2;
+    const targetHd = targetBoard.size[2] / 2;
+
+    const eps = 0.05; // 3/64" tolerance
+    const coversX = minX <= -targetHw + eps && maxX >= targetHw - eps;
+    const coversY = minY <= -targetHh + eps && maxY >= targetHh - eps;
+    const coversZ = minZ <= -targetHd + eps && maxZ >= targetHd - eps;
+
+    let splitAxis = null;
+    let cutMin = 0, cutMax = 0;
+
+    if (coversY && coversZ && minX > -targetHw + eps && maxX < targetHw - eps) {
+      splitAxis = 'x';
+      cutMin = minX;
+      cutMax = maxX;
+    } else if (coversX && coversZ && minY > -targetHh + eps && maxY < targetHh - eps) {
+      splitAxis = 'y';
+      cutMin = minY;
+      cutMax = maxY;
+    } else if (coversX && coversY && minZ > -targetHd + eps && maxZ < targetHd - eps) {
+      splitAxis = 'z';
+      cutMin = minZ;
+      cutMax = maxZ;
+    }
+
+    if (splitAxis) {
+      let size1 = null, size2 = null;
+      let P1_local = null, P2_local = null;
+
+      if (splitAxis === 'x') {
+        const w1 = cutMin + targetHw;
+        const w2 = targetHw - cutMax;
+        if (w1 > 0.05 && w2 > 0.05) {
+          size1 = [w1, targetBoard.size[1], targetBoard.size[2]];
+          size2 = [w2, targetBoard.size[1], targetBoard.size[2]];
+          P1_local = [(-targetHw + cutMin) / 2, 0, 0];
+          P2_local = [(cutMax + targetHw) / 2, 0, 0];
+        }
+      } else if (splitAxis === 'y') {
+        const h1 = cutMin + targetHh;
+        const h2 = targetHh - cutMax;
+        if (h1 > 0.05 && h2 > 0.05) {
+          size1 = [targetBoard.size[0], h1, targetBoard.size[2]];
+          size2 = [targetBoard.size[0], h2, targetBoard.size[2]];
+          P1_local = [0, (-targetHh + cutMin) / 2, 0];
+          P2_local = [0, (cutMax + targetHh) / 2, 0];
+        }
+      } else if (splitAxis === 'z') {
+        const d1 = cutMin + targetHd;
+        const d2 = targetHd - cutMax;
+        if (d1 > 0.05 && d2 > 0.05) {
+          size1 = [targetBoard.size[0], targetBoard.size[1], d1];
+          size2 = [targetBoard.size[0], targetBoard.size[1], d2];
+          P1_local = [0, 0, (-targetHd + cutMin) / 2];
+          P2_local = [0, 0, (cutMax + targetHd) / 2];
+        }
+      }
+
+      if (size1 && size2) {
+        const id1 = Date.now().toString() + "_1";
+        const id2 = Date.now().toString() + "_2";
+
+        const pos1 = new THREE.Vector3(...P1_local).applyMatrix4(Wt);
+        const pos2 = new THREE.Vector3(...P2_local).applyMatrix4(Wt);
+
+        const newBoard1 = {
+          ...targetBoard,
+          id: id1,
+          name: `${targetBoard.name} (Part 1)`,
+          size: size1,
+          position: [pos1.x, pos1.y, pos1.z],
+          operations: (targetBoard.operations || [])
+            .map(o => filterOperationsForPiece(o, 1, splitAxis, P1_local, P2_local, size1, size2, targetBoard))
+            .filter(Boolean),
+        };
+
+        const newBoard2 = {
+          ...targetBoard,
+          id: id2,
+          name: `${targetBoard.name} (Part 2)`,
+          size: size2,
+          position: [pos2.x, pos2.y, pos2.z],
+          operations: (targetBoard.operations || [])
+            .map(o => filterOperationsForPiece(o, 2, splitAxis, P1_local, P2_local, size1, size2, targetBoard))
+            .filter(Boolean),
+        };
+
+        // ── Audit constraints on the original split board ─────────────
+        const constraints = get().constraints || {};
+        let newConstraints = { ...constraints };
+
+        Object.entries(constraints).forEach(([cId, c]) => {
+          const involvesOriginal = c.boardAId?.toString() === targetBoard.id.toString() || c.boardBId?.toString() === targetBoard.id.toString();
+          if (!involvesOriginal) return;
+
+          // Remove the original constraint
+          delete newConstraints[cId];
+
+          if (c.type === 'Flush') {
+            const isA = c.boardAId?.toString() === targetBoard.id.toString();
+            const targetFace = isA ? c.faceA : c.faceB;
+
+            // Check if the flush face is along the split axis
+            const isFaceOnSplitAxis = targetFace.startsWith(splitAxis);
+
+            if (!isFaceOnSplitAxis) {
+              // Rule 1: Perpendicular face — keep on both new pieces!
+              const flush1Id = `flush_split_1_${cId}_${Date.now()}`;
+              newConstraints[flush1Id] = {
+                  ...c,
+                  boardAId: isA ? id1 : c.boardAId,
+                  boardBId: isA ? c.boardBId : id1
+              };
+
+              const flush2Id = `flush_split_2_${cId}_${Date.now()}`;
+              newConstraints[flush2Id] = {
+                  ...c,
+                  boardAId: isA ? id2 : c.boardAId,
+                  boardBId: isA ? c.boardBId : id2
+              };
+            } else {
+              // Rule 2: Parallel face — keep only on the piece that occupies that outer face
+              const isNegativeFace = targetFace.endsWith('-');
+              if (isNegativeFace) {
+                // Keep only on Part 1 (negative/left/bottom/back piece)
+                const flush1Id = `flush_split_1_${cId}_${Date.now()}`;
+                newConstraints[flush1Id] = {
+                    ...c,
+                    boardAId: isA ? id1 : c.boardAId,
+                    boardBId: isA ? c.boardBId : id1
+                };
+              } else {
+                // Keep only on Part 2 (positive/right/top/front piece)
+                const flush2Id = `flush_split_2_${cId}_${Date.now()}`;
+                newConstraints[flush2Id] = {
+                    ...c,
+                    boardAId: isA ? id2 : c.boardAId,
+                    boardBId: isA ? c.boardBId : id2
+                };
+              }
+            }
+            return;
+          }
+
+          if (c.type === 'Glue') {
+            const isA = c.boardAId?.toString() === targetBoard.id.toString();
+            const partnerId = isA ? c.boardBId : c.boardAId;
+            const partnerBoard = boards.find(bd => bd.id.toString() === partnerId.toString());
+            if (!partnerBoard) return;
+
+            // Recalculate rigid offsets for Part 1
+            const glue1Id = `glue_split_1_${cId}_${Date.now()}`;
+            const offset1 = isA
+                ? [partnerBoard.position[0] - pos1.x, partnerBoard.position[1] - pos1.y, partnerBoard.position[2] - pos1.z]
+                : [pos1.x - partnerBoard.position[0], pos1.y - partnerBoard.position[1], pos1.z - partnerBoard.position[2]];
+            newConstraints[glue1Id] = {
+                ...c,
+                boardAId: isA ? id1 : partnerId,
+                boardBId: isA ? partnerId : id1,
+                offset: offset1
+            };
+
+            // Recalculate rigid offsets for Part 2
+            const glue2Id = `glue_split_2_${cId}_${Date.now()}`;
+            const offset2 = isA
+                ? [partnerBoard.position[0] - pos2.x, partnerBoard.position[1] - pos2.y, partnerBoard.position[2] - pos2.z]
+                : [pos2.x - partnerBoard.position[0], pos2.y - partnerBoard.position[1], pos2.z - partnerBoard.position[2]];
+            newConstraints[glue2Id] = {
+                ...c,
+                boardAId: isA ? id2 : partnerId,
+                boardBId: isA ? partnerId : id2,
+                offset: offset2
+            };
+          }
+        });
+
+        pushHistory();
+
+        // Update boards list (hide the cutter, delete original target, insert Part 1 & 2)
+        const nextBoards = boards.filter(b => b.id.toString() !== targetBoard.id.toString()).map(b => {
+          if (b.id.toString() === cutterBoard.id.toString()) {
+            return { ...b, visible: false };
+          }
+          return b;
+        });
+        nextBoards.push(newBoard1, newBoard2);
+
+        set({
+          boards: nextBoards,
+          constraints: newConstraints,
+          selectedItemIds: [id1, id2]
+        });
+
+        // Auto-show the cutter board after 2 seconds
+        setTimeout(() => {
+          const latestBoards = get().boards;
+          if (latestBoards.some(b => b.id.toString() === cutterBoard.id.toString())) {
+            setBoards(prev => prev.map(b => {
+              if (b.id.toString() === cutterBoard.id.toString()) {
+                return { ...b, visible: true };
+              }
+              return b;
+            }));
+          }
+        }, 2000);
+
+        showToast(`🔪 Subtracted and split "${targetBoard.name}" into "${newBoard1.name}" and "${newBoard2.name}"`);
+        return;
+      }
+    }
+
+    // ── Standard Subtraction (no split) ──────────────────────────────
     pushHistory();
     setBoards(prev => prev.map(b => {
       if (b.id.toString() === targetBoard.id.toString()) {
@@ -92,7 +335,6 @@ export const createOperationSlice = (set, get) => ({
           operations: [...(b.operations || []), op]
         };
       }
-      // Auto-hide the cutter board
       if (b.id.toString() === cutterBoard.id.toString()) {
         return {
           ...b,
@@ -101,6 +343,20 @@ export const createOperationSlice = (set, get) => ({
       }
       return b;
     }));
+
+    // Auto-show the cutter board after 2 seconds
+    setTimeout(() => {
+      const latestBoards = get().boards;
+      if (latestBoards.some(b => b.id.toString() === cutterBoard.id.toString())) {
+        setBoards(prev => prev.map(b => {
+          if (b.id.toString() === cutterBoard.id.toString()) {
+            return { ...b, visible: true };
+          }
+          return b;
+        }));
+      }
+    }, 2000);
+
     showToast(`🔪 Subtracted "${cutterBoard.name}" from "${targetBoard.name}"`);
   },
   // ─── Automated Rabbet Joint ──────────────────────────────────────────────
@@ -879,3 +1135,186 @@ export const createOperationSlice = (set, get) => ({
     return removedCount;
   }
 });
+
+function filterOperationsForPiece(op, pieceIdx, splitAxis, P1_local, P2_local, size1, size2, targetBoard) {
+  if (op.type === 'subtract') return null;
+
+  // 1. Miter cuts: face-aligned along the split axis
+  if (op.type === 'miter') {
+    const face = op.face || 'x+';
+    if (face.startsWith(splitAxis)) {
+      const isNegative = face.endsWith('-');
+      if (isNegative && pieceIdx === 2) return null; // negative face is only on Part 1
+      if (!isNegative && pieceIdx === 1) return null; // positive face is only on Part 2
+    }
+  }
+
+  // 2. Dado cuts: face-aligned
+  if (op.type === 'dado') {
+    const face = op.face || 'top';
+    const faceAxis = { top: 'y', bottom: 'y', front: 'z', back: 'z', left: 'x', right: 'x' }[face];
+    
+    if (faceAxis === splitAxis) {
+      const isNegative = ['left', 'bottom', 'back'].includes(face);
+      if (isNegative && pieceIdx === 2) return null;
+      if (!isNegative && pieceIdx === 1) return null;
+    }
+
+    // Offset adjustment:
+    const channelDir = op.direction || 'x';
+    const faceAxes = {
+      top:    ['x', 'z'],
+      bottom: ['x', 'z'],
+      front:  ['x', 'y'],
+      back:   ['x', 'y'],
+      right:  ['y', 'z'],
+      left:   ['y', 'z'],
+    }[face] || ['x', 'z'];
+    
+    const offsetAxis = faceAxes[0] === channelDir ? faceAxes[1] : faceAxes[0];
+    if (offsetAxis === splitAxis) {
+      const shift = pieceIdx === 1 ? P1_local[splitAxis === 'x' ? 0 : splitAxis === 'y' ? 1 : 2] : P2_local[splitAxis === 'x' ? 0 : splitAxis === 'y' ? 1 : 2];
+      return {
+        ...op,
+        offset: op.offset - shift
+      };
+    }
+  }
+
+  // 3. Pocket Holes: face-aligned and edge-pointing
+  if (op.type === 'pocket-holes') {
+    const face = op.face || 'bottom';
+    const faceAxis = { top: 'y', bottom: 'y', front: 'z', back: 'z', left: 'x', right: 'x' }[face];
+    
+    if (faceAxis === splitAxis) {
+      const isNegative = ['left', 'bottom', 'back'].includes(face);
+      if (isNegative && pieceIdx === 2) return null;
+      if (!isNegative && pieceIdx === 1) return null;
+    }
+
+    const edge = op.edge || 'left';
+    const edgeAxis = { top: 'y', bottom: 'y', front: 'z', back: 'z', left: 'x', right: 'x' }[edge];
+    if (edgeAxis === splitAxis) {
+      const isNegativeEdge = ['left', 'bottom', 'back'].includes(edge);
+      if (isNegativeEdge && pieceIdx === 2) return null; // negative edge is only on Part 1
+      if (!isNegativeEdge && pieceIdx === 1) return null; // positive edge is only on Part 2
+    }
+  }
+
+  // 4. Dowel Holes: face-aligned
+  if (op.type === 'dowel-holes') {
+    const face = op.face || 'top';
+    const faceAxis = { top: 'y', bottom: 'y', front: 'z', back: 'z', left: 'x', right: 'x' }[face];
+    
+    if (faceAxis === splitAxis) {
+      const isNegative = ['left', 'bottom', 'back'].includes(face);
+      if (isNegative && pieceIdx === 2) return null;
+      if (!isNegative && pieceIdx === 1) return null;
+    }
+  }
+
+  // 5. Edge Profiles: edge-aligned
+  if (op.type === 'edge-profile') {
+    const edge = op.edge || 'y+z+';
+    if (edge.includes(splitAxis)) {
+      const idx = edge.indexOf(splitAxis);
+      if (idx !== -1 && idx + 1 < edge.length) {
+        const sign = edge[idx + 1];
+        if (sign === '-' && pieceIdx === 2) return null;
+        if (sign === '+' && pieceIdx === 1) return null;
+      }
+    }
+  }
+
+  // 6. Cove operations: edge-aligned
+  if (op.type === 'cove') {
+    const edge = op.edge || 'top';
+    const edgeAxis = { top: 'y', bottom: 'y', left: 'x', right: 'x' }[edge];
+    if (edgeAxis === splitAxis) {
+      const isNegative = ['left', 'bottom'].includes(edge);
+      if (isNegative && pieceIdx === 2) return null;
+      if (!isNegative && pieceIdx === 1) return null;
+    }
+  }
+
+  // 7. Hole operations: center-aligned
+  if (op.type === 'hole') {
+    if (op.face !== undefined) {
+      // Blind, face-aligned hole (e.g. Dowel hole)
+      const face = op.face || 'top';
+      const faceAxis = { top: 'y', bottom: 'y', front: 'z', back: 'z', left: 'x', right: 'x' }[face];
+      
+      if (faceAxis === splitAxis) {
+        const isNegative = ['left', 'bottom', 'back'].includes(face);
+        if (isNegative && pieceIdx === 2) return null;
+        if (!isNegative && pieceIdx === 1) return null;
+      }
+
+      // Offset adjustment:
+      const faceAxes = {
+        top:    [0, 2],
+        bottom: [0, 2],
+        front:  [0, 1],
+        back:   [0, 1],
+        right:  [1, 2],
+        left:   [1, 2],
+      }[face] || [0, 2];
+
+      const fa0 = faceAxes[0];
+      const fa1 = faceAxes[1];
+      const spanFaceAxisIdx = targetBoard.size[fa0] >= targetBoard.size[fa1] ? fa0 : fa1;
+      const thicknessFaceAxisIdx = spanFaceAxisIdx === fa0 ? fa1 : fa0;
+
+      const axesNames = ['x', 'y', 'z'];
+      const spanAxis = axesNames[spanFaceAxisIdx];
+      const thicknessAxis = axesNames[thicknessFaceAxisIdx];
+
+      const shift = pieceIdx === 1 
+        ? P1_local[splitAxis === 'x' ? 0 : splitAxis === 'y' ? 1 : 2] 
+        : P2_local[splitAxis === 'x' ? 0 : splitAxis === 'y' ? 1 : 2];
+
+      if (spanAxis === splitAxis) {
+        return {
+          ...op,
+          offset: (op.offset ?? 0) - shift
+        };
+      } else if (thicknessAxis === splitAxis) {
+        return {
+          ...op,
+          offsetY: (op.offsetY ?? 0) - shift
+        };
+      }
+      return op;
+    }
+
+    // Standard through-hole
+    const holeAxis = op.axis || 'y';
+    let axisX = 'x', axisY = 'z';
+    if (holeAxis === 'x') {
+      axisX = 'z';
+      axisY = 'y';
+    } else if (holeAxis === 'y') {
+      axisX = 'x';
+      axisY = 'z';
+    } else {
+      axisX = 'x';
+      axisY = 'y';
+    }
+
+    const shift = pieceIdx === 1 ? P1_local[splitAxis === 'x' ? 0 : splitAxis === 'y' ? 1 : 2] : P2_local[splitAxis === 'x' ? 0 : splitAxis === 'y' ? 1 : 2];
+
+    if (axisX === splitAxis) {
+      return {
+        ...op,
+        offsetX: op.offsetX - shift
+      };
+    } else if (axisY === splitAxis) {
+      return {
+        ...op,
+        offsetY: op.offsetY - shift
+      };
+    }
+  }
+
+  return op;
+}

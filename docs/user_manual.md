@@ -300,7 +300,7 @@ Here is a quick reference guide to using each interactive tool inside the **🪚
 *   **pocket-holes Pocket Holes**: Automatically space pocket screw pocket joints on board backs or bottom faces. Set count and spacing to 'auto'.
 *   **dowel-holes Dowels**: Drills structural dowel pins. Define hole diameters (1/4", 3/8", 1/2") and depth to mate boards rigidly.
 *   **🔗 Edge Joints**: Select 2 touching boards to apply Single Rabbets, Dual Rabbets, Miters, or Butt joints. Click `⇄ Flip` to switch which board receives the recess.
-*   **🔪 Boolean Subtract**: Select 2 overlapping boards. Click `A - B` to carve board B's exact overlap out of board A or vice versa.
+*   **🔪 Boolean Subtract**: Select 2 overlapping boards. Click `A - B` to carve one board's shape out of another. The cutter board temporarily becomes invisible for 2 seconds to show off the cut before reappearing. If the cut completely divides the target board, it dynamically splits into separate, named parts (`Part 1` and `Part 2`) with custom-recalculated rigid Glue links preserved. Flush constraints are kept on both new pieces if perpendicular to the cut axis, or preserved on the correct outer piece if parallel to it.
 
 ---
 

@@ -1,6 +1,6 @@
-# 🙋 Getting Support for Little Lucey Woodcraft
+# 🙋 Getting Support for Luceysketch
 
-Thank you for using Little Lucey Woodcraft!
+Thank you for using Luceysketch!
 
 > [!NOTE]
 > **A quick note about this project:** I am not a professional software developer. I am a hobby tech nerd and a passionate woodworker building this tool in my spare time to solve real challenges in my own shop.
@@ -54,7 +54,7 @@ The application heavily relies on your browser's persistent `localStorage` cache
 *   The page will reload with a fresh, clean workbench canvas.
 
 ### 2. Browser WebGL Support
-Little Lucey Woodcraft requires WebGL acceleration to run the Three.js 3D viewport. 
+Luceysketch requires WebGL acceleration to run the Three.js 3D viewport. 
 *   Ensure that **Hardware Acceleration** is enabled in your browser settings.
 *   Visit [get.webgl.org](https://get.webgl.org/) to verify if your device supports WebGL.
 
