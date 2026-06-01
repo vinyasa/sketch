@@ -1,6 +1,6 @@
 # Open Source Attributions & Licenses
 
-This project, **Little Lucey Woodcraft**, is built using the following incredible open-source libraries. We are deeply grateful to the authors, contributors, and maintainers of these projects who make modern web-based 3D applications possible.
+This project, **Sketch**, is built using the following incredible open-source libraries. We are deeply grateful to the authors, contributors, and maintainers of these projects who make modern web-based 3D applications possible.
 
 ---
 
