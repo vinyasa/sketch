@@ -11,9 +11,7 @@ Luceysketch brings professional-grade 3D woodworking design straight to the brow
 *   **⚡ Parametric Builders**: Generate complex assemblies in seconds using specialized builders for Cabinets, Drawers, Boxes, Shaker Doors, Face Frames, Shelving, and Table Bases/Tops.
 *   **📐 Active 3D Viewport**: Edit and align components in real time using a precision 3D grid, measurements, boundary selection envelopes, and snapping constraints.
 *   **📋 Automated Cut Lists**: Instant generation of material cut lists showing accurate widths, lengths, thickness, and wood species (Pine, Cherry, Walnut, Oak).
-*   **🔴 Step-by-Step Recorder**: Record your assembly processes to create visual guides and shop tutorials for your assembly workflows.
 *   **💡 Interactive Environments**: Toggle between light and dark workbench settings, adjust directional/ambient lighting, and review wood materials in realistic viewport renders.
-*   **🤖 AI Design Helper**: Integrated Gemini assistant trained specifically to help with woodworking calculations, construction advice, and coordinate layout guidelines.
 
 ---
 
