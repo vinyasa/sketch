@@ -17,7 +17,7 @@ import ToolsPanel from './components/panels/ToolsPanel';
 import HardwarePanel from './components/panels/HardwarePanel';
 import AssembliesPanel from './components/panels/AssembliesPanel';
 import AnimationPanel from './components/panels/AnimationPanel';
-import TutorialRecorderPanel from './components/panels/TutorialRecorderPanel';
+// import TutorialRecorderPanel from './components/panels/TutorialRecorderPanel';
 import NewBoardDialog from './components/dialogs/NewBoardDialog';
 import CabinetBuilderDialog from './components/dialogs/CabinetBuilderDialog';
 import BoxBuilderDialog from './components/dialogs/BoxBuilderDialog';
@@ -244,11 +244,11 @@ export default function App() {
                         </DraggablePanel>
                     )}
 
-                    {showRecorderPanel && (
+                    {/* {showRecorderPanel && (
                         <DraggablePanel title="🔴 Step-by-Step Recorder" defaultPosition={getSmartPosition(340, 480, 'center', headerBottom)} defaultSize={{ width: 340 }} topMargin={headerBottom} onClose={() => setShowRecorderPanel(false)} zIndex={600}>
                             <TutorialRecorderPanel />
                         </DraggablePanel>
-                    )}
+                    )} */}
 
                     {/* Draggable overlays are only rendered if NOT in docked mode */}
                     {!isDocked && showOutlinerPanel && (

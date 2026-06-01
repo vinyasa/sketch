@@ -148,7 +148,7 @@ const AppHeader = () => {
                             <input type="checkbox" checked={showMeasurements} onChange={e => setShowMeasurements(e.target.checked)} style={{ accentColor: 'var(--accent-color)', width: '12px', height: '12px', cursor: 'pointer' }} />
                             Dims
                         </label>
-                        <button 
+                        {/* <button 
                             className={`nav-btn ${showRecorderPanel ? 'active' : ''}`} 
                             onClick={() => setShowRecorderPanel(!showRecorderPanel)}
                             title="Step-by-Step Tutorial Recorder"
@@ -165,7 +165,7 @@ const AppHeader = () => {
                                 }} />
                             ) : '🔴'}
                             Record
-                        </button>
+                        </button> */}
 
                     </nav>
                 </div>
