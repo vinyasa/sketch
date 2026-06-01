@@ -80,4 +80,4 @@ To keep releases clean and consistent:
 ---
 
 ## 📜 License
-By contributing to Little Lucey Woodcraft, you agree that your contributions will be licensed under the project's MIT License. Full open-source attributions can be reviewed in `Attribution.md`.
+By contributing to Little Lucey Woodcraft, you agree that your contributions will be licensed under the project's GNU GPL v3 License. Full open-source attributions and licenses can be reviewed in `Attribution.md`.

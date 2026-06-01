@@ -86,4 +86,4 @@ If you encounter an overlap physics bug, have an idea for a table builder, or ne
 
 ## 📜 License
 
-This project is licensed under the MIT License. See [Attribution.md](Attribution.md) for full license text and open-source attributions.
+This project is licensed under the GNU GPL v3 License - see the [LICENSE](LICENSE) file for details. Third-party library attributions and licenses are documented in [Attribution.md](Attribution.md).
