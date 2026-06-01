@@ -64,7 +64,7 @@ This outputs a optimized, single-page bundle in the `/dist` directory, ready to 
 ## 📖 Documentation & Support
 
 *   **User Guide & Workshop Manual**: Read the step-by-step guide on coordinates, dimensions, and assembly styles inside the application under the **📖 Open User's Guide** settings card, or view the source raw document in [docs/user_manual.md](docs/user_manual.md).
-*   **Development & Versioning**: For developers interested in releasing patches or understanding the CalVer pipeline, see our internal [docs_local/versioning_guide.md](docs_local/versioning_guide.md) (local-only guide).
+*   **Development & Versioning**: For developers interested in releasing patches or understanding the CalVer pipeline, see our local-only development guide at `docs_local/versioning_guide.md` inside the codebase.
 
 ---
 
