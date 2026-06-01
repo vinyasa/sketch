@@ -26,5 +26,8 @@ dist-ssr
 # Local-only documentation
 docs_local/
 
+# Local development scratch files
+scratch/
+
 # Environment configurations containing API Keys
 .env-sketch
