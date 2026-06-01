@@ -767,34 +767,49 @@ const ToolsPanel = () => {
                         )}
 
                         {/* ── Hole Editor ── */}
-                        {op.type === 'hole' && (
-                            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '8px' }}>
-                                <div style={{ gridColumn: '1 / -1' }}>
-                                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Hole Radius (in)</div>
-                                    <input type="number" min="0.125" step="0.125" value={parseFloat((displayOp.radius ?? 0).toFixed(4))} onChange={e => upd({ radius: Math.max(0, parseFloat(e.target.value) || 0) })} style={inputStyle} />
-                                </div>
-                                <div>
-                                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Offset X (in)</div>
-                                    <input type="number" step="0.25" value={parseFloat((displayOp.offsetX ?? 0).toFixed(4))} onChange={e => upd({ offsetX: parseFloat(e.target.value) || 0 })} style={inputStyle} />
-                                </div>
-                                <div>
-                                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Offset Y (in)</div>
-                                    <input type="number" step="0.25" value={parseFloat((displayOp.offsetY ?? 0).toFixed(4))} onChange={e => upd({ offsetY: parseFloat(e.target.value) || 0 })} style={inputStyle} />
-                                </div>
-                                <div style={{ gridColumn: '1 / -1' }}>
-                                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Axis</div>
-                                    <div style={{ display: 'flex', gap: '2px' }}>
-                                        {['x', 'y', 'z'].map(a => {
-                                            const axisColor = { x: 'rgba(255, 60, 60', y: 'rgba(60, 200, 90', z: 'rgba(60, 150, 255' }[a];
-                                            const isActive = displayOp.axis === a;
-                                            return (
-                                                <button key={a} onClick={() => upd({ axis: a })} style={{ flex: 1, padding: '5px', fontSize: '0.8rem', borderRadius: '4px', border: isActive ? `1px solid ${axisColor}, 0.8)` : '1px solid var(--border-color)', background: isActive ? `${axisColor}, 0.25)` : `${axisColor}, 0.07)`, color: isActive ? '#fff' : 'var(--text-muted)', cursor: 'pointer', fontWeight: isActive ? 700 : 400, transition: 'all 0.15s' }}>{a.toUpperCase()}</button>
-                                            );
-                                        })}
+                        {op.type === 'hole' && (() => {
+                            const holeAxis = displayOp.axis || 'y';
+                            let labelX = 'Offset X';
+                            let labelY = 'Offset Y';
+                            if (holeAxis === 'x') {
+                                labelX = 'Offset Z';
+                                labelY = 'Offset Y';
+                            } else if (holeAxis === 'y') {
+                                labelX = 'Offset X';
+                                labelY = 'Offset Z';
+                            }
+                            return (
+                                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '8px' }}>
+                                    <div style={{ gridColumn: '1 / -1' }}>
+                                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Hole Diameter (in)</div>
+                                        <input type="number" min="0.25" step="0.125" value={parseFloat(((displayOp.radius ?? 0) * 2).toFixed(4))} onChange={e => upd({ radius: Math.max(0, (parseFloat(e.target.value) || 0) / 2) })} style={inputStyle} />
+                                    </div>
+                                    <div>
+                                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>{labelX} (in)</div>
+                                        <input type="number" step="0.25" value={parseFloat((displayOp.offsetX ?? 0).toFixed(4))} onChange={e => upd({ offsetX: parseFloat(e.target.value) || 0 })} style={inputStyle} />
+                                    </div>
+                                    <div>
+                                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>{labelY} (in)</div>
+                                        <input type="number" step="0.25" value={parseFloat((displayOp.offsetY ?? 0).toFixed(4))} onChange={e => upd({ offsetY: parseFloat(e.target.value) || 0 })} style={inputStyle} />
+                                    </div>
+                                    <div style={{ gridColumn: '1 / -1' }}>
+                                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Axis</div>
+                                        <div style={{ display: 'flex', gap: '2px' }}>
+                                            {['x', 'y', 'z'].map(a => {
+                                                const axisColor = { x: 'rgba(255, 60, 60', y: 'rgba(60, 200, 90', z: 'rgba(60, 150, 255' }[a];
+                                                const isActive = displayOp.axis === a;
+                                                return (
+                                                    <button key={a} onClick={() => {
+                                                        const nextOffsets = convertHoleOffsets(displayOp.offsetX || 0, displayOp.offsetY || 0, displayOp.axis || 'y', a);
+                                                        upd({ axis: a, ...nextOffsets });
+                                                    }} style={{ flex: 1, padding: '5px', fontSize: '0.8rem', borderRadius: '4px', border: isActive ? `1px solid ${axisColor}, 0.8)` : '1px solid var(--border-color)', background: isActive ? `${axisColor}, 0.25)` : `${axisColor}, 0.07)`, color: isActive ? '#fff' : 'var(--text-muted)', cursor: 'pointer', fontWeight: isActive ? 700 : 400, transition: 'all 0.15s' }}>{a.toUpperCase()}</button>
+                                                );
+                                            })}
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                        )}
+                            );
+                        })()}
 
                         {/* ── Dado Editor ── */}
                         {op.type === 'dado' && (() => {
@@ -1278,7 +1293,7 @@ function getToolSummary(op) {
         case 'dado':
             return `${op.face || 'top'} surface · along ${(op.direction || 'x').toUpperCase()}`;
         case 'hole':
-            return `r=${(op.radius ?? 0).toFixed(2)}" · ${(op.axis || 'y').toUpperCase()} axis`;
+            return `ø=${((op.radius ?? 0) * 2).toFixed(2)}" · ${(op.axis || 'y').toUpperCase()} axis`;
         case 'cove':
             return `${op.edge || 'top'} edge · ${(op.axis || 'y').toUpperCase()} axis`;
         case 'arc':
@@ -1329,6 +1344,34 @@ function getEdgeProfileLabel(e) {
 
 function faceLabel(f) {
     return { 'z+': 'Front', 'z-': 'Back', 'x+': 'Right', 'x-': 'Left' }[f] || f;
+}
+
+function convertHoleOffsets(offsetX, offsetY, oldAxis, newAxis) {
+    let x = 0, y = 0, z = 0;
+    if (oldAxis === 'x') {
+        z = offsetX;
+        y = offsetY;
+    } else if (oldAxis === 'y') {
+        x = offsetX;
+        z = offsetY;
+    } else { // z
+        x = offsetX;
+        y = offsetY;
+    }
+
+    let newOffsetX = 0, newOffsetY = 0;
+    if (newAxis === 'x') {
+        newOffsetX = z;
+        newOffsetY = y;
+    } else if (newAxis === 'y') {
+        newOffsetX = x;
+        newOffsetY = z;
+    } else { // z
+        newOffsetX = x;
+        newOffsetY = y;
+    }
+
+    return { offsetX: newOffsetX, offsetY: newOffsetY };
 }
 
 export default ToolsPanel;

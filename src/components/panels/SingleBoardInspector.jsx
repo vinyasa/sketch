@@ -11,7 +11,7 @@ function getToolSummary(op) {
         case 'dado':
             return `${op.face || 'top'} surface · along ${(op.direction || 'x').toUpperCase()}`;
         case 'hole':
-            return `r=${(op.radius ?? 0).toFixed(2)}" · ${(op.axis || 'y').toUpperCase()} axis`;
+            return `ø=${((op.radius ?? 0) * 2).toFixed(2)}" · ${(op.axis || 'y').toUpperCase()} axis`;
         case 'cove':
             return `${op.edge || 'top'} edge · ${(op.axis || 'y').toUpperCase()} axis`;
         case 'arc':

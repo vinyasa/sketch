@@ -1,10 +1,53 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import useStore from '../../store/useStore';
 import rawManualText from '../../../docs/user_manual.md?raw';
 
 const UserManualDialog = () => {
     const { showUserManualDialog, setShowUserManualDialog } = useStore();
-    const [activeSection, setActiveSection] = useState('quickstart');
+    const [activeSectionId, setActiveSectionId] = useState('welcome');
+
+    const [pos, setPos] = useState(() => {
+        const startingX = Math.max(10, (window.innerWidth - 950) / 2);
+        const startingY = Math.max(10, (window.innerHeight - window.innerHeight * 0.85) / 2);
+        return { x: startingX, y: startingY };
+    });
+    const [isDragging, setIsDragging] = useState(false);
+    const dragRef = useRef(null);
+    const panelRef = useRef(null);
+
+    const onPointerDown = (e) => {
+        if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'SELECT' && e.target.tagName !== 'BUTTON' && e.target.closest('.manual-header-draggable')) {
+            setIsDragging(true);
+            dragRef.current = { startX: e.clientX, startY: e.clientY, posX: pos.x, posY: pos.y };
+            e.target.setPointerCapture(e.pointerId);
+            e.preventDefault();
+        }
+    };
+
+    const onPointerMove = (e) => {
+        if (!isDragging || !dragRef.current) return;
+        const dx = e.clientX - dragRef.current.startX;
+        const dy = e.clientY - dragRef.current.startY;
+        
+        let newX = dragRef.current.posX + dx;
+        let newY = dragRef.current.posY + dy;
+        
+        if (panelRef.current) {
+            const rect = panelRef.current.getBoundingClientRect();
+            if (newX + rect.width > window.innerWidth) newX = window.innerWidth - rect.width;
+            if (newX < 0) newX = 0;
+            if (newY + rect.height > window.innerHeight) newY = window.innerHeight - rect.height;
+            if (newY < 0) newY = 0;
+        }
+        
+        setPos({ x: newX, y: newY });
+    };
+
+    const onPointerUp = (e) => {
+        if (!isDragging) return;
+        setIsDragging(false);
+        try { e.target.releasePointerCapture(e.pointerId); } catch (_) {}
+    };
 
     if (!showUserManualDialog) return null;
 
@@ -17,11 +60,27 @@ const UserManualDialog = () => {
     // Part 0: Title & Welcome Header
     const welcomeMarkdown = parts[0] || '';
     
-    // Prepend '## ' to restore headers consumed by the split delimiter
-    const quickstartMarkdown = parts[1] ? '## ' + parts[1] : '';
-    const coordinatesMarkdown = parts[2] ? '## ' + parts[2] : '';
-    const cutsMarkdown = parts[3] ? '## ' + parts[3] : '';
-    const troubleshootingMarkdown = parts[4] ? '## ' + parts[4] : '';
+    // Dynamically build the sections array
+    const sections = [];
+    if (welcomeMarkdown.trim()) {
+        sections.push({
+            id: 'welcome',
+            title: '📖 Welcome Guide',
+            content: welcomeMarkdown
+        });
+    }
+
+    parts.slice(1).forEach((part, index) => {
+        const lines = part.split('\n');
+        const titleLine = lines[0].trim();
+        sections.push({
+            id: `section-${index}`,
+            title: titleLine || `Section ${index + 1}`,
+            content: '## ' + part
+        });
+    });
+
+    const activeSection = sections.find(s => s.id === activeSectionId) || sections[0];
 
     // File Downloader: Always uses the exact raw markdown from docs/user_manual.md
     const handleDownload = () => {
@@ -76,6 +135,8 @@ const UserManualDialog = () => {
             const parseInline = (str) => {
                 return str
                     .replace(/\*\Delta/g, '') // safety fallback
+                    .replace(/!\[(.*?)\]\((.*?)\)/g, '<img src="$2" alt="$1" style="max-width: 100%; height: auto; border-radius: 6px; border: 1px solid #ddd; margin: 10px 0; display: block;" />')
+                    .replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2" target="_blank" style="color: #ff7a00; font-weight: bold; text-decoration: underline;">$1</a>')
                     .replace(/\*\*(.*?)\*\*/g, '<strong style="font-weight: 900; color: #000;">$1</strong>')
                     .replace(/`(.*?)`/g, '<code>$1</code>');
             };
@@ -361,8 +422,12 @@ const UserManualDialog = () => {
         };
 
         const parseInlineMarkdown = (str) => {
+            // First parse markdown images: ![alt](src)
+            let html = str.replace(/!\[(.*?)\]\((.*?)\)/g, '<img src="$2" alt="$1" style="max-width: 100%; height: auto; border-radius: 8px; border: 1px solid var(--border-color); margin: 12px 0; display: block; box-shadow: 0 4px 12px rgba(0,0,0,0.15);" />');
+            // Then parse markdown links: [text](url)
+            html = html.replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2" target="_blank" style="color: var(--accent-color, #ff7a00); font-weight: bold; text-decoration: underline;">$1</a>');
             // Bold **text** styled to be highly distinct and vibrant
-            let html = str.replace(/\*\*(.*?)\*\*/g, '<strong style="font-weight: 850; color: var(--accent-color, #ff7a00);">$1</strong>');
+            html = html.replace(/\*\*(.*?)\*\*/g, '<strong style="font-weight: 850; color: var(--accent-color, #ff7a00);">$1</strong>');
             // Inline code `code`
             html = html.replace(/`(.*?)`/g, '<code style="background: rgba(255,255,255,0.06); padding: 2px 5px; border-radius: 4px; border: 1px solid var(--border-color); font-family: monospace; font-size: 0.85em; color: var(--accent-color);">$1</code>');
             return html;
@@ -609,11 +674,47 @@ const UserManualDialog = () => {
     };
 
     return (
-        <div className="app-overlay" style={{ background: 'rgba(0,0,0,0.6)', zIndex: 10001, display: 'flex', justifyContent: 'center', alignItems: 'center', position: 'fixed', inset: 0, padding: '20px' }} onClick={() => setShowUserManualDialog(false)}>
-            <div className="glass-panel" style={{ padding: '0', maxWidth: '950px', width: '100%', height: '85vh', borderRadius: '12px', display: 'flex', flexDirection: 'column', color: 'var(--text-main)', position: 'relative', overflow: 'hidden' }} onClick={e => e.stopPropagation()}>
+        <div className="app-overlay" style={{ background: 'transparent', zIndex: 10001, position: 'fixed', inset: 0, pointerEvents: 'none' }}>
+            <div 
+                ref={panelRef}
+                className="glass-panel" 
+                style={{ 
+                    padding: '0', 
+                    maxWidth: '950px', 
+                    width: '100%', 
+                    height: '85vh', 
+                    borderRadius: '12px', 
+                    display: 'flex', 
+                    flexDirection: 'column', 
+                    color: 'var(--text-main)', 
+                    position: 'absolute', 
+                    left: `${pos.x}px`, 
+                    top: `${pos.y}px`, 
+                    overflow: 'hidden',
+                    pointerEvents: 'auto',
+                    boxShadow: isDragging ? '0 16px 40px rgba(0,0,0,0.5)' : '0 8px 32px rgba(0,0,0,0.3)',
+                    transition: isDragging ? 'none' : 'box-shadow 0.2s'
+                }} 
+                onClick={e => e.stopPropagation()}
+            >
                 
                 {/* Header card with action buttons */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', borderBottom: '1px solid var(--border-color)', background: 'var(--panel-bg, #1a1e24)' }}>
+                <div 
+                    className="manual-header-draggable"
+                    style={{ 
+                        display: 'flex', 
+                        justifyContent: 'space-between', 
+                        alignItems: 'center', 
+                        padding: '16px 24px', 
+                        borderBottom: '1px solid var(--border-color)', 
+                        background: 'var(--panel-bg, #1a1e24)',
+                        cursor: isDragging ? 'grabbing' : 'grab',
+                        userSelect: 'none'
+                    }}
+                    onPointerDown={onPointerDown}
+                    onPointerMove={onPointerMove}
+                    onPointerUp={onPointerUp}
+                >
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                         <span style={{ fontSize: '1.5rem' }}>📖</span>
                         <div>
@@ -640,74 +741,34 @@ const UserManualDialog = () => {
                     
                     {/* Left Sidebar tabs */}
                     <div style={{ width: '220px', borderRight: '1px solid var(--border-color)', background: 'rgba(0,0,0,0.15)', padding: '16px 8px', display: 'flex', flexDirection: 'column', gap: '6px', overflowY: 'auto' }}>
-                        <button 
-                            onClick={() => setActiveSection('quickstart')}
-                            style={{
-                                textAlign: 'left', padding: '10px 14px', borderRadius: '8px', border: 'none', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s',
-                                background: activeSection === 'quickstart' ? 'var(--accent-color)' : 'transparent',
-                                color: activeSection === 'quickstart' ? '#fff' : 'var(--text-main)'
-                            }}
-                        >
-                            🚀 1. Quick Start Tutorial
-                        </button>
-                        <button 
-                            onClick={() => setActiveSection('coordinates')}
-                            style={{
-                                textAlign: 'left', padding: '10px 14px', borderRadius: '8px', border: 'none', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s',
-                                background: activeSection === 'coordinates' ? 'var(--accent-color)' : 'transparent',
-                                color: activeSection === 'coordinates' ? '#fff' : 'var(--text-main)'
-                            }}
-                        >
-                            📐 2. Local vs. World Space
-                        </button>
-                        <button 
-                            onClick={() => setActiveSection('cuts')}
-                            style={{
-                                textAlign: 'left', padding: '10px 14px', borderRadius: '8px', border: 'none', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s',
-                                background: activeSection === 'cuts' ? 'var(--accent-color)' : 'transparent',
-                                color: activeSection === 'cuts' ? '#fff' : 'var(--text-main)'
-                            }}
-                        >
-                            🪚 3. Miters and Bevels
-                        </button>
-                        <button 
-                            onClick={() => setActiveSection('troubleshooting')}
-                            style={{
-                                textAlign: 'left', padding: '10px 14px', borderRadius: '8px', border: 'none', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s',
-                                background: activeSection === 'troubleshooting' ? 'var(--accent-color)' : 'transparent',
-                                color: activeSection === 'troubleshooting' ? '#fff' : 'var(--text-main)'
-                            }}
-                        >
-                            🔧 4. Pro-Tips & Support
-                        </button>
+                        {sections.map(sec => (
+                            <button 
+                                key={sec.id}
+                                onClick={() => setActiveSectionId(sec.id)}
+                                style={{
+                                    textAlign: 'left', padding: '10px 14px', borderRadius: '8px', border: 'none', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s',
+                                    background: activeSectionId === sec.id ? 'var(--accent-color)' : 'transparent',
+                                    color: activeSectionId === sec.id ? '#fff' : 'var(--text-main)',
+                                    display: 'block',
+                                    width: '100%',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                    whiteSpace: 'nowrap'
+                                }}
+                                title={sec.title}
+                            >
+                                {sec.title}
+                            </button>
+                        ))}
                     </div>
 
                     {/* Right Scrollable Content panel */}
                     <div style={{ flex: 1, padding: '24px 32px', overflowY: 'auto', background: 'var(--panel-bg)', lineStyleType: 'none', display: 'flex', flexDirection: 'column', justifyBetween: 'space-between' }}>
                         
                         <div style={{ flex: 1 }}>
-                            {activeSection === 'quickstart' && (
+                            {activeSection && (
                                 <div>
-                                    {renderMarkdownToReact(welcomeMarkdown)}
-                                    {renderMarkdownToReact(quickstartMarkdown)}
-                                </div>
-                            )}
-
-                            {activeSection === 'coordinates' && (
-                                <div>
-                                    {renderMarkdownToReact(coordinatesMarkdown)}
-                                </div>
-                            )}
-
-                            {activeSection === 'cuts' && (
-                                <div>
-                                    {renderMarkdownToReact(cutsMarkdown)}
-                                </div>
-                            )}
-
-                            {activeSection === 'troubleshooting' && (
-                                <div>
-                                    {renderMarkdownToReact(troubleshootingMarkdown)}
+                                    {renderMarkdownToReact(activeSection.content)}
                                 </div>
                             )}
                         </div>
