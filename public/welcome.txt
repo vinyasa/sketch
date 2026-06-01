@@ -1,0 +1,5 @@
+Welcome to Luceysketch. This is a clean woodworking canvas where you can design your own furniture. We recommend opening the **Builders panel** (🧱 icon in the header) to generate a Table, Cabinet, Shaker Door, drawer, or shelving unit in one click to jump right in and experiment!
+
+There is also a User's Guide toward the bottom of the Settings Panel. I recommend you take a look at that. There is a five or ten minute starter project that helps show you some of the features of Luceysketch.
+
+This software is a project of love, made open source, with no ads, no tracking, and completely free from one woodworker to another. It is brand new, probably full of bugs, but with the help of the woodworking community, I hope it can continue to improve. Have fun.

@@ -564,13 +564,7 @@ const useStore = create((set, get) => ({
     // Size: [x, y, z] where x=length, y=height, z=depth — always LOCAL dimensions
     // Position: [x, y, z] = center of the board in world space
     // Note: boards no longer carry a constraints[] array — see root `constraints` map.
-    boards: loadState('boards', [
-        { id: 1, name: 'Table Top', parentId: 'Table Base', size: [36, 0.75, 24], position: [0, 12.375, 0], material: 'pine', joint: 'Butt 1', shape: 'box', operations: [], lumberType: 'plywood', grainDirection: 'length' },
-        { id: 2, name: 'Leg A',     parentId: 'Table Base', size: [1.5, 12, 1.5], position: [16.5, 6, 10.5],   material: 'white-oak', joint: 'Butt 1', shape: 'box', operations: [], lumberType: 'solid', grainDirection: 'length' },
-        { id: 3, name: 'Leg B',     parentId: 'Table Base', size: [1.5, 12, 1.5], position: [-16.5, 6, 10.5],  material: 'white-oak', joint: 'Butt 1', shape: 'box', operations: [], lumberType: 'solid', grainDirection: 'length' },
-        { id: 4, name: 'Leg C',     parentId: 'Table Base', size: [1.5, 12, 1.5], position: [16.5, 6, -10.5],  material: 'white-oak', joint: 'Butt 1', shape: 'box', operations: [], lumberType: 'solid', grainDirection: 'length' },
-        { id: 5, name: 'Leg D',     parentId: 'Table Base', size: [1.5, 12, 1.5], position: [-16.5, 6, -10.5], material: 'white-oak', joint: 'Butt 1', shape: 'box', operations: [], lumberType: 'solid', grainDirection: 'length' },
-    ]),
+    boards: loadState('boards', []),
     setBoards: (v) => {
         const nextBoards = typeof v === 'function' ? v(get().boards) : v;
         const constraints = get().constraints || {};
@@ -679,7 +673,6 @@ const useStore = create((set, get) => ({
     // Groups: Purely organizational. No position or rotation.
     groups: loadState('groups', {
         'Workspace': { parentId: null, visible: true, isExpanded: true },
-        'Table Base': { parentId: 'Workspace', visible: true, isExpanded: true },
     }),
     setGroups: (v) => set({ groups: typeof v === 'function' ? v(get().groups) : v }),
 

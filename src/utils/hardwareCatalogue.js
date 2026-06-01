@@ -7,7 +7,7 @@ export const HARDWARE_CATALOGUE = [
     {
         id: 'euro-hinge',
         label: 'Euro Hinge (35mm)',
-        modelUrl: '/sketch/models/euro-hinge.gltf',
+        modelUrl: 'models/euro-hinge.gltf',
         category: 'Hinges',
         icon: '🔩',
         description: 'Concealed cup hinge for frameless cabinets',
@@ -16,7 +16,7 @@ export const HARDWARE_CATALOGUE = [
     {
         id: 'butt-hinge',
         label: 'Butt Hinge (3")',
-        modelUrl: '/sketch/models/butt-hinge.gltf',
+        modelUrl: 'models/butt-hinge.gltf',
         category: 'Hinges',
         icon: '📎',
         description: 'Traditional surface-mount butt hinge',
@@ -25,7 +25,7 @@ export const HARDWARE_CATALOGUE = [
     {
         id: 'bar-pull',
         label: 'Bar Pull (5")',
-        modelUrl: '/sketch/models/bar-pull.gltf',
+        modelUrl: 'models/bar-pull.gltf',
         category: 'Pulls',
         icon: '🪝',
         description: 'Modern stainless bar pull handle',
@@ -34,7 +34,7 @@ export const HARDWARE_CATALOGUE = [
     {
         id: 'round-knob',
         label: 'Round Knob',
-        modelUrl: '/sketch/models/round-knob.gltf',
+        modelUrl: 'models/round-knob.gltf',
         category: 'Knobs',
         icon: '⚪',
         description: 'Classic brass round knob',
@@ -43,7 +43,7 @@ export const HARDWARE_CATALOGUE = [
     {
         id: 'drawer-slide',
         label: 'Drawer Slide (18")',
-        modelUrl: '/sketch/models/drawer-slide.gltf',
+        modelUrl: 'models/drawer-slide.gltf',
         category: 'Slides',
         icon: '↔️',
         description: 'Ball-bearing side-mount drawer slide',

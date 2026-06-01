@@ -29,7 +29,7 @@ const UserManualDialog = () => {
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
-        link.setAttribute('download', 'Sketch_CAD_User_Manual.md');
+        link.setAttribute('download', 'Luceysketch_User_Manual.md');
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);

@@ -1,0 +1,10 @@
+RewriteEngine On
+
+# Redirect luceysketch.com/editwelcome directly to the PHP editor page
+RewriteRule ^editwelcome$ /editwelcome.php [L,R=301]
+
+# Optional: Standard Single Page Application (SPA) routing fallback
+# If a visitor refreshes a custom route, route it back to index.html instead of a 404
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule . /index.html [L]

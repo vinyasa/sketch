@@ -3,7 +3,7 @@
 
 Welcome to **Sketch**! If you know how to pick a board from a lumber rack, mark it with a pencil, cut it on a saw, and join it with screws or glue, you already know how to use Sketch. 
 
-This guide is written specifically for woodworkers. No CAD or engineering experience required!
+This guide is written specifically for woodworkers. No drafting or engineering experience required!
 
 ---
 
@@ -169,5 +169,20 @@ In the real world, you use a miter saw or table saw to cut angles. In Sketch, we
     *   Yes! You can toggle between **Imperial** and **Metric** at any time in the **Settings** panel. Switching mid-project will **never** alter your actual geometry or corrupt your work—Sketch handles all conversions dynamically under the hood, and your grid snapping automatically updates to sensible metric increments (like 1 mm or 5 mm).
 *   **Can I share my projects with other woodworkers?**
     *   Yes! You can save your projects to disk and share them with other woodworkers. They can then open the project in their own Sketch application.
+
+---
+
+### 🙋 Need Help or Have a Question?
+
+LuceySketch is a labor of love built by a fellow woodworker and tech enthusiast in his spare time. 
+
+If you have questions, need construction advice, want to discuss a particular project layout, or encounter a bug, **we want to hear from you!**
+
+Because this is a solo hobby project, we don't have a dedicated technical support team, but we have a vibrant developer and woodworking community ready to collaborate:
+*   **💬 Ask Questions & Discuss Layouts**: Head over to our <a href="https://github.com/vinyasa/sketch/discussions" target="_blank" style="color: var(--accent-color); font-weight: bold; text-decoration: underline;">GitHub Discussions Page</a>. You can ask layout questions, show off screenshots of your 3D designs, or share photos of your completed shop projects!
+*   **🐞 Report Issues**: If you run into a bug or rendering issue, please open an issue in our <a href="https://github.com/vinyasa/sketch/issues" target="_blank" style="color: var(--accent-color); font-weight: bold; text-decoration: underline;">GitHub Issues Tracker</a>. (Be sure to check your software version in the **Settings** panel so you can include it!)
+*   **💡 Share Constructive Feedback**: If something is frustrating or feels unintuitive, please let us know in the discussions area. Your honest, friendly feedback is what helps us make this tool better for everyone in their woodshops!
+
+Let's build better things together!
 
     

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 
 import useStore from '../../store/useStore';
+import versionInfo from '../../version.json';
 
 const SettingsPanel = () => {
     const {
@@ -236,15 +237,9 @@ const SettingsPanel = () => {
                 <p className="hint" style={hintStyle}>Lock all panel sheets on the right side or let them float.</p>
             </div>
 
-            <div className="inspector-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                <label style={checkboxLabelStyle}>
-                    <input type="checkbox" checked={lumberyardSnapEnabled} onChange={(e) => setLumberyardSnapEnabled(e.target.checked)} style={checkboxInputStyle} />
-                    Lumberyard Snapping
-                </label>
-                <p className="hint" style={hintStyle}>Auto-convert standard names like "2x4" into actual lumber size.</p>
-            </div>
 
-            <div className="inspector-card" style={{ gridColumn: 'span 2', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+
+            <div className="inspector-card" style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                 <label style={labelStyle}>User Manual & Shop Guide</label>
                 <p className="hint" style={hintStyle}>Open the official step-by-step woodworking manual, guide to workbench coordinates, and tools reference guide.</p>
                 <button
@@ -269,7 +264,38 @@ const SettingsPanel = () => {
                 </button>
             </div>
 
-            <div className="inspector-card" style={{ gridColumn: 'span 2', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <div className="inspector-card" style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <label style={labelStyle}>Software Version</label>
+                <p className="hint" style={hintStyle}>Running version <strong>v{versionInfo.version}</strong> (Released {versionInfo.releasedAt}).</p>
+                <a
+                    href="https://github.com/vinyasa/sketch"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="nav-btn"
+                    style={{
+                        width: 'fit-content',
+                        padding: '6px 14px',
+                        fontSize: '0.72rem',
+                        fontWeight: 'bold',
+                        marginTop: '4px',
+                        borderColor: 'var(--accent-color)',
+                        color: 'var(--accent-color)',
+                        background: 'rgba(255, 122, 0, 0.05)',
+                        transition: 'all 0.2s',
+                        cursor: 'pointer',
+                        textDecoration: 'none',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px'
+                    }}
+                    onMouseEnter={e => e.target.style.background = 'rgba(255, 122, 0, 0.15)'}
+                    onMouseLeave={e => e.target.style.background = 'rgba(255, 122, 0, 0.05)'}
+                >
+                    🚀 View GitHub Releases
+                </a>
+            </div>
+
+            <div className="inspector-card" style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                 <label style={labelStyle}>Credits & Licenses</label>
                 <p className="hint" style={hintStyle}>View attributions and licenses for the open-source libraries used in this project.</p>
                 <button
@@ -294,7 +320,7 @@ const SettingsPanel = () => {
                 </button>
             </div>
 
-            <div className="inspector-card" style={{ borderColor: 'rgba(255,59,48,0.3)', background: 'rgba(255,59,48,0.05)', gridColumn: 'span 2' }}>
+            <div className="inspector-card" style={{ borderColor: 'rgba(255,59,48,0.3)', background: 'rgba(255,59,48,0.05)' }}>
                 <strong style={{ color: '#ff3b30', fontSize: '0.72rem' }}>System Storage Cache</strong>
                 <p className="hint" style={{ ...hintStyle, marginBottom: '4px' }}>Permanently destroy the browser's local memory reserve.</p>
                 {!confirmWipe ? (
@@ -305,6 +331,7 @@ const SettingsPanel = () => {
                         <div style={{ display: 'flex', gap: '6px' }}>
                             <button className="primary-btn" style={{ flex: 1, background: '#ff3b30', borderColor: '#ff3b30', padding: '3px', fontSize: '0.7rem' }} onClick={() => {
                                 localStorage.removeItem('lucey_save');
+                                localStorage.removeItem('lucey_welcome_seen');
                                 showToast('✅ Cache wiped! Reloading...');
                                 setTimeout(() => window.location.reload(), 1500);
                             }}>Yes, wipe it</button>

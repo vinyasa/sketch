@@ -22,3 +22,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Local-only documentation
+docs_local/
+
+# Environment configurations containing API Keys
+.env-sketch

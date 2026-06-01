@@ -194,23 +194,9 @@ const SingleBoardInspector = ({ selectedBoard }) => {
                     value={selectedBoard.name || ''}
                     onChange={(e) => {
                         const newName = e.target.value;
-                        setBoards(boards.map(b => {
-                            if (b.id !== selectedBoard.id) return b;
-                            const next = { ...b, name: newName };
-                            if (lumberyardSnapEnabled) {
-                                const parsed = parseLumberyardNominal(newName);
-                                if (parsed) {
-                                    const newSize = [...b.size];
-                                    newSize[1] = parsed.thickness; // thickness (Y)
-                                    newSize[0] = parsed.width;     // width (X)
-                                    if (parsed.length !== undefined) {
-                                        newSize[2] = parsed.length; // length (Z)
-                                    }
-                                    next.size = newSize;
-                                }
-                            }
-                            return next;
-                        }));
+                        setBoards(boards.map(b => 
+                            b.id === selectedBoard.id ? { ...b, name: newName } : b
+                        ));
                     }}
                     style={{ flex: 1, width: '100%', background: 'rgba(128,128,128,0.15)', padding: '6px 12px', borderRadius: '6px', border: '1px solid var(--border-color)', color: 'var(--accent-color)', fontSize: 'inherit', fontWeight: 'inherit', outline: 'none' }}
                 />

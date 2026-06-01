@@ -32,12 +32,59 @@ import UserManualDialog from './components/dialogs/UserManualDialog';
 import PrintDialog from './components/dialogs/PrintDialog';
 import SavePromptDialog from './components/dialogs/SavePromptDialog';
 import AttributionDialog from './components/dialogs/AttributionDialog';
+import WelcomeDialog from './components/dialogs/WelcomeDialog';
 import ErrorBoundary from './components/layout/ErrorBoundary';
 import useStore from './store/useStore';
 import { getSmartPosition } from './utils/panelLayout';
 import { getOverlappingBoards } from './utils/collisions';
+import { getDeviceInfo } from './utils/deviceDetector';
 
 export default function App() {
+    const info = getDeviceInfo();
+
+    if (info.isPhone) {
+        return (
+            <div style={{
+                height: '100vh',
+                width: '100vw',
+                background: '#121417',
+                display: 'flex',
+                justifyContent: 'center',
+                alignItems: 'center',
+                padding: '24px',
+                boxSizing: 'border-box',
+                fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+                color: '#f0f0f0',
+                textAlign: 'center'
+            }}>
+                <div className="glass-panel" style={{
+                    maxWidth: '360px',
+                    width: '100%',
+                    padding: '32px 24px',
+                    borderRadius: '16px',
+                    border: '1px solid var(--border-color)',
+                    background: 'var(--panel-bg)',
+                    boxShadow: '0 20px 40px rgba(0, 0, 0, 0.5)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: '20px'
+                }}>
+                    <span style={{ fontSize: '3rem' }}>🖥️</span>
+                    <h2 style={{ margin: 0, fontSize: '1.3rem', fontWeight: 700, color: 'var(--accent-color)', letterSpacing: '0.5px' }}>
+                        Screen Too Small
+                    </h2>
+                    <p style={{ margin: 0, fontSize: '0.9rem', lineHeight: '1.6', opacity: 0.95 }}>
+                        Luceysketch is a detailed 3D design tool that requires a larger screen. Please open it on a <strong>tablet</strong> or <strong>computer</strong> to design your woodworking projects.
+                    </p>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', borderTop: '1px solid var(--border-color)', paddingTop: '12px', width: '100%' }}>
+                        Detected OS: <strong>{info.os}</strong>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
     const {
         // UI toggles
         showCutlistPanel, setShowCutlistPanel,
@@ -348,6 +395,7 @@ export default function App() {
                 <PrintDialog />
                 <SavePromptDialog />
                 <AttributionDialog />
+                <WelcomeDialog />
             </div>
 
             {/* Right docked sidebar layout when active and panels are open */}
