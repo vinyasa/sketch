@@ -1,8 +1,8 @@
-# 🛠️ Little Lucey Woodcraft
+# 🛠️ Luceysketch
 
-> A premium, interactive 3D Parametric modeler and design tool built for woodworkers, cabinet makers, and DIY enthusiasts.
+> Luceysketch is a premium, interactive 3D Parametric modeler and design tool built for woodworkers, cabinet makers, and DIY enthusiasts.
 
-Little Lucey Woodcraft brings professional-grade 3D woodworking design straight to the browser. Built on React and Three.js, it allows you to dynamically build, modify, and optimize cabinets, furniture, face frames, and shelving in real time. It automatically generates high-accuracy cut lists, boundary dimensions, and step-by-step assembly tutorials.
+Luceysketch brings professional-grade 3D woodworking design straight to the browser. Built on React and Three.js, it allows you to dynamically build, modify, and optimize tables, cabinets, doors, drawers, shelves, and other furniture in real time. It automatically generates boundary dimensions, printable cut lists, and includes several two or three step 'Builders' to get you started.
 
 ---
 
@@ -19,7 +19,7 @@ Little Lucey Woodcraft brings professional-grade 3D woodworking design straight 
 
 ## 🛠️ Technology Stack
 
-Little Lucey Woodcraft is built using a modern, lightweight, high-performance web tech stack:
+Luceysketch is built using a modern, lightweight, high-performance web tech stack:
 
 *   **Core Logic**: [React 19](https://react.dev) (UI) & [Zustand 5](https://github.com/pmndrs/zustand) (State Management)
 *   **3D Rendering**: [Three.js](https://threejs.org), [React Three Fiber](https://github.com/pmndrs/react-three-fiber), and [Drei](https://github.com/pmndrs/drei)
@@ -49,7 +49,7 @@ Ensure you have [Node.js](https://nodejs.org) (v18 or higher) and a package mana
     ```bash
     npm run dev
     ```
-4.  Open your browser and navigate to `http://localhost:5173/sketch/` (or the URL printed in your terminal).
+4.  Open your browser and play.
 
 ### Production Build
 
