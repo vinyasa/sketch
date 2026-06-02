@@ -75,7 +75,7 @@ const OutlinerPanel = () => {
                         )}
                     </span>
                     <button
-                        onClick={(e) => { e.stopPropagation(); isGroup ? toggleGroupVisibility(nodeId) : toggleBoardVisibility(parseInt(nodeId)); }}
+                        onClick={(e) => { e.stopPropagation(); isGroup ? toggleGroupVisibility(nodeId) : toggleBoardVisibility(nodeId); }}
                         style={{
                             background: 'none', border: 'none', cursor: 'pointer',
                             opacity: effectivelyVisible ? 1 : 0.35,

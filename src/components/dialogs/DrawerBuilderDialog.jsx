@@ -163,6 +163,64 @@ const DrawerBuilderDialog = () => {
                     <span style={{ fontSize: '1.2rem' }}>🗃️</span> Drawer Builder
                 </h2>
 
+                {/* Selection Detection Banner */}
+                {isCabinetSelected ? (
+                    willFit ? (
+                        <div style={{
+                            padding: '10px 12px',
+                            background: 'rgba(52, 199, 89, 0.1)',
+                            border: '1px dashed rgba(52, 199, 89, 0.4)',
+                            borderRadius: '8px', fontSize: '0.75rem', color: '#34c759',
+                            lineHeight: 1.4
+                        }}>
+                            <strong>✓ Cabinet Group Selected ("{cabName}")</strong><br/>
+                            The drawer stack is pre-populated to fit perfectly inside the selected cabinet's opening ({cabOpeningWidth}" × {cabOpeningHeight}" × {cabOpeningDepth}").
+                            {(Math.abs(W - cabOpeningWidth) > 0.01 || Math.abs(H - cabOpeningHeight) > 0.01 || Math.abs(D - cabOpeningDepth) > 0.01) && (
+                                <div style={{ marginTop: '6px' }}>
+                                    <span 
+                                        style={{ color: 'var(--accent-color)', cursor: 'pointer', textDecoration: 'underline', fontWeight: 'bold' }}
+                                        onClick={useCabinetDimensions}
+                                    >
+                                        Snap to Full Opening ({cabOpeningWidth}" × {cabOpeningHeight}" × {cabOpeningDepth}")
+                                    </span>
+                                </div>
+                            )}
+                        </div>
+                    ) : (
+                        <div style={{
+                            padding: '10px 12px',
+                            background: 'rgba(255, 59, 48, 0.1)',
+                            border: '1px dashed rgba(255, 59, 48, 0.4)',
+                            borderRadius: '8px', fontSize: '0.75rem', color: '#ff3b30',
+                            lineHeight: 1.4
+                        }}>
+                            <strong>⚠ Cabinet Fit Warning ("{cabName}")</strong><br/>
+                            Configured drawer dimensions ({W}" × {H}" × {D}") exceed the selected cabinet opening of {cabOpeningWidth}" × {cabOpeningHeight}" × {cabOpeningDepth}".
+                            <div style={{ marginTop: '6px' }}>
+                                <button 
+                                    className="nav-btn" 
+                                    style={{ padding: '3px 8px', fontSize: '0.72rem', borderColor: 'var(--accent-color)', cursor: 'pointer' }}
+                                    onClick={useCabinetDimensions}
+                                >
+                                    👉 Auto-fit to Cabinet Opening ({cabOpeningWidth}" × {cabOpeningHeight}" × {cabOpeningDepth}")
+                                </button>
+                            </div>
+                        </div>
+                    )
+                ) : (
+                    <div style={{
+                        padding: '10px 12px',
+                        background: 'rgba(188, 138, 95, 0.08)',
+                        border: '1px dashed var(--border-color)',
+                        borderRadius: '8px', fontSize: '0.75rem', color: 'var(--text-muted)',
+                        lineHeight: 1.4
+                    }}>
+                        <strong>No Cabinet selected.</strong><br/>
+                        Building a standalone drawer stack. You can input custom dimensions directly below.
+                    </div>
+                )}
+
+
                 {/* Overall Opening Dimensions */}
                 <div className="inspector-card" style={{ margin: 0 }}>
                     <h4>Cabinet Opening (in)</h4>
@@ -425,49 +483,7 @@ const DrawerBuilderDialog = () => {
                     </div>
                 </div>
 
-                {/* Cabinet Fit Acknowledgement */}
-                {isCabinetSelected && (
-                    <div className="inspector-card" style={{
-                        margin: 0,
-                        background: willFit ? 'rgba(60,200,90,0.06)' : 'rgba(255,59,48,0.06)',
-                        border: willFit ? '1px solid rgba(60,200,90,0.2)' : '1px solid rgba(255,59,48,0.3)',
-                    }}>
-                        <h4 style={{ color: willFit ? '#34c759' : '#ff3b30', display: 'flex', alignItems: 'center', gap: '6px', margin: 0 }}>
-                            {willFit ? '✓ Cabinet Fit Confirmed' : '⚠ Cabinet Fit Warning'}
-                        </h4>
-                        <div style={{ fontSize: '0.78rem', color: 'var(--text-main)', marginTop: '6px', lineHeight: 1.5 }}>
-                            {willFit ? (
-                                <>
-                                    These drawers are configured to fit inside the selected cabinet <strong>{cabName}</strong>.
-                                    <div style={{ color: 'var(--text-muted)', fontSize: '0.72rem', marginTop: '4px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                        <span>Cabinet Opening: {cabOpeningWidth}" × {cabOpeningHeight}" × {cabOpeningDepth}"</span>
-                                        {(Math.abs(W - cabOpeningWidth) > 0.01 || Math.abs(H - cabOpeningHeight) > 0.01 || Math.abs(D - cabOpeningDepth) > 0.01) && (
-                                            <span 
-                                                style={{ color: 'var(--accent-color)', cursor: 'pointer', textDecoration: 'underline' }}
-                                                onClick={useCabinetDimensions}
-                                            >
-                                                Snap to Full Opening
-                                            </span>
-                                        )}
-                                    </div>
-                                </>
-                            ) : (
-                                <>
-                                    Configured drawer dimensions ({W}" × {H}" × {D}") exceed the selected cabinet <strong>{cabName}</strong> opening of {cabOpeningWidth}" × {cabOpeningHeight}" × {cabOpeningDepth}".
-                                    <div style={{ marginTop: '6px' }}>
-                                        <button 
-                                            className="nav-btn" 
-                                            style={{ padding: '3px 8px', fontSize: '0.72rem', borderColor: 'var(--accent-color)', cursor: 'pointer' }}
-                                            onClick={useCabinetDimensions}
-                                        >
-                                            👉 Auto-fit to Cabinet Opening ({cabOpeningWidth}" × {cabOpeningHeight}" × {cabOpeningDepth}")
-                                        </button>
-                                    </div>
-                                </>
-                            )}
-                        </div>
-                    </div>
-                )}
+
 
                 {/* Drawer Summary Box */}
                 <div className="inspector-card" style={{

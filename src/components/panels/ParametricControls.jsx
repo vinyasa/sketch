@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import useStore from '../../store/useStore';
 
 const ParametricControls = ({ groupId, meta }) => {
-    const { buildCabinet, buildBox, buildShakerDoor, buildDrawers, setDrawerDialog, setCabinetDialog, setShelvingDialog, gridSnap, units, generateSmartMeasurements, clearSmartMeasurements, measurements, groups } = useStore();
+    const { buildCabinet, buildBox, buildShakerDoor, buildDrawers, setDrawerDialog, setCabinetDialog, setShakerDoorDialog, setShelvingDialog, gridSnap, units, generateSmartMeasurements, clearSmartMeasurements, measurements, groups } = useStore();
     const [params, setParams] = useState(meta.params || {});
 
     let defaultStep = 0.5;
@@ -174,85 +174,63 @@ const ParametricControls = ({ groupId, meta }) => {
             </>
         );
     } else if (meta.builder === 'shaker-door') {
+        const hasSmartMeas = measurements.some(m => m.id.startsWith('smart_') && m.id.endsWith(groupId));
         controls = (
             <>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                    {renderInput('width', 'Width (X)', undefined, undefined, 18)}
-                    {renderInput('height', 'Height (Y)', undefined, undefined, 30)}
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
-                    <div>
-                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Door Quantity</div>
-                        <select 
-                            value={params.doorCount || 1} 
-                            onChange={e => handleChange('doorCount', e.target.value)}
-                            style={{ 
-                                width: '100%', padding: '5px 8px', 
-                                background: 'var(--bg-color)', color: 'var(--text-main)', 
-                                border: '1px solid var(--border-color)', borderRadius: '6px', 
-                                outline: 'none', fontSize: '0.9rem', cursor: 'pointer'
+                <button
+                    className="primary-btn"
+                    style={{
+                        marginTop: '8px',
+                        width: '100%',
+                        padding: '10px 12px',
+                        fontWeight: 'bold',
+                        cursor: 'pointer',
+                        fontSize: '0.8rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '8px',
+                        boxShadow: '0 4px 10px rgba(0,0,0,0.2)',
+                        transition: 'all 0.2s'
+                    }}
+                    onClick={() => {
+                        if (setShakerDoorDialog) {
+                            setShakerDoorDialog({
+                                ...meta.params,
+                                editGroupId: groupId
+                            });
+                        }
+                    }}
+                >
+                    🚪 Open Door Builder Panel
+                </button>
+                <div style={{ marginTop: '12px', display: 'flex', gap: '8px' }}>
+                    <button
+                        className="primary-btn"
+                        onClick={() => generateSmartMeasurements(groupId)}
+                        style={{
+                            flex: 1, padding: '8px 12px', fontWeight: 'bold', cursor: 'pointer',
+                            fontSize: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            gap: '4px', background: 'var(--accent-color)', color: '#fff', border: 'none', borderRadius: '6px'
+                        }}
+                    >
+                        📐 Smart Measure
+                    </button>
+                    {hasSmartMeas && (
+                        <button
+                            className="nav-btn"
+                            onClick={() => clearSmartMeasurements(groupId)}
+                            style={{
+                                padding: '8px 12px', fontWeight: 'bold', cursor: 'pointer',
+                                fontSize: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                gap: '4px', background: 'rgba(255,59,48,0.15)', color: '#ff3b30', border: '1px solid rgba(255,59,48,0.3)', borderRadius: '6px'
                             }}
+                            title="Clear smart measurements"
                         >
-                            <option value={1}>Single Door</option>
-                            <option value={2}>Double Doors</option>
-                        </select>
-                    </div>
-                    {parseInt(params.doorCount || 1, 10) === 2 && (
-                        renderInput('doubleDoorGap', 'Middle Gap', 0.03125, 0, 0.09375)
+                            🗑️ Clear
+                        </button>
                     )}
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
-                    <div>
-                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Door Style</div>
-                        <select 
-                            value={params.doorStyle || 'overlay'} 
-                            onChange={e => handleChange('doorStyle', e.target.value)}
-                            style={{ 
-                                width: '100%', padding: '5px 8px', 
-                                background: 'var(--bg-color)', color: 'var(--text-main)', 
-                                border: '1px solid var(--border-color)', borderRadius: '6px', 
-                                outline: 'none', fontSize: '0.9rem', cursor: 'pointer'
-                            }}
-                        >
-                            <option value="overlay">Overlay</option>
-                            <option value="inset">Inset</option>
-                        </select>
-                    </div>
-                    <div>
-                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Door Type</div>
-                        <select 
-                            value={params.doorConstruction || 'shaker'} 
-                            onChange={e => handleChange('doorConstruction', e.target.value)}
-                            style={{ 
-                                width: '100%', padding: '5px 8px', 
-                                background: 'var(--bg-color)', color: 'var(--text-main)', 
-                                border: '1px solid var(--border-color)', borderRadius: '6px', 
-                                outline: 'none', fontSize: '0.9rem', cursor: 'pointer'
-                            }}
-                        >
-                            <option value="shaker">Shaker</option>
-                            <option value="flat">Flat / Slab</option>
-                        </select>
-                    </div>
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '8px', marginBottom: '8px' }}>
-                    {params.doorStyle === 'inset' 
-                        ? renderInput('insetClearance', 'Reveal Clearance', 0.03125, 0, 0.125) 
-                        : renderInput('overlayReveal', 'Overlay Reveal', 0.1, 0, 0.25)
-                    }
-                </div>
-                {params.doorConstruction === 'flat' ? (
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '8px' }}>
-                        {renderInput('thicknessFrame', 'Door Thickness', undefined, undefined, 0.75)}
-                    </div>
-                ) : (
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                        {renderInput('thicknessFrame', 'Frame Thick', undefined, undefined, 0.75)}
-                        {renderInput('thicknessPanel', 'Panel Thick', undefined, undefined, 0.25)}
-                        {renderInput('widthStileRail', 'Stile Width', undefined, undefined, 2)}
-                        {renderInput('grooveDepth', 'Groove Depth', undefined, undefined, 0.375)}
-                    </div>
-                )}
             </>
         );
     } else if (meta.builder === 'drawerStack') {

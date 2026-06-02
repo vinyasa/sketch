@@ -393,12 +393,12 @@ export const createBoardSlice = (set, get) => ({
       boards,
       addRecordedStep
     } = get();
-    const board = boards.find(b => b.id === id);
+    const board = boards.find(b => b.id.toString() === id.toString());
     if (board && addRecordedStep) {
       const nextVisible = board.visible === false ? 'show' : 'hide';
       addRecordedStep(`In the **Outliner** panel, click the visibility icon for \`${board.name}\` to ${nextVisible} it.`);
     }
-    setBoards(bds => bds.map(b => b.id === id ? {
+    setBoards(bds => bds.map(b => b.id.toString() === id.toString() ? {
       ...b,
       visible: b.visible === false ? true : false
     } : b));

@@ -85,40 +85,192 @@ export const createOperationSlice = (set, get) => ({
       relativeMatrix: relativeMatrix.elements.slice() // 16-element Float64 array
     };
 
-    // ── Check if the subtraction splits the board ────────────────────
-    const hw = cutterBoard.size[0] / 2;
-    const hh = cutterBoard.size[1] / 2;
-    const hd = cutterBoard.size[2] / 2;
-    const vertices = [
-      new THREE.Vector3(-hw, -hh, -hd),
-      new THREE.Vector3(hw, -hh, -hd),
-      new THREE.Vector3(-hw, hh, -hd),
-      new THREE.Vector3(hw, hh, -hd),
-      new THREE.Vector3(-hw, -hh, hd),
-      new THREE.Vector3(hw, -hh, hd),
-      new THREE.Vector3(-hw, hh, hd),
-      new THREE.Vector3(hw, hh, hd)
+    // ── Check if the subtraction splits the board using precise OBB-OBB intersection ──
+    const targetHw = targetBoard.size[0] / 2;
+    const targetHh = targetBoard.size[1] / 2;
+    const targetHd = targetBoard.size[2] / 2;
+
+    const cutterHw = cutterBoard.size[0] / 2;
+    const cutterHh = cutterBoard.size[1] / 2;
+    const cutterHd = cutterBoard.size[2] / 2;
+
+    const relativeMatrixInverse = relativeMatrix.clone().invert();
+
+    const eps = 0.05; // 3/64" tolerance
+    const insideTarget = (p) => {
+      return p.x >= -targetHw - eps && p.x <= targetHw + eps &&
+             p.y >= -targetHh - eps && p.y <= targetHh + eps &&
+             p.z >= -targetHd - eps && p.z <= targetHd + eps;
+    };
+
+    const insideCutter = (p) => {
+      return p.x >= -cutterHw - eps && p.x <= cutterHw + eps &&
+             p.y >= -cutterHh - eps && p.y <= cutterHh + eps &&
+             p.z >= -cutterHd - eps && p.z <= cutterHd + eps;
+    };
+
+    const intersectionPoints = [];
+
+    // Category 1: Cutter vertices inside the Target box
+    const cutterVertices = [
+      new THREE.Vector3(-cutterHw, -cutterHh, -cutterHd),
+      new THREE.Vector3(cutterHw, -cutterHh, -cutterHd),
+      new THREE.Vector3(-cutterHw, cutterHh, -cutterHd),
+      new THREE.Vector3(cutterHw, cutterHh, -cutterHd),
+      new THREE.Vector3(-cutterHw, -cutterHh, cutterHd),
+      new THREE.Vector3(cutterHw, -cutterHh, cutterHd),
+      new THREE.Vector3(-cutterHw, cutterHh, cutterHd),
+      new THREE.Vector3(cutterHw, cutterHh, cutterHd)
     ];
+
+    cutterVertices.forEach(v => {
+      const vTransformed = v.clone().applyMatrix4(relativeMatrix);
+      if (insideTarget(vTransformed)) {
+        intersectionPoints.push(vTransformed);
+      }
+    });
+
+    // Category 2: Target vertices inside the Cutter box
+    const targetVertices = [
+      new THREE.Vector3(-targetHw, -targetHh, -targetHd),
+      new THREE.Vector3(targetHw, -targetHh, -targetHd),
+      new THREE.Vector3(-targetHw, targetHh, -targetHd),
+      new THREE.Vector3(targetHw, targetHh, -targetHd),
+      new THREE.Vector3(-targetHw, -targetHh, targetHd),
+      new THREE.Vector3(targetHw, -targetHh, targetHd),
+      new THREE.Vector3(-targetHw, targetHh, targetHd),
+      new THREE.Vector3(targetHw, targetHh, targetHd)
+    ];
+
+    targetVertices.forEach(v => {
+      const vInCutter = v.clone().applyMatrix4(relativeMatrixInverse);
+      if (insideCutter(vInCutter)) {
+        intersectionPoints.push(v.clone());
+      }
+    });
+
+    // Category 3: Cutter edges intersecting Target faces
+    const cutterEdges = [
+      [0, 1], [1, 3], [3, 2], [2, 0], // bottom loop
+      [4, 5], [5, 7], [7, 6], [6, 4], // top loop
+      [0, 4], [1, 5], [2, 6], [3, 7]  // vertical pillars
+    ];
+
+    cutterEdges.forEach(([i1, i2]) => {
+      const p1 = cutterVertices[i1].clone().applyMatrix4(relativeMatrix);
+      const p2 = cutterVertices[i2].clone().applyMatrix4(relativeMatrix);
+      
+      const axes = ['x', 'y', 'z'];
+      const limits = [targetHw, targetHh, targetHd];
+      
+      for (let axisIdx = 0; axisIdx < 3; axisIdx++) {
+        const axis = axes[axisIdx];
+        const L = limits[axisIdx];
+        
+        [-L, L].forEach(K => {
+          const val1 = p1[axis];
+          const val2 = p2[axis];
+          if ((val1 < K - 1e-5 && val2 > K + 1e-5) || (val1 > K + 1e-5 && val2 < K - 1e-5)) {
+            const t = (K - val1) / (val2 - val1);
+            const p = p1.clone().lerp(p2, t);
+            
+            const otherIdx1 = (axisIdx + 1) % 3;
+            const otherIdx2 = (axisIdx + 2) % 3;
+            const limit1 = limits[otherIdx1];
+            const limit2 = limits[otherIdx2];
+            const valOther1 = p[axes[otherIdx1]];
+            const valOther2 = p[axes[otherIdx2]];
+            
+            if (valOther1 >= -limit1 - eps && valOther1 <= limit1 + eps &&
+                valOther2 >= -limit2 - eps && valOther2 <= limit2 + eps) {
+              intersectionPoints.push(p);
+            }
+          }
+        });
+      }
+    });
+
+    // Category 4: Target edges intersecting Cutter faces
+    const targetEdges = [
+      [0, 1], [1, 3], [3, 2], [2, 0],
+      [4, 5], [5, 7], [7, 6], [6, 4],
+      [0, 4], [1, 5], [2, 6], [3, 7]
+    ];
+
+    targetEdges.forEach(([i1, i2]) => {
+      const p1 = targetVertices[i1].clone();
+      const p2 = targetVertices[i2].clone();
+      
+      const p1_c = p1.clone().applyMatrix4(relativeMatrixInverse);
+      const p2_c = p2.clone().applyMatrix4(relativeMatrixInverse);
+      
+      const axes = ['x', 'y', 'z'];
+      const limits = [cutterHw, cutterHh, cutterHd];
+      
+      for (let axisIdx = 0; axisIdx < 3; axisIdx++) {
+        const axis = axes[axisIdx];
+        const L = limits[axisIdx];
+        
+        [-L, L].forEach(K => {
+          const val1 = p1_c[axis];
+          const val2 = p2_c[axis];
+          if ((val1 < K - 1e-5 && val2 > K + 1e-5) || (val1 > K + 1e-5 && val2 < K - 1e-5)) {
+            const t = (K - val1) / (val2 - val1);
+            const p_c = p1_c.clone().lerp(p2_c, t);
+            
+            const otherIdx1 = (axisIdx + 1) % 3;
+            const otherIdx2 = (axisIdx + 2) % 3;
+            const limit1 = limits[otherIdx1];
+            const limit2 = limits[otherIdx2];
+            const valOther1 = p_c[axes[otherIdx1]];
+            const valOther2 = p_c[axes[otherIdx2]];
+            
+            if (valOther1 >= -limit1 - eps && valOther1 <= limit1 + eps &&
+                valOther2 >= -limit2 - eps && valOther2 <= limit2 + eps) {
+              const p = p_c.clone().applyMatrix4(relativeMatrix);
+              intersectionPoints.push(p);
+            }
+          }
+        });
+      }
+    });
 
     let minX = Infinity, maxX = -Infinity;
     let minY = Infinity, maxY = -Infinity;
     let minZ = Infinity, maxZ = -Infinity;
 
-    vertices.forEach(v => {
-      v.applyMatrix4(relativeMatrix);
-      if (v.x < minX) minX = v.x;
-      if (v.x > maxX) maxX = v.x;
-      if (v.y < minY) minY = v.y;
-      if (v.y > maxY) maxY = v.y;
-      if (v.z < minZ) minZ = v.z;
-      if (v.z > maxZ) maxZ = v.z;
-    });
+    if (intersectionPoints.length > 0) {
+      intersectionPoints.forEach(p => {
+        if (p.x < minX) minX = p.x;
+        if (p.x > maxX) maxX = p.x;
+        if (p.y < minY) minY = p.y;
+        if (p.y > maxY) maxY = p.y;
+        if (p.z < minZ) minZ = p.z;
+        if (p.z > maxZ) maxZ = p.z;
+      });
+    } else {
+      // Fallback: simple corners projection in case overlapping volume has no vertices
+      const fallbackVertices = [
+        new THREE.Vector3(-cutterHw, -cutterHh, -cutterHd),
+        new THREE.Vector3(cutterHw, -cutterHh, -cutterHd),
+        new THREE.Vector3(-cutterHw, cutterHh, -cutterHd),
+        new THREE.Vector3(cutterHw, cutterHh, -cutterHd),
+        new THREE.Vector3(-cutterHw, -cutterHh, cutterHd),
+        new THREE.Vector3(cutterHw, -cutterHh, cutterHd),
+        new THREE.Vector3(-cutterHw, cutterHh, cutterHd),
+        new THREE.Vector3(cutterHw, cutterHh, cutterHd)
+      ];
+      fallbackVertices.forEach(v => {
+        v.applyMatrix4(relativeMatrix);
+        if (v.x < minX) minX = v.x;
+        if (v.x > maxX) maxX = v.x;
+        if (v.y < minY) minY = v.y;
+        if (v.y > maxY) maxY = v.y;
+        if (v.z < minZ) minZ = v.z;
+        if (v.z > maxZ) maxZ = v.z;
+      });
+    }
 
-    const targetHw = targetBoard.size[0] / 2;
-    const targetHh = targetBoard.size[1] / 2;
-    const targetHd = targetBoard.size[2] / 2;
-
-    const eps = 0.05; // 3/64" tolerance
     const coversX = minX <= -targetHw + eps && maxX >= targetHw - eps;
     const coversY = minY <= -targetHh + eps && maxY >= targetHh - eps;
     const coversZ = minZ <= -targetHd + eps && maxZ >= targetHd - eps;
@@ -145,31 +297,31 @@ export const createOperationSlice = (set, get) => ({
       let P1_local = null, P2_local = null;
 
       if (splitAxis === 'x') {
-        const w1 = cutMin + targetHw;
-        const w2 = targetHw - cutMax;
+        const w1 = cutMax + targetHw;
+        const w2 = targetHw - cutMin;
         if (w1 > 0.05 && w2 > 0.05) {
           size1 = [w1, targetBoard.size[1], targetBoard.size[2]];
           size2 = [w2, targetBoard.size[1], targetBoard.size[2]];
-          P1_local = [(-targetHw + cutMin) / 2, 0, 0];
-          P2_local = [(cutMax + targetHw) / 2, 0, 0];
+          P1_local = [(-targetHw + cutMax) / 2, 0, 0];
+          P2_local = [(cutMin + targetHw) / 2, 0, 0];
         }
       } else if (splitAxis === 'y') {
-        const h1 = cutMin + targetHh;
-        const h2 = targetHh - cutMax;
+        const h1 = cutMax + targetHh;
+        const h2 = targetHh - cutMin;
         if (h1 > 0.05 && h2 > 0.05) {
           size1 = [targetBoard.size[0], h1, targetBoard.size[2]];
           size2 = [targetBoard.size[0], h2, targetBoard.size[2]];
-          P1_local = [0, (-targetHh + cutMin) / 2, 0];
-          P2_local = [0, (cutMax + targetHh) / 2, 0];
+          P1_local = [0, (-targetHh + cutMax) / 2, 0];
+          P2_local = [0, (cutMin + targetHh) / 2, 0];
         }
       } else if (splitAxis === 'z') {
-        const d1 = cutMin + targetHd;
-        const d2 = targetHd - cutMax;
+        const d1 = cutMax + targetHd;
+        const d2 = targetHd - cutMin;
         if (d1 > 0.05 && d2 > 0.05) {
           size1 = [targetBoard.size[0], targetBoard.size[1], d1];
           size2 = [targetBoard.size[0], targetBoard.size[1], d2];
-          P1_local = [0, 0, (-targetHd + cutMin) / 2];
-          P2_local = [0, 0, (cutMax + targetHd) / 2];
+          P1_local = [0, 0, (-targetHd + cutMax) / 2];
+          P2_local = [0, 0, (cutMin + targetHd) / 2];
         }
       }
 
@@ -180,15 +332,96 @@ export const createOperationSlice = (set, get) => ({
         const pos1 = new THREE.Vector3(...P1_local).applyMatrix4(Wt);
         const pos2 = new THREE.Vector3(...P2_local).applyMatrix4(Wt);
 
+        // ── Mathematically extend the cutter to slice the wrong side completely ──
+        const v_split = new THREE.Vector3();
+        if (splitAxis === 'x') v_split.set(1, 0, 0);
+        else if (splitAxis === 'y') v_split.set(0, 1, 0);
+        else if (splitAxis === 'z') v_split.set(0, 0, 1);
+
+        const relativeMatrixInverse = relativeMatrix.clone().invert();
+        const v_split_cutter = v_split.clone().transformDirection(relativeMatrixInverse);
+
+        let cutterAxisIdx = 0;
+        let maxVal = Math.abs(v_split_cutter.x);
+        if (Math.abs(v_split_cutter.y) > maxVal) {
+          cutterAxisIdx = 1;
+          maxVal = Math.abs(v_split_cutter.y);
+        }
+        if (Math.abs(v_split_cutter.z) > maxVal) {
+          cutterAxisIdx = 2;
+          maxVal = Math.abs(v_split_cutter.z);
+        }
+
+        // Determine which side of the cutter's center plane each split piece lies on
+        const P1_c = new THREE.Vector3(...P1_local).applyMatrix4(relativeMatrixInverse);
+        const P2_c = new THREE.Vector3(...P2_local).applyMatrix4(relativeMatrixInverse);
+
+        const val1 = P1_c.getComponent(cutterAxisIdx);
+        const val2 = P2_c.getComponent(cutterAxisIdx);
+
+        let shiftSign1 = 1;
+        let shiftSign2 = -1;
+
+        if (val1 < val2) {
+          // Part 1 is on the negative side of the cutter axis compared to Part 2
+          shiftSign1 = 1;  // Shift extended cutter in positive direction to trim positive side
+          shiftSign2 = -1; // Shift extended cutter in negative direction to trim negative side
+        } else {
+          // Part 1 is on the positive side of the cutter axis compared to Part 2
+          shiftSign1 = -1; // Shift extended cutter in negative direction to trim negative side
+          shiftSign2 = 1;  // Shift extended cutter in positive direction to trim positive side
+        }
+
+        const Wc = cutterBoard.size[cutterAxisIdx];
+        const L = Math.max(...targetBoard.size) * 2 + 20;
+
+        // Shift 1: Part 1 extended cutter center offset along the local cutter axis
+        const shiftVec1 = new THREE.Vector3();
+        shiftVec1.setComponent(cutterAxisIdx, shiftSign1 * (-Wc / 2 + L / 2));
+        const size1_extended = [...cutterBoard.size];
+        size1_extended[cutterAxisIdx] = L;
+
+        // Shift 2: Part 2 extended cutter center offset along the local cutter axis
+        const shiftVec2 = new THREE.Vector3();
+        shiftVec2.setComponent(cutterAxisIdx, shiftSign2 * (-Wc / 2 + L / 2));
+        const size2_extended = [...cutterBoard.size];
+        size2_extended[cutterAxisIdx] = L;
+
+        // Remap transformation matrices for the new board local spaces
+        const m1 = new THREE.Matrix4().makeTranslation(-P1_local[0], -P1_local[1], -P1_local[2])
+          .multiply(relativeMatrix)
+          .multiply(new THREE.Matrix4().makeTranslation(shiftVec1.x, shiftVec1.y, shiftVec1.z));
+
+        const m2 = new THREE.Matrix4().makeTranslation(-P2_local[0], -P2_local[1], -P2_local[2])
+          .multiply(relativeMatrix)
+          .multiply(new THREE.Matrix4().makeTranslation(shiftVec2.x, shiftVec2.y, shiftVec2.z));
+
+        const op1 = {
+          ...op,
+          id: Date.now() + 1,
+          cutterSize: size1_extended,
+          relativeMatrix: m1.elements.slice()
+        };
+
+        const op2 = {
+          ...op,
+          id: Date.now() + 2,
+          cutterSize: size2_extended,
+          relativeMatrix: m2.elements.slice()
+        };
+
         const newBoard1 = {
           ...targetBoard,
           id: id1,
           name: `${targetBoard.name} (Part 1)`,
           size: size1,
           position: [pos1.x, pos1.y, pos1.z],
-          operations: (targetBoard.operations || [])
-            .map(o => filterOperationsForPiece(o, 1, splitAxis, P1_local, P2_local, size1, size2, targetBoard))
-            .filter(Boolean),
+          operations: [
+            ...(targetBoard.operations || [])
+              .map(o => filterOperationsForPiece(o, 1, splitAxis, P1_local, P2_local, size1, size2, targetBoard))
+              .filter(Boolean),
+            op1
+          ],
         };
 
         const newBoard2 = {
@@ -197,9 +430,12 @@ export const createOperationSlice = (set, get) => ({
           name: `${targetBoard.name} (Part 2)`,
           size: size2,
           position: [pos2.x, pos2.y, pos2.z],
-          operations: (targetBoard.operations || [])
-            .map(o => filterOperationsForPiece(o, 2, splitAxis, P1_local, P2_local, size1, size2, targetBoard))
-            .filter(Boolean),
+          operations: [
+            ...(targetBoard.operations || [])
+              .map(o => filterOperationsForPiece(o, 2, splitAxis, P1_local, P2_local, size1, size2, targetBoard))
+              .filter(Boolean),
+            op2
+          ],
         };
 
         // ── Audit constraints on the original split board ─────────────
@@ -1137,7 +1373,15 @@ export const createOperationSlice = (set, get) => ({
 });
 
 function filterOperationsForPiece(op, pieceIdx, splitAxis, P1_local, P2_local, size1, size2, targetBoard) {
-  if (op.type === 'subtract') return null;
+  if (op.type === 'subtract') {
+    const shift = pieceIdx === 1 ? P1_local : P2_local;
+    const m = new THREE.Matrix4().fromArray(op.relativeMatrix);
+    const m_new = new THREE.Matrix4().makeTranslation(-shift[0], -shift[1], -shift[2]).multiply(m);
+    return {
+      ...op,
+      relativeMatrix: m_new.elements.slice()
+    };
+  }
 
   // 1. Miter cuts: face-aligned along the split axis
   if (op.type === 'miter') {
