@@ -1,5 +1,6 @@
 import React from 'react';
 import useStore from '../../store/useStore';
+import { parseNum } from '../../utils/units';
 
 const ShakerDoorBuilderDialog = () => {
     const { shakerDoorDialog: dialog, setShakerDoorDialog: setDialog, buildShakerDoor, groups } = useStore();
@@ -14,35 +15,34 @@ const ShakerDoorBuilderDialog = () => {
     const cabinetName = cabinetGroup ? cabinetGroup.name : 'Selected Cabinet';
     const faceFrameName = faceFrameGroup ? faceFrameGroup.name : 'Selected Face Frame';
 
-    const parse = (v, def) => { const n = parseFloat(v); return isNaN(n) ? def : n; };
-    const W = parse(dialog.width, 18);
-    const H = parse(dialog.height, 30);
-    const tFrame = parse(dialog.thicknessFrame, 0.75);
-    const tPanel = parse(dialog.thicknessPanel, 0.25);
-    const wStileRail = parse(dialog.widthStileRail, 2);
-    const grooveDepth = parse(dialog.grooveDepth, 0.375);
-    const grooveWidth = parse(dialog.grooveWidth, 0.25);
-    const panelClearance = parse(dialog.panelClearance, 0.125);
+    const W = parseNum(dialog.width, 18);
+    const H = parseNum(dialog.height, 30);
+    const tFrame = parseNum(dialog.thicknessFrame, 0.75);
+    const tPanel = parseNum(dialog.thicknessPanel, 0.25);
+    const wStileRail = parseNum(dialog.widthStileRail, 2);
+    const grooveDepth = parseNum(dialog.grooveDepth, 0.375);
+    const grooveWidth = parseNum(dialog.grooveWidth, 0.25);
+    const panelClearance = parseNum(dialog.panelClearance, 0.125);
 
     const doorStyle = dialog.doorStyle || 'overlay';
-    const insetClearance = parse(dialog.insetClearance, 0.125);
-    const overlayReveal = parse(dialog.overlayReveal, 0.25);
+    const insetClearance = parseNum(dialog.insetClearance, 0.125);
+    const overlayReveal = parseNum(dialog.overlayReveal, 0.25);
     const doorConstruction = dialog.doorConstruction || 'shaker';
-    const doorCount = parse(dialog.doorCount, 1);
-    const doubleDoorGap = parse(dialog.doubleDoorGap, 0.09375); // 3/32" gap default
+    const doorCount = parseNum(dialog.doorCount, 1);
+    const doubleDoorGap = parseNum(dialog.doubleDoorGap, 0.09375); // 3/32" gap default
 
     let openingW = W;
     let openingH = H;
     if (hasCabinet && cabinetGroup) {
-        const tSide = parse(cabinetGroup.meta?.params?.thicknessSide, 0.75);
-        const tTB = parse(cabinetGroup.meta?.params?.thicknessTB, 0.75);
+        const tSide = parseNum(cabinetGroup.meta?.params?.thicknessSide, 0.75);
+        const tTB = parseNum(cabinetGroup.meta?.params?.thicknessTB, 0.75);
         if (doorStyle === 'inset') {
             openingW = W - 2 * tSide;
             openingH = H - 2 * tTB;
         }
     } else if (hasFaceFrame && faceFrameGroup) {
-        const wStileFF = parse(faceFrameGroup.meta?.params?.stileWidth, 1.5);
-        const wRailFF = parse(faceFrameGroup.meta?.params?.railWidth, 1.5);
+        const wStileFF = parseNum(faceFrameGroup.meta?.params?.stileWidth, 1.5);
+        const wRailFF = parseNum(faceFrameGroup.meta?.params?.railWidth, 1.5);
         if (doorStyle === 'inset') {
             openingW = W - 2 * wStileFF;
             openingH = H - 2 * wRailFF;

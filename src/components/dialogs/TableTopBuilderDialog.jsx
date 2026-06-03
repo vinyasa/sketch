@@ -1,17 +1,17 @@
 import React from 'react';
 import useStore from '../../store/useStore';
 import { collectChildBoards } from '../../utils/sceneGraph';
+import { parseNum } from '../../utils/units';
 
 const TableTopBuilderDialog = () => {
     const { tableTopDialog: dialog, setTableTopDialog: setDialog, buildTableTop, boards, groups } = useStore();
     if (!dialog) return null;
 
-    const parse = (v, def) => { const n = parseFloat(v); return isNaN(n) ? def : n; };
-    const boardWidth = parse(dialog.boardWidth, 5.5);
-    const thickness = parse(dialog.thickness, 1.0);
-    const widthOverhang = parse(dialog.widthOverhang, 2.0);
-    const depthOverhang = parse(dialog.depthOverhang, 2.0);
-    const tenonSpacing = parse(dialog.tenonSpacing, 10.0);
+    const boardWidth = parseNum(dialog.boardWidth, 5.5);
+    const thickness = parseNum(dialog.thickness, 1.0);
+    const widthOverhang = parseNum(dialog.widthOverhang, 2.0);
+    const depthOverhang = parseNum(dialog.depthOverhang, 2.0);
+    const tenonSpacing = parseNum(dialog.tenonSpacing, 10.0);
     const jointType = dialog.jointType || 'loose-tenon';
 
     // Scan for base group to determine dimensions feedback
@@ -31,8 +31,8 @@ const TableTopBuilderDialog = () => {
         }
     }
 
-    const W = hasBase ? (baseWidth + 2 * widthOverhang) : parse(dialog.width, 52);
-    const D = hasBase ? (baseDepth + 2 * depthOverhang) : parse(dialog.depth, 34);
+    const W = hasBase ? (baseWidth + 2 * widthOverhang) : parseNum(dialog.width, 52);
+    const D = hasBase ? (baseDepth + 2 * depthOverhang) : parseNum(dialog.depth, 34);
 
     const valid = boardWidth > 0 && thickness > 0 && W > 0 && D > 0;
 

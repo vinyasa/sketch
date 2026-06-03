@@ -91,3 +91,16 @@ export const toDisplay = (val, units) => {
     return units === 'metric' ? num * 25.4 : num;
 };
 
+/**
+ * Parse a value into a float, falling back to a default value if undefined/null/empty or NaN.
+ * @param {any} val - The input value to parse
+ * @param {number} def - The default value if parsing fails (defaults to 0)
+ * @returns {number} The parsed number or default
+ */
+export const parseNum = (val, def = 0) => {
+    if (val === undefined || val === null || val === '') return def;
+    const n = parseFloat(val);
+    return isNaN(n) ? def : n;
+};
+
+

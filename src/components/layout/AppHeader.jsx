@@ -5,7 +5,7 @@ import useStore from '../../store/useStore';
 const AppHeader = () => {
     const {
         fileMenuOpen, setFileMenuOpen,
-        saveWorkspace, exportWorkspace, loadWorkspace, importWorkspace,
+        saveWorkspace, exportWorkspace, exportGLB, loadWorkspace, importWorkspace,
         setShowNewWorkspaceDialog,
         setShowSavePromptDialog,
         setShowPrintDialog,
@@ -38,6 +38,7 @@ const AppHeader = () => {
 
     const [isNavOpen, setIsNavOpen] = useState(true);
     const headerRef = useRef(null);
+    const fileMenuRef = useRef(null);
 
     useEffect(() => {
         if (!headerRef.current) return;
@@ -51,6 +52,16 @@ const AppHeader = () => {
         return () => ro.disconnect();
     }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (fileMenuOpen && fileMenuRef.current && !fileMenuRef.current.contains(event.target)) {
+                setFileMenuOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, [fileMenuOpen, setFileMenuOpen]);
+
     return (
         <div className="header-overlay" ref={headerRef}>
             
@@ -61,7 +72,7 @@ const AppHeader = () => {
                     <div style={{ fontSize: '0.65rem', color: 'var(--accent-color)', marginTop: '12px', paddingLeft: '2px', opacity: 0.7 }}>{currentFileName || 'Untitled'}</div>
                 </div>
                 <div className="toolbar-menus">
-                    <div style={{ position: 'relative', display: 'inline-block' }}>
+                    <div ref={fileMenuRef} style={{ position: 'relative', display: 'inline-block' }}>
                         <span onClick={() => setFileMenuOpen(!fileMenuOpen)} style={{ cursor: 'pointer', padding: '4px 8px', borderRadius: '4px', background: fileMenuOpen ? 'var(--bg-color)' : 'transparent' }}>
                             File ⏷
                         </span>
@@ -93,6 +104,7 @@ const AppHeader = () => {
                                 <div style={{ padding: '4px 12px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>Disk</div>
                                 <button className="nav-btn" style={{ textAlign: 'left', border: 'none', padding: '6px 12px', fontSize: '0.85rem' }} onClick={() => { exportWorkspace(); setFileMenuOpen(false); }}>🖨️ Save...</button>
                                 <button className="nav-btn" style={{ textAlign: 'left', border: 'none', padding: '6px 12px', fontSize: '0.85rem' }} onClick={() => { document.getElementById('project-import-input').click(); setFileMenuOpen(false); }}>📂 Open...</button>
+                                <button className="nav-btn" style={{ textAlign: 'left', border: 'none', padding: '6px 12px', fontSize: '0.85rem' }} onClick={() => { exportGLB(); setFileMenuOpen(false); }}>📤 Export 3D Model (.glb)</button>
                                 <div className="divider" style={{ width: '100%', height: '1px', margin: '4px 0' }}></div>
                                 <button className="nav-btn" style={{ textAlign: 'left', border: 'none', padding: '6px 12px', fontSize: '0.85rem' }} onClick={() => { setShowPrintDialog(true); setFileMenuOpen(false); }}>🖨️ Print View...</button>
                             </div>

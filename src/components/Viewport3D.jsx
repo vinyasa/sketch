@@ -5,7 +5,7 @@ import useStore from '../store/useStore';
 
 // Extracted Components
 import { GizmoControls } from './GizmoControls';
-import { GridEnvironment, ShadowFloor } from './GridEnvironment';
+import { GridEnvironment } from './GridEnvironment';
 import BoardRenderer from './BoardRenderer';
 import { PersistentControls } from './PersistentControls';
 import { PrintCaptureHandler } from './PrintCaptureHandler';
@@ -126,7 +126,6 @@ export default function Viewport3D() {
     <div className="viewport-container" style={{ width: '100%', height: '100%', position: 'relative' }}>
       <Canvas shadows={lighting?.shadows ? 'soft' : false} onPointerMissed={() => setSelectedItemIds([])}>
         <SceneLights lighting={lighting} />
-        {!printCapture && <ShadowFloor shadows={lighting?.shadows} workspaceSize={workspaceSize} />}
 
         <GizmoControls />
 

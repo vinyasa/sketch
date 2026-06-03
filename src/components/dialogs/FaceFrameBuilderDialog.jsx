@@ -1,5 +1,6 @@
 import React from 'react';
 import useStore from '../../store/useStore';
+import { parseNum } from '../../utils/units';
 
 const FaceFrameBuilderDialog = () => {
     const { faceFrameDialog: dialog, setFaceFrameDialog: setDialog, buildFaceFrame, groups } = useStore();
@@ -10,12 +11,11 @@ const FaceFrameBuilderDialog = () => {
     const cabinetGroup = cabinetGroupId ? groups[cabinetGroupId] : null;
     const cabinetName = cabinetGroup ? cabinetGroup.name : 'Selected Cabinet';
 
-    const parse = (v, def) => { const n = parseFloat(v); return isNaN(n) ? def : n; };
-    const W = parse(dialog.width, 24);
-    const H = parse(dialog.height, 30);
-    const t = parse(dialog.thickness, 0.75);
-    const wStile = parse(dialog.stileWidth, 1.5);
-    const wRail = parse(dialog.railWidth, 1.5);
+    const W = parseNum(dialog.width, 24);
+    const H = parseNum(dialog.height, 30);
+    const t = parseNum(dialog.thickness, 0.75);
+    const wStile = parseNum(dialog.stileWidth, 1.5);
+    const wRail = parseNum(dialog.railWidth, 1.5);
 
     const valid = W > (2 * wStile) && H > (2 * wRail);
 

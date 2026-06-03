@@ -1,7 +1,7 @@
 import { computeWorldAABB, collectChildBoards } from '../sceneGraph';
+import { parseNum } from '../units';
 
 export function generateTableBase(cfg, boards, groups, defaultMaterial) {
-  const parseNum = (val, def) => { const n = parseFloat(val); return isNaN(n) ? def : n; };
   
   const W = parseNum(cfg.width, 48);
   const H = parseNum(cfg.height, 29);

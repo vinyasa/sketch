@@ -1,7 +1,7 @@
 import { computeWorldAABB, collectChildBoards } from '../sceneGraph';
+import { parseNum } from '../units';
 
 export function generateTableTop(cfg, boards, groups, defaultMaterial) {
-  const parseNum = (val, def) => { const n = parseFloat(val); return isNaN(n) ? def : n; };
   const newGroups = {};
   
   const boardWidth = parseNum(cfg.boardWidth, 5.5);

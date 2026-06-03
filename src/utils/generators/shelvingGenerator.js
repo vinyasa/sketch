@@ -1,7 +1,7 @@
 import { computeWorldAABB, collectChildBoards } from '../sceneGraph';
+import { parseNum } from '../units';
 
 export function generateShelving(cfg, boards, groups, defaultMaterial) {
-  const parseNum = (val, def) => { const n = parseFloat(val); return isNaN(n) ? def : n; };
   const parseIntSafe = (val, def) => { const n = parseInt(val, 10); return isNaN(n) ? def : n; };
   
   const W = parseNum(cfg.width, 30);

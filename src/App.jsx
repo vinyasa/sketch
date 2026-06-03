@@ -17,7 +17,7 @@ import ToolsPanel from './components/panels/ToolsPanel';
 import HardwarePanel from './components/panels/HardwarePanel';
 import AssembliesPanel from './components/panels/AssembliesPanel';
 import AnimationPanel from './components/panels/AnimationPanel';
-// import TutorialRecorderPanel from './components/panels/TutorialRecorderPanel';
+import TutorialRecorderPanel from './components/panels/TutorialRecorderPanel';
 import NewBoardDialog from './components/dialogs/NewBoardDialog';
 import CabinetBuilderDialog from './components/dialogs/CabinetBuilderDialog';
 import BoxBuilderDialog from './components/dialogs/BoxBuilderDialog';
@@ -196,6 +196,18 @@ export default function App() {
         return () => clearTimeout(timer);
     }, [boards, enableCollisions, setOverlappingBoardIds]);
 
+    // Global shortcut handler for ALT-Shift-R to toggle tutorial recorder
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            if (e.altKey && e.shiftKey && e.key.toLowerCase() === 'r') {
+                e.preventDefault();
+                setShowRecorderPanel(prev => !prev);
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [setShowRecorderPanel]);
+
     return (
         <ErrorBoundary>
         <div className={`app-container ${showSidebar ? 'layout-docked' : ''}`}>
@@ -244,11 +256,11 @@ export default function App() {
                         </DraggablePanel>
                     )}
 
-                    {/* {showRecorderPanel && (
+                    {showRecorderPanel && (
                         <DraggablePanel title="🔴 Step-by-Step Recorder" defaultPosition={getSmartPosition(340, 480, 'center', headerBottom)} defaultSize={{ width: 340 }} topMargin={headerBottom} onClose={() => setShowRecorderPanel(false)} zIndex={600}>
                             <TutorialRecorderPanel />
                         </DraggablePanel>
-                    )} */}
+                    )}
 
                     {/* Draggable overlays are only rendered if NOT in docked mode */}
                     {!isDocked && showOutlinerPanel && (

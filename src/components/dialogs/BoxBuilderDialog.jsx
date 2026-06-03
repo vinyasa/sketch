@@ -1,18 +1,18 @@
 import React from 'react';
 import useStore from '../../store/useStore';
+import { parseNum } from '../../utils/units';
 
 const BoxBuilderDialog = () => {
     const { boxDialog: dialog, setBoxDialog: setDialog, buildBox } = useStore();
     if (!dialog) return null;
 
-    const parse = (v, def) => { const n = parseFloat(v); return isNaN(n) ? def : n; };
-    const W = parse(dialog.width, 18);
-    const H = parse(dialog.height, 12);
-    const D = parse(dialog.depth, 12);
-    const tTB = parse(dialog.thicknessTB, 0.5);
-    const tSide = parse(dialog.thicknessSide, 0.5);
-    const tFront = parse(dialog.thicknessFront, 0.5);
-    const tBack = parse(dialog.thicknessBack, 0.5);
+    const W = parseNum(dialog.width, 18);
+    const H = parseNum(dialog.height, 12);
+    const D = parseNum(dialog.depth, 12);
+    const tTB = parseNum(dialog.thicknessTB, 0.5);
+    const tSide = parseNum(dialog.thicknessSide, 0.5);
+    const tFront = parseNum(dialog.thicknessFront, 0.5);
+    const tBack = parseNum(dialog.thicknessBack, 0.5);
 
     // Derived panel sizes for the summary
     // Top and Bottom are full width and depth.

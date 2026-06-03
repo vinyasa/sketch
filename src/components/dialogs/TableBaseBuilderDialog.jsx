@@ -1,19 +1,19 @@
 import React from 'react';
 import useStore from '../../store/useStore';
+import { parseNum } from '../../utils/units';
 
 const TableBaseBuilderDialog = () => {
     const { tableBaseDialog: dialog, setTableBaseDialog: setDialog, buildTableBase } = useStore();
     if (!dialog) return null;
 
-    const parse = (v, def) => { const n = parseFloat(v); return isNaN(n) ? def : n; };
-    const W = parse(dialog.width, 48);
-    const H = parse(dialog.height, 29);
-    const D = parse(dialog.depth, 30);
-    const legSize = parse(dialog.legSize, 2.25);
-    const legTaperAngle = parse(dialog.legTaperAngle, 1.5);
-    const apronHeight = parse(dialog.apronHeight, 4.0);
-    const apronThickness = parse(dialog.apronThickness, 0.75);
-    const apronInset = parse(dialog.apronInset, 0.25);
+    const W = parseNum(dialog.width, 48);
+    const H = parseNum(dialog.height, 29);
+    const D = parseNum(dialog.depth, 30);
+    const legSize = parseNum(dialog.legSize, 2.25);
+    const legTaperAngle = parseNum(dialog.legTaperAngle, 1.5);
+    const apronHeight = parseNum(dialog.apronHeight, 4.0);
+    const apronThickness = parseNum(dialog.apronThickness, 0.75);
+    const apronInset = parseNum(dialog.apronInset, 0.25);
     const apronJoint = dialog.apronJoint || 'pocket-hole';
 
     // Stringers Count Formula

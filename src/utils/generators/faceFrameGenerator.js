@@ -1,7 +1,7 @@
 import { computeWorldAABB, collectChildBoards } from '../sceneGraph';
+import { parseNum } from '../units';
 
 export function generateFaceFrame(cfg, boards, groups, defaultMaterial) {
-  const parseNum = (val, def) => { const n = parseFloat(val); return isNaN(n) ? def : n; };
   const W = parseNum(cfg.width, 24);
   const H = parseNum(cfg.height, 30);
   const t = parseNum(cfg.thickness, 0.75);

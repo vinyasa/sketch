@@ -235,6 +235,151 @@ export const createIoSlice = (set, get) => ({
       return false;
     }
   },
+  exportGLB: async () => {
+    const {
+      threeModelGroup,
+      currentFileName,
+      showToast
+    } = get();
+
+    if (!threeModelGroup) {
+      showToast("No 3D model group available to export.");
+      return false;
+    }
+
+    showToast("Exporting 3D Model...");
+
+    try {
+      const THREE = await import('three');
+      const { GLTFExporter } = await import('three/examples/jsm/exporters/GLTFExporter.js');
+
+      // Helper function to recursively clone only the actual boards and hardware parts
+      const cleanModelForExport = (source) => {
+        if (source.userData?.isBoard) {
+          // Shallow clone the mesh so we don't bring along any UI helpers (Edges, axesHelper, hover planes, text)
+          const meshClone = source.clone(false);
+          if (source.geometry) {
+            meshClone.geometry = source.geometry.clone();
+          }
+          if (source.material) {
+            meshClone.material = Array.isArray(source.material)
+              ? source.material.map(m => m.clone())
+              : source.material.clone();
+
+            const mats = Array.isArray(meshClone.material) ? meshClone.material : [meshClone.material];
+            mats.forEach(mat => {
+              if (mat.emissive) mat.emissive.set('#000000');
+              if (mat.emissiveIntensity !== undefined) mat.emissiveIntensity = 0;
+            });
+          }
+          // Process children: we ONLY export children that are hardware attachments
+          source.children.forEach(child => {
+            if (child.userData?.isHardware) {
+              meshClone.add(cleanModelForExport(child));
+            }
+          });
+          return meshClone;
+        }
+
+        if (source.userData?.isHardware) {
+          // Deep clone hardware attachments because they are loaded GLTF models (no helpers)
+          const hwClone = source.clone(true);
+          // Strip emissive selection highlight
+          hwClone.traverse(child => {
+            if (child.isMesh && child.material) {
+              child.material = child.material.clone();
+              if (child.material.emissive) child.material.emissive.set('#000000');
+              if (child.material.emissiveIntensity !== undefined) child.material.emissiveIntensity = 0;
+            }
+          });
+          return hwClone;
+        }
+
+        // If it's a general Group (like root groups or sub-groups representing assemblies), we clone it (shallow)
+        if (source.isGroup || source.type === 'Group') {
+          const groupClone = source.clone(false);
+          source.children.forEach(child => {
+            const cleanedChild = cleanModelForExport(child);
+            if (cleanedChild) {
+              groupClone.add(cleanedChild);
+            }
+          });
+          if (groupClone.children.length > 0) {
+            return groupClone;
+          }
+        }
+
+        return null;
+      };
+
+      const exportRoot = new THREE.Group();
+      exportRoot.name = 'Woodcraft Assembly';
+      
+      // If the root threeModelGroup has children, process them
+      threeModelGroup.children.forEach(child => {
+        const cleanedChild = cleanModelForExport(child);
+        if (cleanedChild) {
+          exportRoot.add(cleanedChild);
+        }
+      });
+
+      // Scale root group from inches to meters (1 inch = 0.0254 meters)
+      // since glTF/GLB specification expects spatial units to be in meters.
+      exportRoot.scale.set(0.0254, 0.0254, 0.0254);
+
+      if (exportRoot.children.length === 0) {
+        showToast("No components found to export.");
+        return false;
+      }
+
+      const exporter = new GLTFExporter();
+      exporter.parse(
+        exportRoot,
+        async (gltf) => {
+          try {
+            const blob = new Blob([gltf], { type: 'application/octet-stream' });
+            const defaultName = `${currentFileName || 'woodcraft'}.glb`;
+
+            if ('showSaveFilePicker' in window) {
+              const handle = await window.showSaveFilePicker({
+                suggestedName: defaultName,
+                types: [{
+                  description: 'GLB 3D Model',
+                  accept: {
+                    'model/gltf-binary': ['.glb']
+                  }
+                }]
+              });
+              const writable = await handle.createWritable();
+              await writable.write(blob);
+              await writable.close();
+              showToast("Successfully exported GLB");
+            } else {
+              const url = URL.createObjectURL(blob);
+              const dlNode = document.createElement('a');
+              dlNode.href = url;
+              dlNode.download = defaultName;
+              dlNode.click();
+              URL.revokeObjectURL(url);
+              showToast("Successfully exported GLB");
+            }
+          } catch (err) {
+            if (err.name !== 'AbortError') showToast("Failed to save GLB file.");
+          }
+        },
+        (error) => {
+          console.error("GLTFExporter failed:", error);
+          showToast("Failed to export GLB model.");
+        },
+        { binary: true }
+      );
+      return true;
+    } catch (err) {
+      console.error("Failed to run GLB export:", err);
+      showToast("Failed to export GLB.");
+      return false;
+    }
+  },
   importWorkspace: e => {
     const {
       setBoards,

@@ -1,6 +1,61 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import useStore from '../../store/useStore';
 import rawManualText from '../../../docs/user_manual.md?raw';
+
+// Shared Constants for Explanations
+const WORKBENCH_EXPLANATION = {
+    title: "🪚 1. The Workbench (Local Space)",
+    tagline: "Think of a single board lying flat on your workbench.",
+    points: [
+        "Board's own axes: Thickness (Y), Width (Z), Length (X) based on grain.",
+        "Cuts & grain are local: A miter or bevel cut moves with the board itself."
+    ]
+};
+
+const ROOM_EXPLANATION = {
+    title: "🏠 2. The Finished Room (World Space)",
+    tagline: "Think of assembling the piece inside a room.",
+    points: [
+        "Room's axes: Floor runs along X and Z; Height (Y) points straight up.",
+        "Assembly rotations: Components are tilted, splayed, and oriented relative to the floor."
+    ]
+};
+
+// Unified Markdown Inline Parser
+const parseInlineMarkdown = (str, isPrint = false) => {
+    let cleanStr = str.replace(/\*\Delta/g, ''); // safety fallback
+    
+    // Images
+    const imgStyle = isPrint 
+        ? 'max-width: 100%; height: auto; border-radius: 6px; border: 1px solid #ddd; margin: 10px 0; display: block;'
+        : 'max-width: 100%; height: auto; border-radius: 8px; border: 1px solid var(--border-color); margin: 12px 0; display: block; box-shadow: 0 4px 12px rgba(0,0,0,0.15);';
+    cleanStr = cleanStr.replace(/!\[(.*?)\]\((.*?)\)/g, `<img src="$2" alt="$1" style="${imgStyle}" />`);
+    
+    // Links
+    const linkStyle = isPrint
+        ? 'color: #ff7a00; font-weight: bold; text-decoration: underline;'
+        : 'color: var(--accent-color, #ff7a00); font-weight: bold; text-decoration: underline;';
+    cleanStr = cleanStr.replace(/\[(.*?)\]\((.*?)\)/g, `<a href="$2" target="_blank" style="${linkStyle}">$1</a>`);
+    
+    // Bold
+    const boldStyle = isPrint
+        ? 'font-weight: 900; color: #000;'
+        : 'font-weight: 850; color: var(--accent-color, #ff7a00);';
+    cleanStr = cleanStr.replace(/\*\*(.*?)\*\*/g, `<strong style="${boldStyle}">$1</strong>`);
+    
+    // Inline code
+    const codeStyle = isPrint
+        ? '' // in printing, we just use raw <code> element style
+        : 'background: rgba(255,255,255,0.06); padding: 2px 5px; border-radius: 4px; border: 1px solid var(--border-color); font-family: monospace; font-size: 0.85em; color: var(--accent-color);';
+    
+    if (isPrint) {
+        cleanStr = cleanStr.replace(/`(.*?)`/g, '<code>$1</code>');
+    } else {
+        cleanStr = cleanStr.replace(/`(.*?)`/g, `<code style="${codeStyle}">$1</code>`);
+    }
+    
+    return cleanStr;
+};
 
 const UserManualDialog = () => {
     const { showUserManualDialog, setShowUserManualDialog } = useStore();
@@ -49,38 +104,36 @@ const UserManualDialog = () => {
         try { e.target.releasePointerCapture(e.pointerId); } catch (_) {}
     };
 
-    if (!showUserManualDialog) return null;
+    // Dynamically build the sections array, memoized to run only on manual text changes (once at load)
+    const sections = useMemo(() => {
+        const normalizedText = rawManualText.replace(/\r\n/g, '\n');
+        const parts = normalizedText.split(/\n##\s+/);
+        const welcomeMarkdown = parts[0] || '';
+        
+        const list = [];
+        if (welcomeMarkdown.trim()) {
+            list.push({
+                id: 'welcome',
+                title: '📖 Welcome Guide',
+                content: welcomeMarkdown
+            });
+        }
 
-    // Normalize CRLF to LF first to make splitting perfectly cross-platform
-    const normalizedText = rawManualText.replace(/\r\n/g, '\n');
-
-    // Split by '\n## ' (no anchors to bypass JS RegExp split multiline engine bugs!)
-    const parts = normalizedText.split(/\n##\s+/);
-    
-    // Part 0: Title & Welcome Header
-    const welcomeMarkdown = parts[0] || '';
-    
-    // Dynamically build the sections array
-    const sections = [];
-    if (welcomeMarkdown.trim()) {
-        sections.push({
-            id: 'welcome',
-            title: '📖 Welcome Guide',
-            content: welcomeMarkdown
+        parts.slice(1).forEach((part, index) => {
+            const lines = part.split('\n');
+            const titleLine = lines[0].trim();
+            list.push({
+                id: `section-${index}`,
+                title: titleLine || `Section ${index + 1}`,
+                content: '## ' + part
+            });
         });
-    }
-
-    parts.slice(1).forEach((part, index) => {
-        const lines = part.split('\n');
-        const titleLine = lines[0].trim();
-        sections.push({
-            id: `section-${index}`,
-            title: titleLine || `Section ${index + 1}`,
-            content: '## ' + part
-        });
-    });
+        return list;
+    }, []);
 
     const activeSection = sections.find(s => s.id === activeSectionId) || sections[0];
+
+    if (!showUserManualDialog) return null;
 
     // File Downloader: Always uses the exact raw markdown from docs/user_manual.md
     const handleDownload = () => {
@@ -126,19 +179,10 @@ const UserManualDialog = () => {
                 if (inAlert) {
                     const alertText = alertLines.join(' ');
                     const title = alertType || 'Notice';
-                    html += `<div class="notice"><div class="notice-title">💡 ${title}</div>${parseInline(alertText)}</div>`;
+                    html += `<div class="notice"><div class="notice-title">💡 ${title}</div>${parseInlineMarkdown(alertText, true)}</div>`;
                     alertLines = [];
                     inAlert = false;
                 }
-            };
-
-            const parseInline = (str) => {
-                return str
-                    .replace(/\*\Delta/g, '') // safety fallback
-                    .replace(/!\[(.*?)\]\((.*?)\)/g, '<img src="$2" alt="$1" style="max-width: 100%; height: auto; border-radius: 6px; border: 1px solid #ddd; margin: 10px 0; display: block;" />')
-                    .replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2" target="_blank" style="color: #ff7a00; font-weight: bold; text-decoration: underline;">$1</a>')
-                    .replace(/\*\*(.*?)\*\*/g, '<strong style="font-weight: 900; color: #000;">$1</strong>')
-                    .replace(/`(.*?)`/g, '<code>$1</code>');
             };
 
             lines.forEach(line => {
@@ -159,26 +203,24 @@ const UserManualDialog = () => {
                                 </div>
                                 <div style="display: flex; gap: 12px; justify-content: space-between;">
                                     <div style="flex: 1; border: 1px solid #ddd; border-top: 3px solid #ff7a00; border-radius: 4px; padding: 10px; background: #fff; box-sizing: border-box;">
-                                        <h4 style="margin: 0 0 6px 0; color: #ff7a00; font-size: 0.82rem; font-weight: 800; border-bottom: 1px solid #eee; padding-bottom: 2px; display: flex; align-items: center; gap: 4px;">🪚 1. The Workbench (Local Space)</h4>
-                                        <p style="margin: 0 0 6px 0; font-size: 0.7rem; color: #666; font-style: italic;">Think of a single board lying flat on your workbench.</p>
+                                        <h4 style="margin: 0 0 6px 0; color: #ff7a00; font-size: 0.82rem; font-weight: 800; border-bottom: 1px solid #eee; padding-bottom: 2px; display: flex; align-items: center; gap: 4px;">${WORKBENCH_EXPLANATION.title}</h4>
+                                        <p style="margin: 0 0 6px 0; font-size: 0.7rem; color: #666; font-style: italic;">${WORKBENCH_EXPLANATION.tagline}</p>
                                         <ul style="margin: 0; padding-left: 14px; font-size: 0.7rem; line-height: 1.35; list-style-type: disc;">
-                                            <li style="margin-bottom: 2px;"><strong>Board's own axes:</strong> Thickness (Y), Width (Z), Length (X) based on grain.</li>
-                                            <li><strong>Cuts & grain are local:</strong> A miter or bevel cut moves with the board itself.</li>
+                                            ${WORKBENCH_EXPLANATION.points.map(p => `<li style="margin-bottom: 2px;">${parseInlineMarkdown(p, true)}</li>`).join('')}
                                         </ul>
                                     </div>
                                     <div style="flex: 1; border: 1px solid #ddd; border-top: 3px solid #3b82f6; border-radius: 4px; padding: 10px; background: #fff; box-sizing: border-box;">
-                                        <h4 style="margin: 0 0 6px 0; color: #3b82f6; font-size: 0.82rem; font-weight: 800; border-bottom: 1px solid #eee; padding-bottom: 2px; display: flex; align-items: center; gap: 4px;">🏠 2. The Finished Room (World Space)</h4>
-                                        <p style="margin: 0 0 6px 0; font-size: 0.7rem; color: #666; font-style: italic;">Think of assembling the piece inside a room.</p>
+                                        <h4 style="margin: 0 0 6px 0; color: #3b82f6; font-size: 0.82rem; font-weight: 800; border-bottom: 1px solid #eee; padding-bottom: 2px; display: flex; align-items: center; gap: 4px;">${ROOM_EXPLANATION.title}</h4>
+                                        <p style="margin: 0 0 6px 0; font-size: 0.7rem; color: #666; font-style: italic;">${ROOM_EXPLANATION.tagline}</p>
                                         <ul style="margin: 0; padding-left: 14px; font-size: 0.7rem; line-height: 1.35; list-style-type: disc;">
-                                            <li style="margin-bottom: 2px;"><strong>Room's axes:</strong> Floor runs along X and Z; Height (Y) points straight up.</li>
-                                            <li><strong>Assembly rotations:</strong> Components are tilted, splayed, and oriented relative to the floor.</li>
+                                            ${ROOM_EXPLANATION.points.map(p => `<li style="margin-bottom: 2px;">${parseInlineMarkdown(p, true)}</li>`).join('')}
                                         </ul>
                                     </div>
                                 </div>
                             </div>
                             `;
                         } else {
-                            html += `<pre style="background: #f8f9fa; padding: 15px; border-radius: 8px; border: 1px solid #e9ecef; font-family: monospace; font-size: 0.9em; overflow-x: auto;"><code>${parseInline(codeLines.join('\n'))}</code></pre>`;
+                            html += `<pre style="background: #f8f9fa; padding: 15px; border-radius: 8px; border: 1px solid #e9ecef; font-family: monospace; font-size: 0.9em; overflow-x: auto;"><code>${parseInlineMarkdown(codeLines.join('\n'), true)}</code></pre>`;
                         }
                         codeLines = [];
                         inCodeBlock = false;
@@ -233,7 +275,7 @@ const UserManualDialog = () => {
                         html += '<ul>';
                         listType = 'ul';
                     }
-                    html += `<li>${parseInline(trimmed.replace(/^[*+-]\s+/, ''))}</li>`;
+                    html += `<li>${parseInlineMarkdown(trimmed.replace(/^[*+-]\s+/, ''), true)}</li>`;
                 } else if (/^\d+\./.test(trimmed)) {
                     const match = trimmed.match(/^(\d+)\./);
                     const num = match ? parseInt(match[1], 10) : 1;
@@ -242,10 +284,10 @@ const UserManualDialog = () => {
                         html += `<ol start="${num}">`;
                         listType = 'ol';
                     }
-                    html += `<li>${parseInline(trimmed.replace(/^\d+\.\s+/, ''))}</li>`;
+                    html += `<li>${parseInlineMarkdown(trimmed.replace(/^\d+\.\s+/, ''), true)}</li>`;
                 } else {
                     flushList();
-                    html += `<p>${parseInline(trimmed)}</p>`;
+                    html += `<p>${parseInlineMarkdown(trimmed, true)}</p>`;
                 }
             });
 
@@ -413,24 +455,12 @@ const UserManualDialog = () => {
                         <strong style={{ color: 'var(--accent-color)', textTransform: 'uppercase', fontSize: '0.72rem', display: 'block', marginBottom: '4px', letterSpacing: '0.5px' }}>
                             💡 {label}
                         </strong>
-                        <span dangerouslySetInnerHTML={{ __html: parseInlineMarkdown(alertText) }} />
+                        <span dangerouslySetInnerHTML={{ __html: parseInlineMarkdown(alertText, false) }} />
                     </div>
                 );
                 alertLines = [];
                 inAlert = false;
             }
-        };
-
-        const parseInlineMarkdown = (str) => {
-            // First parse markdown images: ![alt](src)
-            let html = str.replace(/!\[(.*?)\]\((.*?)\)/g, '<img src="$2" alt="$1" style="max-width: 100%; height: auto; border-radius: 8px; border: 1px solid var(--border-color); margin: 12px 0; display: block; box-shadow: 0 4px 12px rgba(0,0,0,0.15);" />');
-            // Then parse markdown links: [text](url)
-            html = html.replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2" target="_blank" style="color: var(--accent-color, #ff7a00); font-weight: bold; text-decoration: underline;">$1</a>');
-            // Bold **text** styled to be highly distinct and vibrant
-            html = html.replace(/\*\*(.*?)\*\*/g, '<strong style="font-weight: 850; color: var(--accent-color, #ff7a00);">$1</strong>');
-            // Inline code `code`
-            html = html.replace(/`(.*?)`/g, '<code style="background: rgba(255,255,255,0.06); padding: 2px 5px; border-radius: 4px; border: 1px solid var(--border-color); font-family: monospace; font-size: 0.85em; color: var(--accent-color);">$1</code>');
-            return html;
         };
 
         lines.forEach((line, index) => {
@@ -507,14 +537,15 @@ const UserManualDialog = () => {
                                             alignItems: 'center',
                                             gap: '8px'
                                         }}>
-                                            🪚 1. The Workbench (Local Space)
+                                            {WORKBENCH_EXPLANATION.title}
                                         </div>
                                         <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                                            Think of a single board lying flat on your workbench.
+                                            {WORKBENCH_EXPLANATION.tagline}
                                         </p>
                                         <ul style={{ margin: 0, paddingLeft: '16px', fontSize: '0.78rem', display: 'flex', flexDirection: 'column', gap: '6px', color: 'var(--text-main)', listStyleType: 'disc' }}>
-                                            <li><strong>Board's own axes:</strong> Thickness (Y), Width (Z), Length (X) based on grain.</li>
-                                            <li><strong>Cuts & grain are local:</strong> A miter or bevel cut moves with the board itself.</li>
+                                            {WORKBENCH_EXPLANATION.points.map((p, pIdx) => (
+                                                <li key={pIdx} dangerouslySetInnerHTML={{ __html: parseInlineMarkdown(p, false) }} />
+                                            ))}
                                         </ul>
                                     </div>
 
@@ -538,14 +569,15 @@ const UserManualDialog = () => {
                                             alignItems: 'center',
                                             gap: '8px'
                                         }}>
-                                            🏠 2. The Finished Room (World Space)
+                                            {ROOM_EXPLANATION.title}
                                         </div>
                                         <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                                            Think of assembling the piece inside a room.
+                                            {ROOM_EXPLANATION.tagline}
                                         </p>
                                         <ul style={{ margin: 0, paddingLeft: '16px', fontSize: '0.78rem', display: 'flex', flexDirection: 'column', gap: '6px', color: 'var(--text-main)', listStyleType: 'disc' }}>
-                                            <li><strong>Room's axes:</strong> Floor runs along X and Z; Height (Y) points straight up.</li>
-                                            <li><strong>Assembly rotations:</strong> Components are tilted, splayed, and oriented relative to the floor.</li>
+                                            {ROOM_EXPLANATION.points.map((p, pIdx) => (
+                                                <li key={pIdx} dangerouslySetInnerHTML={{ __html: parseInlineMarkdown(p, false) }} />
+                                            ))}
                                         </ul>
                                     </div>
                                 </div>
@@ -644,7 +676,7 @@ const UserManualDialog = () => {
                     listType = 'ul';
                 }
                 const content = trimmed.replace(/^[*+-]\s+/, '');
-                listItems.push(<li key={`li-${index}`} style={{ marginBottom: '6px', fontSize: '0.85rem' }} dangerouslySetInnerHTML={{ __html: parseInlineMarkdown(content) }} />);
+                listItems.push(<li key={`li-${index}`} style={{ marginBottom: '6px', fontSize: '0.85rem' }} dangerouslySetInnerHTML={{ __html: parseInlineMarkdown(content, false) }} />);
             }
             // Ordered List Items
             else if (/^\d+\./.test(trimmed)) {
@@ -656,13 +688,13 @@ const UserManualDialog = () => {
                     listStartNum = num;
                 }
                 const content = trimmed.replace(/^\d+\.\s+/, '');
-                listItems.push(<li key={`li-${index}`} style={{ marginBottom: '6px', fontSize: '0.85rem' }} dangerouslySetInnerHTML={{ __html: parseInlineMarkdown(content) }} />);
+                listItems.push(<li key={`li-${index}`} style={{ marginBottom: '6px', fontSize: '0.85rem' }} dangerouslySetInnerHTML={{ __html: parseInlineMarkdown(content, false) }} />);
             }
             // General paragraphs
             else {
                 flushList(index);
                 elements.push(
-                    <p key={`p-${index}`} style={{ margin: '0 0 12px 0', fontSize: '0.86rem', color: 'var(--text-main)', opacity: 0.95 }} dangerouslySetInnerHTML={{ __html: parseInlineMarkdown(trimmed) }} />
+                    <p key={`p-${index}`} style={{ margin: '0 0 12px 0', fontSize: '0.86rem', color: 'var(--text-main)', opacity: 0.95 }} dangerouslySetInnerHTML={{ __html: parseInlineMarkdown(trimmed, false) }} />
                 );
             }
         });
@@ -679,21 +711,21 @@ const UserManualDialog = () => {
                 ref={panelRef}
                 className="glass-panel" 
                 style={{ 
-                    padding: '0', 
-                    maxWidth: '950px', 
-                    width: '100%', 
-                    height: '85vh', 
-                    borderRadius: '12px', 
-                    display: 'flex', 
-                    flexDirection: 'column', 
-                    color: 'var(--text-main)', 
-                    position: 'absolute', 
-                    left: `${pos.x}px`, 
-                    top: `${pos.y}px`, 
-                    overflow: 'hidden',
-                    pointerEvents: 'auto',
-                    boxShadow: isDragging ? '0 16px 40px rgba(0,0,0,0.5)' : '0 8px 32px rgba(0,0,0,0.3)',
-                    transition: isDragging ? 'none' : 'box-shadow 0.2s'
+                     padding: '0', 
+                     maxWidth: '950px', 
+                     width: '100%', 
+                     height: '85vh', 
+                     borderRadius: '12px', 
+                     display: 'flex', 
+                     flexDirection: 'column', 
+                     color: 'var(--text-main)', 
+                     position: 'absolute', 
+                     left: `${pos.x}px`, 
+                     top: `${pos.y}px`, 
+                     overflow: 'hidden',
+                     pointerEvents: 'auto',
+                     boxShadow: isDragging ? '0 16px 40px rgba(0,0,0,0.5)' : '0 8px 32px rgba(0,0,0,0.3)',
+                     transition: isDragging ? 'none' : 'box-shadow 0.2s'
                 }} 
                 onClick={e => e.stopPropagation()}
             >
@@ -764,7 +796,6 @@ const UserManualDialog = () => {
 
                     {/* Right Scrollable Content panel */}
                     <div style={{ flex: 1, padding: '24px 32px', overflowY: 'auto', background: 'var(--panel-bg)', lineStyleType: 'none', display: 'flex', flexDirection: 'column', justifyBetween: 'space-between' }}>
-                        
                         <div style={{ flex: 1 }}>
                             {activeSection && (
                                 <div>
@@ -772,7 +803,6 @@ const UserManualDialog = () => {
                                 </div>
                             )}
                         </div>
-
                     </div>
                 </div>
 
@@ -789,7 +819,7 @@ const UserManualDialog = () => {
                     fontFamily: 'monospace'
                 }}>
                     <span>📄 Path: apps/sketch/docs/user_manual.md</span>
-                    <span>Length: {rawManualText?.length || 0} chars | Sections detected: {parts.length}</span>
+                    <span>Length: {rawManualText?.length || 0} chars | Sections detected: {sections.length}</span>
                 </div>
 
             </div>

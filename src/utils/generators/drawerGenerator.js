@@ -1,11 +1,7 @@
 import { computeWorldAABB, collectChildBoards } from '../sceneGraph';
+import { parseNum } from '../units';
 
 export function generateDrawers(cfg, boards, groups, defaultMaterial) {
-  const parseNum = (val, def) => {
-    if (val === undefined || val === null || val === '') return def;
-    const n = parseFloat(val);
-    return isNaN(n) ? def : n;
-  };
   const W = parseNum(cfg.width, 24);
   const H = parseNum(cfg.height, 30);
   const Dval = parseNum(cfg.depth, 20);
@@ -123,8 +119,8 @@ export function generateDrawers(cfg, boards, groups, defaultMaterial) {
   const leftoverY = H - totalStackH;
 
   const boxW = roundDownTo1_8(W - 2 * slideWidth);
-  // Subtract 1" from available depth to leave the 1" back clearance gap
-  const boxD = roundDownTo1_8(faceStyle === 'inset' ? Dval - tFace - 1.0 : Dval - 1.0);
+  const boxD = parseNum(cfg.boxDepth, roundDownTo1_8(faceStyle === 'inset' ? Dval - tFace - 1.0 : Dval - 1.0));
+  const boxStart = faceStyle === 'inset' ? Dval - tFace - boxD : Dval - boxD;
 
   let faceW = W;
   let faceX = W / 2;
@@ -201,35 +197,35 @@ export function generateDrawers(cfg, boards, groups, defaultMaterial) {
       name: `Box Left`,
       parentId: drawerGroupId,
       size: [tBox, boxH, boxD],
-      position: [slideWidth + tBox / 2, boxCenterY, 1.0 + boxD / 2]
+      position: [slideWidth + tBox / 2, boxCenterY, boxStart + boxD / 2]
     };
     const bRight = {
       id: oldIdMap[i + '_Box Right'] || baseId++,
       name: `Box Right`,
       parentId: drawerGroupId,
       size: [tBox, boxH, boxD],
-      position: [W - slideWidth - tBox / 2, boxCenterY, 1.0 + boxD / 2]
+      position: [W - slideWidth - tBox / 2, boxCenterY, boxStart + boxD / 2]
     };
     const bFront = {
       id: oldIdMap[i + '_Box Front'] || baseId++,
       name: `Box Front`,
       parentId: drawerGroupId,
       size: [fW, boxH, tBox],
-      position: [W / 2, boxCenterY, 1.0 + boxD - tBox / 2]
+      position: [W / 2, boxCenterY, boxStart + boxD - tBox / 2]
     };
     const bBack = {
       id: oldIdMap[i + '_Box Back'] || baseId++,
       name: `Box Back`,
       parentId: drawerGroupId,
       size: [fW, boxH, tBox],
-      position: [W / 2, boxCenterY, 1.0 + tBox / 2]
+      position: [W / 2, boxCenterY, boxStart + tBox / 2]
     };
     const bBot = {
       id: oldIdMap[i + '_Box Bottom'] || baseId++,
       name: `Box Bottom`,
       parentId: drawerGroupId,
       size: [boxW - tBox, tBot, boxD - tBox],
-      position: [W / 2, boxBottomY + 0.5 + tBot / 2, 1.0 + boxD / 2]
+      position: [W / 2, boxBottomY + 0.5 + tBot / 2, boxStart + boxD / 2]
     };
     const bFace = {
       id: oldIdMap[i + '_Face'] || baseId++,
@@ -243,7 +239,7 @@ export function generateDrawers(cfg, boards, groups, defaultMaterial) {
       name: `Slide Left`,
       parentId: drawerGroupId,
       size: [slideWidth, 1.5, boxD],
-      position: [slideWidth / 2, boxCenterY, 1.0 + boxD / 2],
+      position: [slideWidth / 2, boxCenterY, boxStart + boxD / 2],
       material: { type: 'color', hex: '#8e9296' }
     };
     const bSlideR = {
@@ -251,7 +247,7 @@ export function generateDrawers(cfg, boards, groups, defaultMaterial) {
       name: `Slide Right`,
       parentId: drawerGroupId,
       size: [slideWidth, 1.5, boxD],
-      position: [W - slideWidth / 2, boxCenterY, 1.0 + boxD / 2],
+      position: [W - slideWidth / 2, boxCenterY, boxStart + boxD / 2],
       material: { type: 'color', hex: '#8e9296' }
     };
 

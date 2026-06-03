@@ -323,12 +323,25 @@ export const buildShakerDoorHelper = (cfg, boards, groups, defaultMaterial) => {
     groupId,
     savedParams,
     newBoards,
+    newGroups = {},
     isEditing
   } = generateShakerDoor(cfg, boards, groups, defaultMaterial);
 
-  const updatedGroups = { ...groups };
+  const nextGroups = { ...groups };
   if (isEditing) {
-    updatedGroups[groupId] = {
+    // Clean up any existing nested groups under the main door group
+    Object.keys(nextGroups).forEach(k => {
+      let pid = nextGroups[k].parentId;
+      while (pid) {
+        if (pid === groupId) {
+          delete nextGroups[k];
+          break;
+        }
+        pid = nextGroups[pid]?.parentId;
+      }
+    });
+
+    nextGroups[groupId] = {
       ...groups[groupId],
       meta: {
         builder: 'shaker-door',
@@ -336,7 +349,7 @@ export const buildShakerDoorHelper = (cfg, boards, groups, defaultMaterial) => {
       }
     };
   } else {
-    updatedGroups[groupId] = {
+    nextGroups[groupId] = {
       parentId: 'Workspace',
       isExpanded: true,
       visible: true,
@@ -348,8 +361,25 @@ export const buildShakerDoorHelper = (cfg, boards, groups, defaultMaterial) => {
     };
   }
 
+  const updatedGroups = {
+    ...nextGroups,
+    ...newGroups
+  };
+
   const newBoardIds = new Set(newBoards.map(nb => nb.id));
-  const filteredBoards = boards.filter(b => !newBoardIds.has(b.id) && b.parentId !== groupId);
+  // Filter out boards that were part of the door builder assembly or any of its subassemblies
+  const filteredBoards = boards.filter(b => {
+    if (!isEditing) return true;
+    if (newBoardIds.has(b.id)) return false;
+    if (b.parentId === groupId) return false;
+    let pid = b.parentId;
+    while (pid) {
+      if (pid === groupId) return false;
+      pid = groups[pid]?.parentId;
+    }
+    return true;
+  });
+
   const updatedBoards = [...filteredBoards, ...newBoards];
 
   return {

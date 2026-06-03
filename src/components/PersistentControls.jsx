@@ -51,5 +51,5 @@ export function PersistentControls() {
   const isDraggingMeasure = useStore(s => s.measureMode?.dragging);
   const dKeyPressed = useStore(s => s.dKeyPressed);
 
-  return <OrbitControls ref={initRef} makeDefault onEnd={handleEnd} enabled={!isDraggingMeasure && !dKeyPressed} />;
+  return <OrbitControls ref={initRef} makeDefault onEnd={handleEnd} enableDamping={true} dampingFactor={0.15} enabled={!isDraggingMeasure && !dKeyPressed} />;
 }

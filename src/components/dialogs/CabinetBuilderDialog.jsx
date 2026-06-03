@@ -1,18 +1,18 @@
 import React from 'react';
 import useStore from '../../store/useStore';
+import { parseNum } from '../../utils/units';
 
 const CabinetBuilderDialog = () => {
     const { cabinetDialog: dialog, setCabinetDialog: setDialog, buildCabinet } = useStore();
     if (!dialog) return null;
 
-    const parse = (v, def) => { const n = parseFloat(v); return isNaN(n) ? def : n; };
-    const W = parse(dialog.width, 24);
-    const H = parse(dialog.height, 30);
-    const D = parse(dialog.depth, 14);
-    const tTB = parse(dialog.thicknessTB, 0.75);
-    const tSide = parse(dialog.thicknessSide, 0.75);
-    const tFront = parse(dialog.thicknessFront, 0.75);
-    const tBack = parse(dialog.thicknessBack, 0.25);
+    const W = parseNum(dialog.width, 24);
+    const H = parseNum(dialog.height, 30);
+    const D = parseNum(dialog.depth, 14);
+    const tTB = parseNum(dialog.thicknessTB, 0.75);
+    const tSide = parseNum(dialog.thicknessSide, 0.75);
+    const tFront = parseNum(dialog.thicknessFront, 0.75);
+    const tBack = parseNum(dialog.thicknessBack, 0.25);
     const jointType = 'butt'; // Hardcoded as per design decision
     const backStyle = dialog.backStyle ?? 'flat';
 

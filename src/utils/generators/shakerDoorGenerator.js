@@ -1,11 +1,7 @@
 import { computeWorldAABB, collectChildBoards } from '../sceneGraph';
+import { parseNum } from '../units';
 
 export function generateShakerDoor(cfg, boards, groups, defaultMaterial) {
-  const parseNum = (val, def) => {
-    if (val === undefined || val === null || val === '') return def;
-    const n = parseFloat(val);
-    return isNaN(n) ? def : n;
-  };
   const W = parseNum(cfg.width, 18);
   const H = parseNum(cfg.height, 30);
   const tFrame = parseNum(cfg.thicknessFrame, 0.75);
@@ -171,7 +167,8 @@ export function generateShakerDoor(cfg, boards, groups, defaultMaterial) {
         size: [finalW, finalH, tFrame],
         position: [finalW / 2, finalH / 2, midZ],
         offset: finalOffset,
-        operations: []
+        operations: [],
+        dIdx
       });
     } else {
       const panelW = finalW - 2 * wStile + 2 * grooveD - clear;
@@ -243,7 +240,8 @@ export function generateShakerDoor(cfg, boards, groups, defaultMaterial) {
           length: 0,
           lengthOffset: 0,
           source: 'shaker'
-        }]
+        }],
+        dIdx
       }, {
         name: prefix + 'Right Stile',
         size: [wStile, finalH, tFrame],
@@ -260,7 +258,8 @@ export function generateShakerDoor(cfg, boards, groups, defaultMaterial) {
           length: 0,
           lengthOffset: 0,
           source: 'shaker'
-        }]
+        }],
+        dIdx
       }, {
         name: prefix + 'Top Rail',
         size: [railTotalW, wStile, tFrame],
@@ -277,7 +276,8 @@ export function generateShakerDoor(cfg, boards, groups, defaultMaterial) {
           length: 0,
           lengthOffset: 0,
           source: 'shaker'
-        }, ...makeTenons(baseId + dIdx * 100 + 30)]
+        }, ...makeTenons(baseId + dIdx * 100 + 30)],
+        dIdx
       }, {
         name: prefix + 'Bottom Rail',
         size: [railTotalW, wStile, tFrame],
@@ -294,23 +294,33 @@ export function generateShakerDoor(cfg, boards, groups, defaultMaterial) {
           length: 0,
           lengthOffset: 0,
           source: 'shaker'
-        }, ...makeTenons(baseId + dIdx * 100 + 40)]
+        }, ...makeTenons(baseId + dIdx * 100 + 40)],
+        dIdx
       }, {
         name: prefix + 'Panel',
         size: [panelW, panelH, tPanel],
         position: [finalW / 2, finalH / 2, midZ],
         offset: finalOffset,
-        operations: []
+        operations: [],
+        dIdx
       });
     }
   });
 
   const newBoards = panelDefs.map((pd, i) => {
     const assignedId = oldIdMap[pd.name] || baseId + 500 + i;
+    let boardParentId = groupId;
+    if (doorCount === 2) {
+      if (pd.dIdx === 0) {
+        boardParentId = groupId + ' Left Door';
+      } else if (pd.dIdx === 1) {
+        boardParentId = groupId + ' Right Door';
+      }
+    }
     return {
       id: assignedId,
       name: pd.name,
-      parentId: groupId,
+      parentId: boardParentId,
       size: pd.size,
       position: [pd.position[0] + pd.offset[0], pd.position[1] + pd.offset[1], pd.position[2] + pd.offset[2]],
       material: defaultMaterial,
@@ -321,10 +331,27 @@ export function generateShakerDoor(cfg, boards, groups, defaultMaterial) {
     };
   });
 
+  const newGroups = {};
+  if (doorCount === 2) {
+    newGroups[groupId + ' Left Door'] = {
+      parentId: groupId,
+      isExpanded: groups?.[groupId + ' Left Door']?.isExpanded ?? true,
+      visible: groups?.[groupId + ' Left Door']?.visible ?? true,
+      name: 'Left Door'
+    };
+    newGroups[groupId + ' Right Door'] = {
+      parentId: groupId,
+      isExpanded: groups?.[groupId + ' Right Door']?.isExpanded ?? true,
+      visible: groups?.[groupId + ' Right Door']?.visible ?? true,
+      name: 'Right Door'
+    };
+  }
+
   return {
     groupId,
     savedParams,
     newBoards,
+    newGroups,
     isEditing
   };
 }

@@ -1,11 +1,7 @@
 import { computeWorldAABB, collectChildBoards } from '../sceneGraph';
+import { parseNum } from '../units';
 
 export function generateCabinet(cfg, boards, groups) {
-  const parseNum = (val, def) => {
-    if (val === undefined || val === null || val === '') return def;
-    const n = parseFloat(val);
-    return isNaN(n) ? def : n;
-  };
   const W = parseNum(cfg.width, 24);
   const H = parseNum(cfg.height, 30);
   const D = parseNum(cfg.depth, 14);

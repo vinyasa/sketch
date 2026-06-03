@@ -93,6 +93,10 @@ const useStore = create((set, get) => ({
     computingMessage: null,
     setComputingMessage: (msg) => set({ computingMessage: msg }),
 
+    // ── Three.js Model Group for Export ──────────────────────────────────────
+    threeModelGroup: null,
+    setThreeModelGroup: (group) => set({ threeModelGroup: group }),
+
     // ── Overlap Warnings ─────────────────────────────────────────────────────
     overlappingBoardIds: [],
     setOverlappingBoardIds: (ids) => set({ overlappingBoardIds: ids }),

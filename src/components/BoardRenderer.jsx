@@ -822,6 +822,8 @@ const HardwareAttachment = ({ hw, boardSize, boardId }) => {
       position={position}
       rotation={finalRotation}
       scale={hw.scale || 1}
+      userData={{ isHardware: true }}
+      name={hw.name || hw.type || 'hardware'}
       onClick={(e) => {
         e.stopPropagation();
         setSelectedItemIds([boardId.toString()]);
@@ -1067,18 +1069,19 @@ const BoardMesh = ({ b, selectedItemIds, toggleSelection, textures, showEdges, c
     'y+': 'top',   'y-': 'bottom',
     'z+': 'front', 'z-': 'back'
   };
-
   return (
     <group
       position={b.position}
       rotation={b.orientation ? [...b.orientation, 'YXZ'] : [0, 0, 0, 'YXZ']}
+      name={b.name}
     >
-      {/* Inner mesh is offset by -pivot so the board geometry rotates around the pivot */}
       <mesh
         position={[-pivot[0], -pivot[1], -pivot[2]]}
         raycast={(modifierActive && constraintTargetMode?.active) ? () => null : undefined}
         castShadow
         receiveShadow
+        userData={{ isBoard: true }}
+        name={b.name}
         onClick={(e) => {
           e.stopPropagation();
 
@@ -1443,7 +1446,7 @@ const RecursiveNode = ({ nodeId, groups, boards, selectedItemIds, toggleSelectio
   }
 
   return (
-    <group>
+    <group name={g.name || nodeId}>
       {groupProxyBounds && (
         <mesh
           position={[groupProxyBounds.centerX, groupProxyBounds.centerY, groupProxyBounds.centerZ]}
@@ -1527,8 +1530,20 @@ function WoodJoint({ boards, groups, selectedItemIds, toggleSelection, showEdges
   allGroupIds.add('Workspace');
   const orphanedBoards = boards.filter(b => !allGroupIds.has(b.parentId));
 
+  const setThreeModelGroup = useStore(s => s.setThreeModelGroup);
+  const groupRef = React.useRef();
+
+  React.useEffect(() => {
+    if (setThreeModelGroup && groupRef.current) {
+      setThreeModelGroup(groupRef.current);
+    }
+    return () => {
+      if (setThreeModelGroup) setThreeModelGroup(null);
+    };
+  }, [setThreeModelGroup]);
+
   return (
-    <group>
+    <group ref={groupRef}>
       {rootGroups.map(k => (
         <RecursiveNode key={k} nodeId={k} groups={groups} boards={boards} selectedItemIds={selectedItemIds} toggleSelection={toggleSelection} textures={textures} showEdges={showEdges} constraintTargetMode={constraintTargetMode} hoveredFaceData={hoveredFaceData} setHoveredFaceData={setHoveredFaceData} modifierActive={modifierActive} />
       ))}

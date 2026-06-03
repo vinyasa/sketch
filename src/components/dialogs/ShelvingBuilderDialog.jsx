@@ -1,5 +1,6 @@
 import React from 'react';
 import useStore from '../../store/useStore';
+import { parseNum } from '../../utils/units';
 
 const ShelvingBuilderDialog = () => {
     const { shelvingDialog: dialog, setShelvingDialog: setDialog, buildShelving, groups } = useStore();
@@ -12,7 +13,6 @@ const ShelvingBuilderDialog = () => {
         ? (groups[cabinetGroupId]?.name || 'Selected Cabinet') 
         : (boxGroupId ? (groups[boxGroupId]?.name || 'Selected Box') : '');
 
-    const parseNum = (v, def) => { const n = parseFloat(v); return isNaN(n) ? def : n; };
     const parseIntSafe = (v, def) => { const n = parseInt(v, 10); return isNaN(n) ? def : n; };
 
     const W = parseNum(dialog.width, 30);

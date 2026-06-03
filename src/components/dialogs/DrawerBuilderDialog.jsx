@@ -1,15 +1,15 @@
 import React from 'react';
 import useStore from '../../store/useStore';
+import { parseNum } from '../../utils/units';
 
 const roundDownTo1_8 = (val) => Math.floor(val * 8) / 8;
 
 const DrawerBuilderDialog = () => {
     const { drawerDialog: dialog, setDrawerDialog: setDialog, buildDrawers, selectedItemIds, groups, boards } = useStore();
 
-    const parse = (v, def) => { const n = parseFloat(v); return isNaN(n) ? def : n; };
-    const H = dialog ? parse(dialog.height, 30) : 30;
+    const H = dialog ? parseNum(dialog.height, 30) : 30;
     const count = dialog ? parseInt(dialog.count ?? 3, 10) : 3;
-    const gap = dialog ? parse(dialog.gap, 0.125) : 0.125;
+    const gap = dialog ? parseNum(dialog.gap, 0.125) : 0.125;
     const verticalGap = gap;
     const totalSlotH = H - (count + 1) * gap;
 
@@ -24,18 +24,18 @@ const DrawerBuilderDialog = () => {
 
     if (!dialog) return null;
 
-    const W = parse(dialog.width, 24);
-    const D = parse(dialog.depth, 20);
-    const slideWidth = parse(dialog.slideWidth, 0.5);
-    const topClearance = parse(dialog.topClearance, 1.0);
+    const W = parseNum(dialog.width, 24);
+    const D = parseNum(dialog.depth, 20);
+    const slideWidth = parseNum(dialog.slideWidth, 0.5);
+    const topClearance = parseNum(dialog.topClearance, 1.0);
     
-    const thicknessBox = parse(dialog.thicknessBox, 0.5);
-    const thicknessBottom = parse(dialog.thicknessBottom, 0.25);
-    const thicknessFace = parse(dialog.thicknessFace, 0.75);
+    const thicknessBox = parseNum(dialog.thicknessBox, 0.5);
+    const thicknessBottom = parseNum(dialog.thicknessBottom, 0.25);
+    const thicknessFace = parseNum(dialog.thicknessFace, 0.75);
     
     const faceStyle = dialog.faceStyle ?? 'inset';
-    const overlayAmount = parse(dialog.overlayAmount, 0.5);
-    const reveal = dialog ? parse(dialog.reveal, 0.375) : 0.375;
+    const overlayAmount = parseNum(dialog.overlayAmount, 0.5);
+    const reveal = dialog ? parseNum(dialog.reveal, 0.375) : 0.375;
     const jointType = dialog.jointType ?? 'butt';
 
     // Detect if a cabinet is selected in the workspace
@@ -54,8 +54,8 @@ const DrawerBuilderDialog = () => {
     let tTB = 0.75;
     if (selectedCabinet) {
         const cabParams = selectedCabinet.meta?.params || {};
-        tSide = parse(cabParams.thicknessSide, 0.75);
-        tTB = parse(cabParams.thicknessTB, 0.75);
+        tSide = parseNum(cabParams.thicknessSide, 0.75);
+        tTB = parseNum(cabParams.thicknessTB, 0.75);
     }
     
     let slotHeights = dialog.slotHeights || [];
@@ -68,11 +68,14 @@ const DrawerBuilderDialog = () => {
     const leftoverGap = H - roundedSlotHeights.reduce((s, v) => s + v, 0) - count * gap;
 
     const boxW = W - 2 * slideWidth;
-    const boxD = faceStyle === 'inset' ? D - thicknessFace - 1.0 : D - 1.0;
+    const defaultBoxDepth = Math.max(2, Math.floor((D - 1.0) / 2) * 2);
+    const boxD = parseNum(dialog.boxDepth, defaultBoxDepth);
     const faceW = faceStyle === 'inset' ? W - 2 * gap : W + 2 * (tSide - reveal);
     const valid = W > 2 * slideWidth + 2 * thicknessBox &&
                   count > 0 &&
                   leftoverGap >= -0.0001 &&
+                  boxD > 0 &&
+                  boxD <= D &&
                   slotHeights.every(h => h - topClearance > 0.5);
     let cabOpeningWidth = 0;
     let cabOpeningHeight = 0;
@@ -86,12 +89,12 @@ const DrawerBuilderDialog = () => {
         cabName = selectedCabinet.name || cabinetId;
         const cabParams = selectedCabinet.meta?.params || {};
         
-        const cabW = parse(cabParams.width, 24);
-        const cabH = parse(cabParams.height, 30);
-        const cabD = parse(cabParams.depth, 14);
-        const cabtTB = parse(cabParams.thicknessTB, 0.75);
-        const cabtSide = parse(cabParams.thicknessSide, 0.75);
-        const cabtBack = parse(cabParams.thicknessBack, 0.25);
+        const cabW = parseNum(cabParams.width, 24);
+        const cabH = parseNum(cabParams.height, 30);
+        const cabD = parseNum(cabParams.depth, 14);
+        const cabtTB = parseNum(cabParams.thicknessTB, 0.75);
+        const cabtSide = parseNum(cabParams.thicknessSide, 0.75);
+        const cabtBack = parseNum(cabParams.thicknessBack, 0.25);
         const cabCoreDepth = cabD - cabtBack;
         
         cabOpeningWidth = cabW - 2 * cabtSide;
@@ -141,6 +144,7 @@ const DrawerBuilderDialog = () => {
             faceStyle: faceStyle,
             overlayAmount: overlayAmount,
             jointType: jointType,
+            boxDepth: boxD,
             slotHeights: slotHeights
         };
         buildDrawers(fullCfg);
@@ -247,6 +251,21 @@ const DrawerBuilderDialog = () => {
                     <p className="hint" style={{ marginTop: '6px' }}>
                         The clear interior opening of the cabinet where drawers will be installed.
                     </p>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '10px', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '8px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', width: '110px' }}>Drawer Box Depth:</div>
+                            <input type="number" step="0.5" min="1" max={D} value={dialog.boxDepth ?? defaultBoxDepth}
+                                onChange={e => setDialog(p => ({ ...p, boxDepth: e.target.value }))}
+                                style={{ ...inputStyle, flex: 1, padding: '3px 8px', borderColor: boxD > D ? '#ff3b30' : 'var(--border-color)' }} />
+                            <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>in</span>
+                        </div>
+                        <p className="hint" style={{ marginTop: '2px', color: boxD > D ? '#ff3b30' : 'var(--text-muted)', fontSize: '0.68rem', lineHeight: 1.3, margin: 0 }}>
+                            {boxD > D 
+                                ? `⚠️ Value cannot exceed cabinet depth (${D}").`
+                                : `Note: Slides are typically even numbers in 2" increments. Defaults to ${defaultBoxDepth}" (longest even length at least 1" shorter than cabinet).`
+                            }
+                        </p>
+                    </div>
                 </div>
 
                 {/* Drawer Face Styling */}
@@ -343,7 +362,7 @@ const DrawerBuilderDialog = () => {
 
                                 // Sizing calculations (rounded down to nearest 1/8")
                                 const rBoxW = roundDownTo1_8(boxW);
-                                const rBoxD = roundDownTo1_8(boxD);
+                                const rBoxD = boxD;
                                 const rBoxH = roundDownTo1_8(computedBoxH);
                                 
                                 const rFaceW = roundDownTo1_8(fW);
@@ -497,7 +516,7 @@ const DrawerBuilderDialog = () => {
                     {valid ? (
                         <div style={{ fontSize: '0.78rem', color: 'var(--text-main)', lineHeight: 1.6 }}>
                             <div><strong>Drawer Box Width:</strong> {roundDownTo1_8(boxW).toFixed(3)}" <span style={{ color: 'var(--text-muted)' }}>(rounded down to nearest 1/8", fits opening width {W}" with slide clearance {slideWidth}" × 2)</span></div>
-                            <div><strong>Drawer Box Depth:</strong> {roundDownTo1_8(boxD).toFixed(3)}" <span style={{ color: 'var(--text-muted)' }}>({faceStyle === 'inset' ? `inset style: opening depth ${D}" - face thickness ${thicknessFace}" - 1" back gap` : `overlay style: opening depth ${D}" - 1" back gap`})</span></div>
+                            <div><strong>Drawer Box Depth:</strong> {boxD.toFixed(3)}" <span style={{ color: 'var(--text-muted)' }}>({boxD === defaultBoxDepth ? 'default even length' : 'custom length'})</span></div>
                             <div style={{ marginTop: '4px', borderTop: '1px dashed rgba(255,255,255,0.1)', paddingTop: '4px' }}>
                                 <strong>Individual Drawer Box Heights (Rounded down to nearest 1/8"):</strong>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', marginTop: '3px', paddingLeft: '8px' }}>
@@ -514,7 +533,11 @@ const DrawerBuilderDialog = () => {
                         </div>
                     ) : (
                         <div style={{ fontSize: '0.78rem', color: '#ff3b30' }}>
-                            Invalid drawer specs. Ensure cabinet opening width can accommodate slides & box sides, and calculated box heights are at least 0.50".
+                            {boxD > D ? (
+                                `Drawer box depth (${boxD.toFixed(3)}") cannot exceed cabinet depth (${D.toFixed(3)}").`
+                            ) : (
+                                `Invalid drawer specs. Ensure cabinet opening width can accommodate slides & box sides, and calculated box heights are at least 0.50".`
+                            )}
                         </div>
                     )}
                 </div>

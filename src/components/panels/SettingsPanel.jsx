@@ -182,7 +182,7 @@ const SettingsPanel = () => {
                 <p className="hint" style={hintStyle}>Visually flag overlapping geometry intersections.</p>
             </div>
 
-            <div className="inspector-card">
+            {/* <div className="inspector-card">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <label style={{ ...labelStyle, marginBottom: 0 }}>Project Volume Bounds</label>
                     <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontWeight: 'normal', fontSize: '0.72rem', color: 'var(--accent-color)' }}>
@@ -197,7 +197,7 @@ const SettingsPanel = () => {
                         <div>D<input type="number" step="1" value={globalBounds.z} onChange={e => setGlobalBounds(prev => ({ ...prev, z: parseFloat(e.target.value) || 0 }))} title="Max Depth" style={{ padding: '2px 4px', fontSize: '0.7rem' }} /></div>
                     </div>
                 )}
-            </div>
+            </div> */}
 
             <div className="inspector-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
                 <label style={checkboxLabelStyle}>
@@ -231,7 +231,7 @@ const SettingsPanel = () => {
             <div className="inspector-card">
                 <label style={labelStyle}>Workspace Layout</label>
                 <select value={workspaceLayout || 'floating'} onChange={(e) => setWorkspaceLayout(e.target.value)} style={selectStyle}>
-                    <option value="docked" style={optionStyle}>Docked Sidebar (Recommended)</option>
+                    <option value="docked" style={optionStyle}>Docked Sidebar</option>
                     <option value="floating" style={optionStyle}>Classic Floating Panels</option>
                 </select>
                 <p className="hint" style={hintStyle}>Lock all panel sheets on the right side or let them float.</p>
