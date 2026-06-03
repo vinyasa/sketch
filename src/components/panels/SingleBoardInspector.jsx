@@ -745,13 +745,13 @@ const SingleBoardInspector = ({ selectedBoard }) => {
                                     <div style={{ color: 'var(--text-muted)', marginBottom: '2px' }}>Offset (X, Y, Standoff)</div>
                                     <div style={{ display: 'flex', gap: '4px', minWidth: 0 }}>
                                         {[0, 1, 2].map(i => (
-                                            <input
+                                            <NumericInput
                                                 key={i}
-                                                type="number" step="0.125"
+                                                step="0.125"
                                                 value={hw.offset?.[i] || 0}
-                                                onChange={e => {
+                                                onChange={val => {
                                                     const newOffset = [...(hw.offset || [0, 0, 0])];
-                                                    newOffset[i] = parseFloat(e.target.value) || 0;
+                                                    newOffset[i] = val;
                                                     updateHardware(selectedBoard.id, hw.id, { offset: newOffset });
                                                 }}
                                                 onClick={e => e.stopPropagation()}
@@ -801,7 +801,7 @@ const SingleBoardInspector = ({ selectedBoard }) => {
                 </div>
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                     <span style={{ fontSize: '0.82rem' }}>Offset (in):</span>
-                    <input type="number" step="0.125" value={cloneOffset} onChange={e => setCloneOffset(Number(e.target.value))} style={{ width: '60px', padding: '4px', background: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '4px' }} />
+                    <NumericInput step="0.125" value={cloneOffset} onChange={val => setCloneOffset(val)} style={{ width: '60px', padding: '4px', background: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '4px' }} />
                     <button className="primary-btn" style={{ flex: 1, padding: '4px 0', fontSize: '0.9rem' }} onClick={handleClone}>
                         {cloneMode === 'local' ? 'Clone (Thin Axis)' : `Clone along ${cloneMode.replace('world', '')}`}
                     </button>

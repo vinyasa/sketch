@@ -113,7 +113,7 @@ const AssembliesPanel = () => {
     const { setCabinetDialog, setBoxDialog, setShakerDoorDialog, setDrawerDialog, setFaceFrameDialog, setShelvingDialog, setTableBaseDialog, setTableTopDialog } = useStore();
 
     const handleSelect = (item) => {
-        const { boards, groups, selectedItemIds } = useStore.getState();
+        const { boards, groups, selectedItemIds, units } = useStore.getState();
         let bounds = null;
 
         if (selectedItemIds && selectedItemIds.length > 0) {
@@ -142,18 +142,28 @@ const AssembliesPanel = () => {
             defaultCfg.offsetZ = bounds.minZ;
         }
 
+        const isMetric = units === 'metric';
+
         if (item.id === 'cabinet') {
             setCabinetDialog({
-                width: 24, height: 30, depth: 14,
-                thicknessTB: 0.75, thicknessSide: 0.75,
-                thicknessFront: 0.75, thicknessBack: 0.25,
+                width: isMetric ? (600 / 25.4) : 24,
+                height: isMetric ? (750 / 25.4) : 30,
+                depth: isMetric ? (350 / 25.4) : 14,
+                thicknessTB: isMetric ? (18 / 25.4) : 0.75,
+                thicknessSide: isMetric ? (18 / 25.4) : 0.75,
+                thicknessFront: isMetric ? (18 / 25.4) : 0.75,
+                thicknessBack: isMetric ? (6 / 25.4) : 0.25,
                 ...defaultCfg,
             });
         } else if (item.id === 'box') {
             setBoxDialog({
-                width: 18, height: 12, depth: 12,
-                thicknessTB: 0.5, thicknessSide: 0.5,
-                thicknessFront: 0.5, thicknessBack: 0.5,
+                width: isMetric ? (450 / 25.4) : 18,
+                height: isMetric ? (300 / 25.4) : 12,
+                depth: isMetric ? (300 / 25.4) : 12,
+                thicknessTB: isMetric ? (12 / 25.4) : 0.5,
+                thicknessSide: isMetric ? (12 / 25.4) : 0.5,
+                thicknessFront: isMetric ? (12 / 25.4) : 0.5,
+                thicknessBack: isMetric ? (12 / 25.4) : 0.5,
                 ...defaultCfg,
             });
         } else if (item.id === 'shakerDoor') {
@@ -181,14 +191,22 @@ const AssembliesPanel = () => {
                 }
             }
             setShakerDoorDialog({
-                width: bounds ? (bounds.maxX - bounds.minX) : 18,
-                height: bounds ? (bounds.maxY - bounds.minY) : 30,
+                width: bounds ? (bounds.maxX - bounds.minX) : (isMetric ? 450 / 25.4 : 18),
+                height: bounds ? (bounds.maxY - bounds.minY) : (isMetric ? 750 / 25.4 : 30),
+                thicknessFrame: isMetric ? (18 / 25.4) : 0.75,
+                thicknessPanel: isMetric ? (6 / 25.4) : 0.25,
+                widthStileRail: isMetric ? (50 / 25.4) : 2,
+                grooveDepth: isMetric ? (10 / 25.4) : 0.375,
+                grooveWidth: isMetric ? (6 / 25.4) : 0.25,
+                panelClearance: isMetric ? (3 / 25.4) : 0.125,
+                insetClearance: isMetric ? (3 / 25.4) : 0.125,
+                overlayReveal: isMetric ? (6 / 25.4) : 0.25,
                 ...defaultCfg,
                 offsetZ: bounds ? bounds.maxZ : 0, // Doors sit on the front
                 cabinetGroupId,
                 faceFrameGroupId,
                 doorCount: 1,
-                doubleDoorGap: 0.09375
+                doubleDoorGap: isMetric ? (3 / 25.4) : 0.09375
             });
         } else if (item.id === 'drawerStack') {
             let cabinetGroupId = null;
@@ -205,7 +223,9 @@ const AssembliesPanel = () => {
                 });
             }
 
-            let cabW = 24, cabH = 30, cabD = 20;
+            let cabW = isMetric ? (600 / 25.4) : 24;
+            let cabH = isMetric ? (750 / 25.4) : 30;
+            let cabD = isMetric ? (500 / 25.4) : 20;
             if (cabinetGroupId && groups[cabinetGroupId]) {
                 const cabParams = groups[cabinetGroupId].meta?.params || {};
                 const w = parseFloat(cabParams.width || 24);
@@ -227,8 +247,14 @@ const AssembliesPanel = () => {
                 height: cabH,
                 depth: cabD,
                 cabinetGroupId: cabinetGroupId,
-                gap: 0.125,
-                reveal: 0.375
+                gap: isMetric ? (3 / 25.4) : 0.125,
+                reveal: isMetric ? (10 / 25.4) : 0.375,
+                slideWidth: isMetric ? (12.5 / 25.4) : 0.5,
+                topClearance: isMetric ? (25 / 25.4) : 1.0,
+                thicknessBox: isMetric ? (12 / 25.4) : 0.5,
+                thicknessBottom: isMetric ? (6 / 25.4) : 0.25,
+                thicknessFace: isMetric ? (18 / 25.4) : 0.75,
+                overlayAmount: isMetric ? (12 / 25.4) : 0.5
             });
         } else if (item.id === 'faceFrame') {
             let cabinetGroupId = null;
@@ -245,8 +271,11 @@ const AssembliesPanel = () => {
             }
             setFaceFrameDialog({
                 ...defaultCfg,
-                width: bounds ? (bounds.maxX - bounds.minX) : 24,
-                height: bounds ? (bounds.maxY - bounds.minY) : 30,
+                width: bounds ? (bounds.maxX - bounds.minX) : (isMetric ? (600 / 25.4) : 24),
+                height: bounds ? (bounds.maxY - bounds.minY) : (isMetric ? (750 / 25.4) : 30),
+                stileWidth: isMetric ? (40 / 25.4) : 1.5,
+                railWidth: isMetric ? (40 / 25.4) : 1.5,
+                thickness: isMetric ? (18 / 25.4) : 0.75,
                 offsetZ: bounds ? bounds.maxZ : 0, // Face frames sit on the front
                 cabinetGroupId: cabinetGroupId
             });
@@ -275,13 +304,13 @@ const AssembliesPanel = () => {
                 }
             }
 
-            let cabW = 30;
-            let cabH = 48;
-            let cabD = 11;
-            let tSide = 0.75;
-            let tTB = 0.75;
-            let tBack = 0.25;
-            let tFront = 0.5;
+            let cabW = isMetric ? (750 / 25.4) : 30;
+            let cabH = isMetric ? (1200 / 25.4) : 48;
+            let cabD = isMetric ? (280 / 25.4) : 11;
+            let tSide = isMetric ? (18 / 25.4) : 0.75;
+            let tTB = isMetric ? (18 / 25.4) : 0.75;
+            let tBack = isMetric ? (6 / 25.4) : 0.25;
+            let tFront = isMetric ? (12 / 25.4) : 0.5;
 
             let finalOffsetX = bounds ? bounds.minX : 0;
             let finalOffsetY = bounds ? bounds.minY : 0;
@@ -338,21 +367,30 @@ const AssembliesPanel = () => {
                 cabinetGroupId,
                 boxGroupId,
                 addShelfPins: false,
-                measureRef: 'top'
+                measureRef: 'top',
+                thickness: isMetric ? (18 / 25.4) : 0.75
             });
         } else if (item.id === 'tableBase') {
             setTableBaseDialog({
-                width: 48, height: 29, depth: 30,
-                legSize: 2.25, legTaperAngle: 1.5,
-                apronHeight: 4.0, apronThickness: 0.75,
-                apronInset: 0.25, apronJoint: 'pocket-hole',
+                width: isMetric ? (1200 / 25.4) : 48,
+                height: isMetric ? (730 / 25.4) : 29,
+                depth: isMetric ? (750 / 25.4) : 30,
+                legSize: isMetric ? (60 / 25.4) : 2.25,
+                legTaperAngle: 1.5,
+                apronHeight: isMetric ? (100 / 25.4) : 4.0,
+                apronThickness: isMetric ? (18 / 25.4) : 0.75,
+                apronInset: isMetric ? (6 / 25.4) : 0.25,
+                apronJoint: 'pocket-hole',
                 ...defaultCfg,
             });
         } else if (item.id === 'tableTop') {
             setTableTopDialog({
-                boardWidth: 5.5, thickness: 1.0,
-                widthOverhang: 2.0, depthOverhang: 2.0,
-                tenonSpacing: 10, jointType: 'loose-tenon',
+                boardWidth: isMetric ? (140 / 25.4) : 5.5,
+                thickness: isMetric ? (25 / 25.4) : 1.0,
+                widthOverhang: isMetric ? (50 / 25.4) : 2.0,
+                depthOverhang: isMetric ? (50 / 25.4) : 2.0,
+                tenonSpacing: isMetric ? (250 / 25.4) : 10,
+                jointType: 'loose-tenon',
                 ...defaultCfg,
             });
         }

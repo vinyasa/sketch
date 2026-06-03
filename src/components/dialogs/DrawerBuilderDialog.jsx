@@ -1,42 +1,75 @@
 import React from 'react';
 import useStore from '../../store/useStore';
 import { parseNum } from '../../utils/units';
+import NumericInput from '../NumericInput';
 
 const roundDownTo1_8 = (val) => Math.floor(val * 8) / 8;
 
 const DrawerBuilderDialog = () => {
-    const { drawerDialog: dialog, setDrawerDialog: setDialog, buildDrawers, selectedItemIds, groups, boards } = useStore();
+    const { drawerDialog: dialog, setDrawerDialog: setDialog, buildDrawers, selectedItemIds, groups, boards, units } = useStore();
 
-    const H = dialog ? parseNum(dialog.height, 30) : 30;
+    const isMetric = units === 'metric';
+
+    const roundDownUnit = (val) => {
+        if (isMetric) {
+            return Math.floor(val * 25.4) / 25.4;
+        }
+        return Math.floor(val * 8) / 8;
+    };
+
+    const H_in = dialog ? parseNum(dialog.height, 30) : 30;
     const count = dialog ? parseInt(dialog.count ?? 3, 10) : 3;
-    const gap = dialog ? parseNum(dialog.gap, 0.125) : 0.125;
-    const verticalGap = gap;
-    const totalSlotH = H - (count + 1) * gap;
+    const gap_in = dialog ? parseNum(dialog.gap, 0.125) : 0.125;
+    const verticalGap_in = gap_in;
+    const totalSlotH_in = H_in - (count + 1) * gap_in;
 
     React.useEffect(() => {
         if (!dialog) return;
         if (!dialog.slotHeights || dialog.slotHeights.length !== count) {
-            const share = roundDownTo1_8(totalSlotH / count);
-            const initialHeights = Array(count).fill(share);
+            const share_in = roundDownUnit(totalSlotH_in / count);
+            const initialHeights = Array(count).fill(share_in);
             setDialog(p => ({ ...p, slotHeights: initialHeights }));
         }
     }, [dialog, count]);
 
     if (!dialog) return null;
 
-    const W = parseNum(dialog.width, 24);
-    const D = parseNum(dialog.depth, 20);
-    const slideWidth = parseNum(dialog.slideWidth, 0.5);
-    const topClearance = parseNum(dialog.topClearance, 1.0);
+    const W_in = parseNum(dialog.width, 24);
+    const D_in = parseNum(dialog.depth, 20);
+    const slideWidth_in = parseNum(dialog.slideWidth, 0.5);
+    const topClearance_in = parseNum(dialog.topClearance, 1.0);
     
-    const thicknessBox = parseNum(dialog.thicknessBox, 0.5);
-    const thicknessBottom = parseNum(dialog.thicknessBottom, 0.25);
-    const thicknessFace = parseNum(dialog.thicknessFace, 0.75);
+    const thicknessBox_in = parseNum(dialog.thicknessBox, 0.5);
+    const thicknessBottom_in = parseNum(dialog.thicknessBottom, 0.25);
+    const thicknessFace_in = parseNum(dialog.thicknessFace, 0.75);
     
     const faceStyle = dialog.faceStyle ?? 'inset';
-    const overlayAmount = parseNum(dialog.overlayAmount, 0.5);
-    const reveal = dialog ? parseNum(dialog.reveal, 0.375) : 0.375;
+    const overlayAmount_in = parseNum(dialog.overlayAmount, 0.5);
+    const reveal_in = dialog ? parseNum(dialog.reveal, 0.375) : 0.375;
     const jointType = dialog.jointType ?? 'butt';
+
+    const H = isMetric ? parseFloat((H_in * 25.4).toFixed(1)) : H_in;
+    const gap = isMetric ? parseFloat((gap_in * 25.4).toFixed(1)) : gap_in;
+    const verticalGap = gap;
+    const W = isMetric ? parseFloat((W_in * 25.4).toFixed(1)) : W_in;
+    const D = isMetric ? parseFloat((D_in * 25.4).toFixed(1)) : D_in;
+    const slideWidth = isMetric ? parseFloat((slideWidth_in * 25.4).toFixed(1)) : slideWidth_in;
+    const topClearance = isMetric ? parseFloat((topClearance_in * 25.4).toFixed(1)) : topClearance_in;
+    const thicknessBox = isMetric ? parseFloat((thicknessBox_in * 25.4).toFixed(1)) : thicknessBox_in;
+    const thicknessBottom = isMetric ? parseFloat((thicknessBottom_in * 25.4).toFixed(1)) : thicknessBottom_in;
+    const thicknessFace = isMetric ? parseFloat((thicknessFace_in * 25.4).toFixed(1)) : thicknessFace_in;
+    const overlayAmount = isMetric ? parseFloat((overlayAmount_in * 25.4).toFixed(1)) : overlayAmount_in;
+    const reveal = isMetric ? parseFloat((reveal_in * 25.4).toFixed(1)) : reveal_in;
+
+    const fmt = (v) => v.toFixed(v % 1 === 0 ? 0 : (isMetric ? 1 : 3));
+    const unitLabel = isMetric ? 'mm' : '"';
+    const unitFmtLabel = isMetric ? 'mm' : 'in';
+    const roundDownDisplay = (val) => {
+        if (isMetric) {
+            return Math.floor(val);
+        }
+        return Math.floor(val * 8) / 8;
+    };
 
     // Detect if a cabinet is selected in the workspace
     let cabinetId = selectedItemIds?.find(id => groups[id]?.meta?.builder === 'cabinet');
@@ -58,25 +91,40 @@ const DrawerBuilderDialog = () => {
         tTB = parseNum(cabParams.thicknessTB, 0.75);
     }
     
-    let slotHeights = dialog.slotHeights || [];
-    if (slotHeights.length !== count) {
-        const share = roundDownTo1_8(totalSlotH / count);
-        slotHeights = Array(count).fill(share);
+    let slotHeights_in = dialog.slotHeights || [];
+    if (slotHeights_in.length !== count) {
+        const share_in = roundDownUnit(totalSlotH_in / count);
+        slotHeights_in = Array(count).fill(share_in);
     }
 
-    const roundedSlotHeights = slotHeights.map(roundDownTo1_8);
-    const leftoverGap = H - roundedSlotHeights.reduce((s, v) => s + v, 0) - count * gap;
+    const slotHeights = isMetric ? slotHeights_in.map(h => parseFloat((h * 25.4).toFixed(1))) : slotHeights_in;
 
-    const boxW = W - 2 * slideWidth;
-    const defaultBoxDepth = Math.max(2, Math.floor((D - 1.0) / 2) * 2);
-    const boxD = parseNum(dialog.boxDepth, defaultBoxDepth);
-    const faceW = faceStyle === 'inset' ? W - 2 * gap : W + 2 * (tSide - reveal);
-    const valid = W > 2 * slideWidth + 2 * thicknessBox &&
+    const roundedSlotHeights_in = slotHeights_in.map(roundDownUnit);
+    const leftoverGap_in = H_in - roundedSlotHeights_in.reduce((s, v) => s + v, 0) - count * gap_in;
+    const leftoverGap = isMetric ? leftoverGap_in * 25.4 : leftoverGap_in;
+
+    const boxW_in = W_in - 2 * slideWidth_in;
+    const defaultBoxDepth_in = isMetric
+        ? Math.max(100, Math.floor(((D_in * 25.4) - 25) / 50) * 50) / 25.4
+        : Math.max(2, Math.floor((D_in - 1.0) / 2) * 2);
+    const boxD_in = parseNum(dialog.boxDepth, defaultBoxDepth_in);
+    const faceW_in = faceStyle === 'inset' ? W_in - 2 * gap_in : W_in + 2 * (tSide - reveal_in);
+    
+    const boxW = isMetric ? boxW_in * 25.4 : boxW_in;
+    const defaultBoxDepth = isMetric ? defaultBoxDepth_in * 25.4 : defaultBoxDepth_in;
+    const boxD = isMetric ? boxD_in * 25.4 : boxD_in;
+    const faceW = isMetric ? faceW_in * 25.4 : faceW_in;
+
+    const valid = W_in > 2 * slideWidth_in + 2 * thicknessBox_in &&
                   count > 0 &&
-                  leftoverGap >= -0.0001 &&
-                  boxD > 0 &&
-                  boxD <= D &&
-                  slotHeights.every(h => h - topClearance > 0.5);
+                  leftoverGap_in >= -0.0001 &&
+                  boxD_in > 0 &&
+                  boxD_in <= D_in &&
+                  slotHeights_in.every(h => h - topClearance_in > (isMetric ? 12.5 / 25.4 : 0.5));
+
+    let cabOpeningWidth_in = 0;
+    let cabOpeningHeight_in = 0;
+    let cabOpeningDepth_in = 0;
     let cabOpeningWidth = 0;
     let cabOpeningHeight = 0;
     let cabOpeningDepth = 0;
@@ -89,28 +137,32 @@ const DrawerBuilderDialog = () => {
         cabName = selectedCabinet.name || cabinetId;
         const cabParams = selectedCabinet.meta?.params || {};
         
-        const cabW = parseNum(cabParams.width, 24);
-        const cabH = parseNum(cabParams.height, 30);
-        const cabD = parseNum(cabParams.depth, 14);
-        const cabtTB = parseNum(cabParams.thicknessTB, 0.75);
-        const cabtSide = parseNum(cabParams.thicknessSide, 0.75);
-        const cabtBack = parseNum(cabParams.thicknessBack, 0.25);
-        const cabCoreDepth = cabD - cabtBack;
+        const cabW_in = parseNum(cabParams.width, 24);
+        const cabH_in = parseNum(cabParams.height, 30);
+        const cabD_in = parseNum(cabParams.depth, 14);
+        const cabtTB_in = parseNum(cabParams.thicknessTB, 0.75);
+        const cabtSide_in = parseNum(cabParams.thicknessSide, 0.75);
+        const cabtBack_in = parseNum(cabParams.thicknessBack, 0.25);
+        const cabCoreDepth_in = cabD_in - cabtBack_in;
         
-        cabOpeningWidth = cabW - 2 * cabtSide;
-        cabOpeningHeight = cabH - 2 * cabtTB;
-        cabOpeningDepth = cabCoreDepth;
+        cabOpeningWidth_in = cabW_in - 2 * cabtSide_in;
+        cabOpeningHeight_in = cabH_in - 2 * cabtTB_in;
+        cabOpeningDepth_in = cabCoreDepth_in;
+
+        cabOpeningWidth = isMetric ? parseFloat((cabOpeningWidth_in * 25.4).toFixed(1)) : cabOpeningWidth_in;
+        cabOpeningHeight = isMetric ? parseFloat((cabOpeningHeight_in * 25.4).toFixed(1)) : cabOpeningHeight_in;
+        cabOpeningDepth = isMetric ? parseFloat((cabOpeningDepth_in * 25.4).toFixed(1)) : cabOpeningDepth_in;
         
-        willFit = W <= cabOpeningWidth + 0.01 && H <= cabOpeningHeight + 0.01 && D <= cabOpeningDepth + 0.01;
+        willFit = W_in <= cabOpeningWidth_in + 0.01 && H_in <= cabOpeningHeight_in + 0.01 && D_in <= cabOpeningDepth_in + 0.01;
     }
 
     const useCabinetDimensions = () => {
         if (!selectedCabinet) return;
         setDialog(prev => ({
             ...prev,
-            width: cabOpeningWidth,
-            height: cabOpeningHeight,
-            depth: cabOpeningDepth
+            width: cabOpeningWidth_in,
+            height: cabOpeningHeight_in,
+            depth: cabOpeningDepth_in
         }));
     };
 
@@ -129,23 +181,23 @@ const DrawerBuilderDialog = () => {
         if (!valid) return;
         const fullCfg = {
             ...dialog,
-            width: W,
-            height: H,
-            depth: D,
+            width: W_in,
+            height: H_in,
+            depth: D_in,
             count: count,
-            slideWidth: slideWidth,
-            gap: gap,
-            reveal: reveal,
-            verticalGap: verticalGap,
-            topClearance: topClearance,
-            thicknessBox: thicknessBox,
-            thicknessBottom: thicknessBottom,
-            thicknessFace: thicknessFace,
+            slideWidth: slideWidth_in,
+            gap: gap_in,
+            reveal: reveal_in,
+            verticalGap: verticalGap_in,
+            topClearance: topClearance_in,
+            thicknessBox: thicknessBox_in,
+            thicknessBottom: thicknessBottom_in,
+            thicknessFace: thicknessFace_in,
             faceStyle: faceStyle,
-            overlayAmount: overlayAmount,
+            overlayAmount: overlayAmount_in,
             jointType: jointType,
-            boxDepth: boxD,
-            slotHeights: slotHeights
+            boxDepth: boxD_in,
+            slotHeights: slotHeights_in
         };
         buildDrawers(fullCfg);
         setDialog(null);
@@ -178,14 +230,14 @@ const DrawerBuilderDialog = () => {
                             lineHeight: 1.4
                         }}>
                             <strong>✓ Cabinet Group Selected ("{cabName}")</strong><br/>
-                            The drawer stack is pre-populated to fit perfectly inside the selected cabinet's opening ({cabOpeningWidth}" × {cabOpeningHeight}" × {cabOpeningDepth}").
+                            The drawer stack is pre-populated to fit perfectly inside the selected cabinet's opening ({fmt(cabOpeningWidth)}{unitLabel} × {fmt(cabOpeningHeight)}{unitLabel} × {fmt(cabOpeningDepth)}{unitLabel}).
                             {(Math.abs(W - cabOpeningWidth) > 0.01 || Math.abs(H - cabOpeningHeight) > 0.01 || Math.abs(D - cabOpeningDepth) > 0.01) && (
                                 <div style={{ marginTop: '6px' }}>
                                     <span 
                                         style={{ color: 'var(--accent-color)', cursor: 'pointer', textDecoration: 'underline', fontWeight: 'bold' }}
                                         onClick={useCabinetDimensions}
                                     >
-                                        Snap to Full Opening ({cabOpeningWidth}" × {cabOpeningHeight}" × {cabOpeningDepth}")
+                                        Snap to Full Opening ({fmt(cabOpeningWidth)}{unitLabel} × {fmt(cabOpeningHeight)}{unitLabel} × {fmt(cabOpeningDepth)}{unitLabel})
                                     </span>
                                 </div>
                             )}
@@ -199,14 +251,14 @@ const DrawerBuilderDialog = () => {
                             lineHeight: 1.4
                         }}>
                             <strong>⚠ Cabinet Fit Warning ("{cabName}")</strong><br/>
-                            Configured drawer dimensions ({W}" × {H}" × {D}") exceed the selected cabinet opening of {cabOpeningWidth}" × {cabOpeningHeight}" × {cabOpeningDepth}".
+                            Configured drawer dimensions ({fmt(W)}{unitLabel} × {fmt(H)}{unitLabel} × {fmt(D)}{unitLabel}) exceed the selected cabinet opening of {fmt(cabOpeningWidth)}{unitLabel} × {fmt(cabOpeningHeight)}{unitLabel} × {fmt(cabOpeningDepth)}{unitLabel}.
                             <div style={{ marginTop: '6px' }}>
                                 <button 
                                     className="nav-btn" 
                                     style={{ padding: '3px 8px', fontSize: '0.72rem', borderColor: 'var(--accent-color)', cursor: 'pointer' }}
                                     onClick={useCabinetDimensions}
                                 >
-                                    👉 Auto-fit to Cabinet Opening ({cabOpeningWidth}" × {cabOpeningHeight}" × {cabOpeningDepth}")
+                                    👉 Auto-fit to Cabinet Opening ({fmt(cabOpeningWidth)}{unitLabel} × {fmt(cabOpeningHeight)}{unitLabel} × {fmt(cabOpeningDepth)}{unitLabel})
                                 </button>
                             </div>
                         </div>
@@ -227,24 +279,24 @@ const DrawerBuilderDialog = () => {
 
                 {/* Overall Opening Dimensions */}
                 <div className="inspector-card" style={{ margin: 0 }}>
-                    <h4>Cabinet Opening (in)</h4>
+                    <h4>Cabinet Opening ({unitFmtLabel})</h4>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
                         <div>
                             <div style={labelStyle}>Width (X)</div>
-                            <input type="number" step="0.5" min="1" value={W}
-                                onChange={e => setDialog(p => ({ ...p, width: e.target.value }))}
+                            <NumericInput step={isMetric ? "10" : "0.5"} min="1" value={W}
+                                onChange={val => setDialog(p => ({ ...p, width: isMetric ? val / 25.4 : val }))}
                                 style={inputStyle} />
                         </div>
                         <div>
                             <div style={labelStyle}>Height (Y)</div>
-                            <input type="number" step="0.5" min="1" value={H}
-                                onChange={e => setDialog(p => ({ ...p, height: e.target.value }))}
+                            <NumericInput step={isMetric ? "10" : "0.5"} min="1" value={H}
+                                onChange={val => setDialog(p => ({ ...p, height: isMetric ? val / 25.4 : val }))}
                                 style={inputStyle} />
                         </div>
                         <div>
                             <div style={labelStyle}>Depth (Z)</div>
-                            <input type="number" step="0.5" min="1" value={D}
-                                onChange={e => setDialog(p => ({ ...p, depth: e.target.value }))}
+                            <NumericInput step={isMetric ? "10" : "0.5"} min="1" value={D}
+                                onChange={val => setDialog(p => ({ ...p, depth: isMetric ? val / 25.4 : val }))}
                                 style={inputStyle} />
                         </div>
                     </div>
@@ -254,15 +306,17 @@ const DrawerBuilderDialog = () => {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '10px', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '8px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', width: '110px' }}>Drawer Box Depth:</div>
-                            <input type="number" step="0.5" min="1" max={D} value={dialog.boxDepth ?? defaultBoxDepth}
-                                onChange={e => setDialog(p => ({ ...p, boxDepth: e.target.value }))}
+                            <NumericInput step={isMetric ? "10" : "0.5"} min="1" max={D} value={boxD}
+                                onChange={val => setDialog(p => ({ ...p, boxDepth: isMetric ? val / 25.4 : val }))}
                                 style={{ ...inputStyle, flex: 1, padding: '3px 8px', borderColor: boxD > D ? '#ff3b30' : 'var(--border-color)' }} />
-                            <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>in</span>
+                            <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{unitLabel}</span>
                         </div>
                         <p className="hint" style={{ marginTop: '2px', color: boxD > D ? '#ff3b30' : 'var(--text-muted)', fontSize: '0.68rem', lineHeight: 1.3, margin: 0 }}>
                             {boxD > D 
-                                ? `⚠️ Value cannot exceed cabinet depth (${D}").`
-                                : `Note: Slides are typically even numbers in 2" increments. Defaults to ${defaultBoxDepth}" (longest even length at least 1" shorter than cabinet).`
+                                ? `⚠️ Value cannot exceed cabinet depth (${fmt(D)}${unitLabel}).`
+                                : isMetric 
+                                    ? `Note: Slides are typically even numbers in 50mm increments. Defaults to ${fmt(defaultBoxDepth)}${unitLabel} (longest length at least 25mm shorter than cabinet).`
+                                    : `Note: Slides are typically even numbers in 2" increments. Defaults to ${defaultBoxDepth}" (longest even length at least 1" shorter than cabinet).`
                             }
                         </p>
                     </div>
@@ -285,16 +339,16 @@ const DrawerBuilderDialog = () => {
                         </div>
                         {faceStyle === 'overlay' && (
                             <div>
-                                <div style={labelStyle}>Reveal around Cabinet</div>
-                                <input type="number" step="0.0625" min="0" value={reveal}
-                                    onChange={e => setDialog(p => ({ ...p, reveal: e.target.value }))}
+                                <div style={labelStyle}>Reveal around Cabinet ({unitLabel})</div>
+                                <NumericInput step={isMetric ? "1" : "0.0625"} min="0" value={reveal}
+                                    onChange={val => setDialog(p => ({ ...p, reveal: isMetric ? val / 25.4 : val }))}
                                     style={inputStyle} title="Space all around the drawer set relative to carcass edges" />
                             </div>
                         )}
                         <div>
-                            <div style={labelStyle}>{faceStyle === 'overlay' ? 'Spacing Gap' : 'Gap (in)'}</div>
-                            <input type="number" step="0.0625" min="0" value={gap}
-                                onChange={e => setDialog(p => ({ ...p, gap: e.target.value }))}
+                            <div style={labelStyle}>{faceStyle === 'overlay' ? `Spacing Gap (${unitLabel})` : `Gap (${unitLabel})`}</div>
+                            <NumericInput step={isMetric ? "1" : "0.0625"} min="0" value={gap}
+                                onChange={val => setDialog(p => ({ ...p, gap: isMetric ? val / 25.4 : val }))}
                                 style={inputStyle} title={faceStyle === 'overlay' ? 'Spacing gap between drawer faces' : 'Perimeter spacing gap around drawer faces'} />
                         </div>
                     </div>
@@ -324,15 +378,15 @@ const DrawerBuilderDialog = () => {
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                         <div>
-                            <div style={labelStyle}>Slide Width</div>
-                            <input type="number" step="0.125" min="0" value={slideWidth}
-                                onChange={e => setDialog(p => ({ ...p, slideWidth: e.target.value }))}
+                            <div style={labelStyle}>Slide Width ({unitLabel})</div>
+                            <NumericInput step={isMetric ? "1" : "0.125"} min="0" value={slideWidth}
+                                onChange={val => setDialog(p => ({ ...p, slideWidth: isMetric ? val / 25.4 : val }))}
                                 style={inputStyle} title="Clearance on each side for the slide hardware" />
                         </div>
                         <div>
-                            <div style={labelStyle}>Box Top Clear.</div>
-                            <input type="number" step="0.125" min="0" value={topClearance}
-                                onChange={e => setDialog(p => ({ ...p, topClearance: e.target.value }))}
+                            <div style={labelStyle}>Box Top Clear. ({unitLabel})</div>
+                            <NumericInput step={isMetric ? "1" : "0.125"} min="0" value={topClearance}
+                                onChange={val => setDialog(p => ({ ...p, topClearance: isMetric ? val / 25.4 : val }))}
                                 style={inputStyle} title="Clearance above the drawer box to the slot ceiling" />
                         </div>
                     </div>
@@ -341,7 +395,7 @@ const DrawerBuilderDialog = () => {
                 {/* Individual Drawer Heights */}
                 {count > 0 && (
                     <div className="inspector-card" style={{ margin: 0 }}>
-                        <h4>Individual Drawer Spacings & Sizes (in)</h4>
+                        <h4>Individual Drawer Spacings & Sizes ({unitFmtLabel})</h4>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                             {slotHeights.map((sH, idx) => {
                                 const computedBoxH = sH - topClearance;
@@ -360,13 +414,13 @@ const DrawerBuilderDialog = () => {
                                     faceH = sumSlotH > 0 ? sH * (totalFaceHeightsSum / sumSlotH) : 0;
                                 }
 
-                                // Sizing calculations (rounded down to nearest 1/8")
-                                const rBoxW = roundDownTo1_8(boxW);
+                                // Sizing calculations
+                                const rBoxW = roundDownDisplay(boxW);
                                 const rBoxD = boxD;
-                                const rBoxH = roundDownTo1_8(computedBoxH);
+                                const rBoxH = roundDownDisplay(computedBoxH);
                                 
-                                const rFaceW = roundDownTo1_8(fW);
-                                const rFaceH = roundDownTo1_8(faceH);
+                                const rFaceW = roundDownDisplay(fW);
+                                const rFaceH = roundDownDisplay(faceH);
 
                                 return (
                                     <div key={idx} style={{ 
@@ -384,17 +438,16 @@ const DrawerBuilderDialog = () => {
                                             </div>
                                             <div style={{ flex: 1 }}>
                                                 <div style={labelStyle}>Slot Height</div>
-                                                <input
-                                                    type="number"
-                                                    step="0.125"
+                                                <NumericInput
+                                                    step={isMetric ? "5" : "0.125"}
                                                     min="1.0"
-                                                    value={parseFloat(sH.toFixed(4))}
-                                                    onChange={e => {
-                                                        const newVal = parseFloat(e.target.value);
+                                                    value={parseFloat(sH.toFixed(1))}
+                                                    onChange={val => {
+                                                        const newVal = val;
                                                         if (isNaN(newVal) || newVal <= 0) return;
-                                                        const nextHeights = [...slotHeights];
-                                                        nextHeights[idx] = newVal;
-                                                        setDialog(p => ({ ...p, slotHeights: nextHeights }));
+                                                        const nextHeights_in = [...slotHeights_in];
+                                                        nextHeights_in[idx] = isMetric ? newVal / 25.4 : newVal;
+                                                        setDialog(p => ({ ...p, slotHeights: nextHeights_in }));
                                                     }}
                                                     style={inputStyle}
                                                 />
@@ -415,13 +468,13 @@ const DrawerBuilderDialog = () => {
                                             <div>
                                                 <span style={{ color: 'var(--accent-color)', fontWeight: '500' }}>📦 Box:</span>{' '}
                                                 <strong style={{ color: 'var(--text-main)' }}>
-                                                    {rBoxW.toFixed(3)}" × {rBoxD.toFixed(3)}" × {rBoxH >= 0.5 ? `${rBoxH.toFixed(3)}"` : 'Too small!'}
+                                                    {fmt(rBoxW)}{unitLabel} × {fmt(rBoxD)}{unitLabel} × {rBoxH >= (isMetric ? 12.7 : 0.5) ? `${fmt(rBoxH)}${unitLabel}` : 'Too small!'}
                                                 </strong>
                                             </div>
                                             <div>
                                                 <span style={{ color: 'var(--accent-color)', fontWeight: '500' }}>🖼️ Face:</span>{' '}
                                                 <strong style={{ color: 'var(--text-main)' }}>
-                                                    {rFaceW.toFixed(3)}" × {rFaceH.toFixed(3)}"
+                                                    {fmt(rFaceW)}{unitLabel} × {fmt(rFaceH)}{unitLabel}
                                                 </strong>
                                             </div>
                                         </div>
@@ -457,15 +510,15 @@ const DrawerBuilderDialog = () => {
                                         fontWeight: 'bold', 
                                         color: leftoverGap >= -0.0001 ? 'var(--text-main)' : '#ff3b30' 
                                     }}>
-                                        {leftoverGap.toFixed(3)}"
+                                        {fmt(leftoverGap)}{unitLabel}
                                     </span>
                                 </div>
                                 <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>
                                     {leftoverGap >= -0.0001 ? (
-                                        `Calculated bottom reveal: includes the unified spacing gap (${gap.toFixed(3)}") plus the leftover space (${(leftoverGap - gap).toFixed(3)}") from rounding or unfilled height.`
+                                        `Calculated bottom reveal: includes the unified spacing gap (${fmt(gap)}${unitLabel}) plus the leftover space (${fmt(leftoverGap - gap)}${unitLabel}) from rounding or unfilled height.`
                                     ) : (
                                         <span style={{ color: '#ff3b30', fontWeight: '500' }}>
-                                            Illegal negative gap! Spacings exceed available cabinet height by {Math.abs(leftoverGap).toFixed(3)}". Building drawers is blocked.
+                                            Illegal negative gap! Spacings exceed available cabinet height by {fmt(Math.abs(leftoverGap))}{unitLabel}. Building drawers is blocked.
                                         </span>
                                     )}
                                 </div>
@@ -479,24 +532,24 @@ const DrawerBuilderDialog = () => {
 
                 {/* Material Thickness */}
                 <div className="inspector-card" style={{ margin: 0 }}>
-                    <h4>Material Thickness (in)</h4>
+                    <h4>Material Thickness ({unitFmtLabel})</h4>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
                         <div>
                             <div style={labelStyle}>Box Sides</div>
-                            <input type="number" step="0.0625" min="0.125" value={thicknessBox}
-                                onChange={e => setDialog(p => ({ ...p, thicknessBox: e.target.value }))}
+                            <NumericInput step={isMetric ? "1" : "0.0625"} min={isMetric ? "3" : "0.125"} value={thicknessBox}
+                                onChange={val => setDialog(p => ({ ...p, thicknessBox: isMetric ? val / 25.4 : val }))}
                                 style={inputStyle} />
                         </div>
                         <div>
                             <div style={labelStyle}>Bottom Panel</div>
-                            <input type="number" step="0.0625" min="0.125" value={thicknessBottom}
-                                onChange={e => setDialog(p => ({ ...p, thicknessBottom: e.target.value }))}
+                            <NumericInput step={isMetric ? "1" : "0.0625"} min={isMetric ? "3" : "0.125"} value={thicknessBottom}
+                                onChange={val => setDialog(p => ({ ...p, thicknessBottom: isMetric ? val / 25.4 : val }))}
                                 style={inputStyle} />
                         </div>
                         <div>
                             <div style={labelStyle}>Drawer Face</div>
-                            <input type="number" step="0.0625" min="0.125" value={thicknessFace}
-                                onChange={e => setDialog(p => ({ ...p, thicknessFace: e.target.value }))}
+                            <NumericInput step={isMetric ? "1" : "0.0625"} min={isMetric ? "3" : "0.125"} value={thicknessFace}
+                                onChange={val => setDialog(p => ({ ...p, thicknessFace: isMetric ? val / 25.4 : val }))}
                                 style={inputStyle} />
                         </div>
                     </div>
@@ -515,16 +568,16 @@ const DrawerBuilderDialog = () => {
                     </h4>
                     {valid ? (
                         <div style={{ fontSize: '0.78rem', color: 'var(--text-main)', lineHeight: 1.6 }}>
-                            <div><strong>Drawer Box Width:</strong> {roundDownTo1_8(boxW).toFixed(3)}" <span style={{ color: 'var(--text-muted)' }}>(rounded down to nearest 1/8", fits opening width {W}" with slide clearance {slideWidth}" × 2)</span></div>
-                            <div><strong>Drawer Box Depth:</strong> {boxD.toFixed(3)}" <span style={{ color: 'var(--text-muted)' }}>({boxD === defaultBoxDepth ? 'default even length' : 'custom length'})</span></div>
+                            <div><strong>Drawer Box Width:</strong> {fmt(roundDownDisplay(boxW))}{unitLabel} <span style={{ color: 'var(--text-muted)' }}>({isMetric ? 'rounded down to nearest mm' : 'rounded down to nearest 1/8"'}, fits opening width {fmt(W)}{unitLabel} with slide clearance {fmt(slideWidth)}{unitLabel} × 2)</span></div>
+                            <div><strong>Drawer Box Depth:</strong> {fmt(boxD)}{unitLabel} <span style={{ color: 'var(--text-muted)' }}>({boxD === defaultBoxDepth ? 'default length' : 'custom length'})</span></div>
                             <div style={{ marginTop: '4px', borderTop: '1px dashed rgba(255,255,255,0.1)', paddingTop: '4px' }}>
-                                <strong>Individual Drawer Box Heights (Rounded down to nearest 1/8"):</strong>
+                                <strong>Individual Drawer Box Heights ({isMetric ? 'Rounded down to nearest mm' : 'Rounded down to nearest 1/8"'}):</strong>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', marginTop: '3px', paddingLeft: '8px' }}>
                                     {slotHeights.map((sH, i) => {
                                         const computedBoxH = sH - topClearance;
                                         return (
                                             <div key={i}>
-                                                · Drawer {i+1} Box: <strong>{roundDownTo1_8(computedBoxH).toFixed(3)}"</strong> high <span style={{ color: 'var(--text-muted)' }}>(slot spacing: {sH.toFixed(3)}")</span>
+                                                · Drawer {i+1} Box: <strong>{fmt(roundDownDisplay(computedBoxH))}{unitLabel}</strong> high <span style={{ color: 'var(--text-muted)' }}>(slot spacing: {fmt(sH)}{unitLabel})</span>
                                             </div>
                                         );
                                     })}
@@ -534,7 +587,7 @@ const DrawerBuilderDialog = () => {
                     ) : (
                         <div style={{ fontSize: '0.78rem', color: '#ff3b30' }}>
                             {boxD > D ? (
-                                `Drawer box depth (${boxD.toFixed(3)}") cannot exceed cabinet depth (${D.toFixed(3)}").`
+                                `Drawer box depth (${fmt(boxD)}${unitLabel}) cannot exceed cabinet depth (${fmt(D)}${unitLabel}).`
                             ) : (
                                 `Invalid drawer specs. Ensure cabinet opening width can accommodate slides & box sides, and calculated box heights are at least 0.50".`
                             )}

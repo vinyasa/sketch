@@ -1,28 +1,39 @@
 import React from 'react';
 import useStore from '../../store/useStore';
 import { parseNum } from '../../utils/units';
+import NumericInput from '../NumericInput';
 
 const TableBaseBuilderDialog = () => {
-    const { tableBaseDialog: dialog, setTableBaseDialog: setDialog, buildTableBase } = useStore();
+    const { tableBaseDialog: dialog, setTableBaseDialog: setDialog, buildTableBase, units } = useStore();
     if (!dialog) return null;
 
-    const W = parseNum(dialog.width, 48);
-    const H = parseNum(dialog.height, 29);
-    const D = parseNum(dialog.depth, 30);
-    const legSize = parseNum(dialog.legSize, 2.25);
+    const isMetric = units === 'metric';
+
+    const W_in = parseNum(dialog.width, 48);
+    const H_in = parseNum(dialog.height, 29);
+    const D_in = parseNum(dialog.depth, 30);
+    const legSize_in = parseNum(dialog.legSize, 2.25);
     const legTaperAngle = parseNum(dialog.legTaperAngle, 1.5);
-    const apronHeight = parseNum(dialog.apronHeight, 4.0);
-    const apronThickness = parseNum(dialog.apronThickness, 0.75);
-    const apronInset = parseNum(dialog.apronInset, 0.25);
+    const apronHeight_in = parseNum(dialog.apronHeight, 4.0);
+    const apronThickness_in = parseNum(dialog.apronThickness, 0.75);
+    const apronInset_in = parseNum(dialog.apronInset, 0.25);
     const apronJoint = dialog.apronJoint || 'pocket-hole';
+
+    const W = isMetric ? parseFloat((W_in * 25.4).toFixed(1)) : W_in;
+    const H = isMetric ? parseFloat((H_in * 25.4).toFixed(1)) : H_in;
+    const D = isMetric ? parseFloat((D_in * 25.4).toFixed(1)) : D_in;
+    const legSize = isMetric ? parseFloat((legSize_in * 25.4).toFixed(1)) : legSize_in;
+    const apronHeight = isMetric ? parseFloat((apronHeight_in * 25.4).toFixed(1)) : apronHeight_in;
+    const apronThickness = isMetric ? parseFloat((apronThickness_in * 25.4).toFixed(1)) : apronThickness_in;
+    const apronInset = isMetric ? parseFloat((apronInset_in * 25.4).toFixed(1)) : apronInset_in;
 
     // Stringers Count Formula
     let numStringers = 0;
-    if (W > 36) {
-        numStringers = Math.max(1, Math.floor((W - 24) / 12));
+    if (W_in > 36) {
+        numStringers = Math.max(1, Math.floor((W_in - 24) / 12));
     }
 
-    const valid = W > 2 * legSize && D > 2 * legSize && H > apronHeight;
+    const valid = W_in > 2 * legSize_in && D_in > 2 * legSize_in && H_in > apronHeight_in;
 
     const inputStyle = {
         width: '100%', padding: '5px 8px',
@@ -41,6 +52,10 @@ const TableBaseBuilderDialog = () => {
     const labelStyle = {
         fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px',
     };
+
+    const unitFmtLabel = isMetric ? 'mm' : 'in';
+    const unitLabel = isMetric ? 'mm' : '"';
+    const fmt = (v) => v.toFixed(v % 1 === 0 ? 0 : (isMetric ? 1 : 3));
 
     const handleBuild = () => {
         if (!valid) return;
@@ -66,24 +81,24 @@ const TableBaseBuilderDialog = () => {
 
                 {/* Overall Base Dimensions */}
                 <div className="inspector-card" style={{ margin: 0 }}>
-                    <h4>Overall Dimensions (in)</h4>
+                    <h4>Overall Dimensions ({unitFmtLabel})</h4>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
                         <div>
                             <div style={labelStyle}>Width (X)</div>
-                            <input type="number" step="0.5" min="12" value={W}
-                                onChange={e => setDialog(p => ({ ...p, width: e.target.value }))}
+                            <NumericInput step={isMetric ? "10" : "0.5"} min="12" value={W}
+                                onChange={val => setDialog(p => ({ ...p, width: isMetric ? val / 25.4 : val }))}
                                 style={inputStyle} />
                         </div>
                         <div>
                             <div style={labelStyle}>Height (Y)</div>
-                            <input type="number" step="0.5" min="6" value={H}
-                                onChange={e => setDialog(p => ({ ...p, height: e.target.value }))}
+                            <NumericInput step={isMetric ? "10" : "0.5"} min="6" value={H}
+                                onChange={val => setDialog(p => ({ ...p, height: isMetric ? val / 25.4 : val }))}
                                 style={inputStyle} />
                         </div>
                         <div>
                             <div style={labelStyle}>Depth (Z)</div>
-                            <input type="number" step="0.5" min="12" value={D}
-                                onChange={e => setDialog(p => ({ ...p, depth: e.target.value }))}
+                            <NumericInput step={isMetric ? "10" : "0.5"} min="12" value={D}
+                                onChange={val => setDialog(p => ({ ...p, depth: isMetric ? val / 25.4 : val }))}
                                 style={inputStyle} />
                         </div>
                     </div>
@@ -94,9 +109,9 @@ const TableBaseBuilderDialog = () => {
                     <h4>Leg Details</h4>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                         <div>
-                            <div style={labelStyle}>Leg Post Width (in)</div>
-                            <input type="number" step="0.125" min="1" value={legSize}
-                                onChange={e => setDialog(p => ({ ...p, legSize: e.target.value }))}
+                            <div style={labelStyle}>Leg Post Width ({unitFmtLabel})</div>
+                            <NumericInput step={isMetric ? "5" : "0.125"} min="1" value={legSize}
+                                onChange={val => setDialog(p => ({ ...p, legSize: isMetric ? val / 25.4 : val }))}
                                 style={inputStyle} />
                         </div>
                         <div>
@@ -116,23 +131,23 @@ const TableBaseBuilderDialog = () => {
                     <h4>Aprons & Joints</h4>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
                         <div>
-                            <div style={labelStyle}>Apron Height (in)</div>
-                            <input type="number" step="0.25" min="1" value={apronHeight}
-                                onChange={e => setDialog(p => ({ ...p, apronHeight: e.target.value }))}
+                            <div style={labelStyle}>Apron Height ({unitFmtLabel})</div>
+                            <NumericInput step={isMetric ? "5" : "0.25"} min="1" value={apronHeight}
+                                onChange={val => setDialog(p => ({ ...p, apronHeight: isMetric ? val / 25.4 : val }))}
                                 style={inputStyle} />
                         </div>
                         <div>
-                            <div style={labelStyle}>Apron Thickness (in)</div>
-                            <input type="number" step="0.0625" min="0.25" value={apronThickness}
-                                onChange={e => setDialog(p => ({ ...p, apronThickness: e.target.value }))}
+                            <div style={labelStyle}>Apron Thickness ({unitFmtLabel})</div>
+                            <NumericInput step={isMetric ? "1" : "0.0625"} min="0.25" value={apronThickness}
+                                onChange={val => setDialog(p => ({ ...p, apronThickness: isMetric ? val / 25.4 : val }))}
                                 style={inputStyle} />
                         </div>
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                         <div>
-                            <div style={labelStyle}>Apron Inset (in)</div>
-                            <input type="number" step="0.0625" min="0" value={apronInset}
-                                onChange={e => setDialog(p => ({ ...p, apronInset: e.target.value }))}
+                            <div style={labelStyle}>Apron Inset ({unitFmtLabel})</div>
+                            <NumericInput step={isMetric ? "1" : "0.0625"} min="0" value={apronInset}
+                                onChange={val => setDialog(p => ({ ...p, apronInset: isMetric ? val / 25.4 : val }))}
                                 style={inputStyle} />
                         </div>
                         <div>
@@ -153,9 +168,9 @@ const TableBaseBuilderDialog = () => {
                     <h4 style={{ color: valid ? '#34c759' : '#ff3b30' }}>{valid ? '✓ Structural Summary' : '⚠ Invalid Configuration'}</h4>
                     {valid ? (
                         <div style={{ fontSize: '0.78rem', color: 'var(--text-main)', lineHeight: 1.5 }}>
-                            <div><strong>Leg Size:</strong> {legSize}" × {legSize}" square tapered at {legTaperAngle}°</div>
-                            <div><strong>Aprons:</strong> 4 panels at {apronHeight}" tall, inset by {apronInset}"</div>
-                            <div><strong>Stringers:</strong> {numStringers > 0 ? `${numStringers} front-to-back stringers` : 'No stringers (Width ≤ 36")'}</div>
+                            <div><strong>Leg Size:</strong> {fmt(legSize)}{unitLabel} × {fmt(legSize)}{unitLabel} square tapered at {legTaperAngle}°</div>
+                            <div><strong>Aprons:</strong> 4 panels at {fmt(apronHeight)}{unitLabel} tall, inset by {fmt(apronInset)}{unitLabel}</div>
+                            <div><strong>Stringers:</strong> {numStringers > 0 ? `${numStringers} front-to-back stringers` : `No stringers (Width ≤ ${isMetric ? '914mm' : '36"'})`}</div>
                             <div style={{ color: 'var(--text-muted)', fontSize: '0.72rem', marginTop: '4px' }}>
                                 Stringers automatically scale to support table top screws.
                             </div>

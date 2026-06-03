@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { OBB } from 'three/addons/math/OBB.js';
 import useStore from '../../store/useStore';
 import { collectChildBoards } from '../../utils/sceneGraph';
+import NumericInput from '../NumericInput';
 
 const ToolsPanel = () => {
     // Staged modifier edits — changes are held locally until "Apply" is clicked
@@ -721,7 +722,7 @@ const ToolsPanel = () => {
                                 </div>
                                 <div>
                                     <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Cutout to Leave (in)</div>
-                                    <input type="number" min="0" step="0.25" value={parseFloat((displayOp.innerRadius ?? 0).toFixed(4))} onChange={e => upd({ innerRadius: Math.max(0, parseFloat(e.target.value) || 0) })} style={inputStyle} />
+                                    <NumericInput min="0" step="0.25" value={parseFloat((displayOp.innerRadius ?? 0).toFixed(4))} onChange={val => upd({ innerRadius: Math.max(0, val) })} style={inputStyle} />
                                 </div>
                                 <div>
                                     <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Extrude Axis</div>
@@ -749,7 +750,7 @@ const ToolsPanel = () => {
                                 </div>
                                 <div>
                                     <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Depth (in)</div>
-                                    <input type="number" min="0" step="0.25" value={parseFloat((displayOp.depth ?? 0).toFixed(4))} onChange={e => upd({ depth: Math.max(0, parseFloat(e.target.value) || 0) })} style={inputStyle} />
+                                    <NumericInput min="0" step="0.25" value={parseFloat((displayOp.depth ?? 0).toFixed(4))} onChange={val => upd({ depth: Math.max(0, val) })} style={inputStyle} />
                                 </div>
                                 <div style={{ gridColumn: '1 / -1' }}>
                                     <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Axis</div>
@@ -782,15 +783,15 @@ const ToolsPanel = () => {
                                 <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '8px' }}>
                                     <div style={{ gridColumn: '1 / -1' }}>
                                         <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Hole Diameter (in)</div>
-                                        <input type="number" min="0.25" step="0.125" value={parseFloat(((displayOp.radius ?? 0) * 2).toFixed(4))} onChange={e => upd({ radius: Math.max(0, (parseFloat(e.target.value) || 0) / 2) })} style={inputStyle} />
+                                        <NumericInput min="0.25" step="0.125" value={parseFloat(((displayOp.radius ?? 0) * 2).toFixed(4))} onChange={val => upd({ radius: Math.max(0, val / 2) })} style={inputStyle} />
                                     </div>
                                     <div>
                                         <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>{labelX} (in)</div>
-                                        <input type="number" step="0.25" value={parseFloat((displayOp.offsetX ?? 0).toFixed(4))} onChange={e => upd({ offsetX: parseFloat(e.target.value) || 0 })} style={inputStyle} />
+                                        <NumericInput step="0.25" value={parseFloat((displayOp.offsetX ?? 0).toFixed(4))} onChange={val => upd({ offsetX: val })} style={inputStyle} />
                                     </div>
                                     <div>
                                         <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>{labelY} (in)</div>
-                                        <input type="number" step="0.25" value={parseFloat((displayOp.offsetY ?? 0).toFixed(4))} onChange={e => upd({ offsetY: parseFloat(e.target.value) || 0 })} style={inputStyle} />
+                                        <NumericInput step="0.25" value={parseFloat((displayOp.offsetY ?? 0).toFixed(4))} onChange={val => upd({ offsetY: val })} style={inputStyle} />
                                     </div>
                                     <div style={{ gridColumn: '1 / -1' }}>
                                         <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Axis</div>
@@ -866,19 +867,19 @@ const ToolsPanel = () => {
                                     {/* Width */}
                                     <div>
                                         <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Width (in)</div>
-                                        <input type="number" min="0.0625" step="0.0625" value={parseFloat((displayOp.width ?? 0.75).toFixed(4))} onChange={e => upd({ width: Math.max(0.0625, parseFloat(e.target.value) || 0.0625) })} style={inputStyle} />
+                                        <NumericInput min="0.0625" step="0.0625" value={parseFloat((displayOp.width ?? 0.75).toFixed(4))} onChange={val => upd({ width: Math.max(0.0625, val) })} style={inputStyle} />
                                     </div>
 
                                     {/* Depth */}
                                     <div>
                                         <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Depth (in)</div>
-                                        <input type="number" min="0.0625" step="0.0625" value={parseFloat((displayOp.depth ?? 0.375).toFixed(4))} onChange={e => upd({ depth: Math.max(0.0625, parseFloat(e.target.value) || 0.0625) })} style={inputStyle} />
+                                        <NumericInput min="0.0625" step="0.0625" value={parseFloat((displayOp.depth ?? 0.375).toFixed(4))} onChange={val => upd({ depth: Math.max(0.0625, val) })} style={inputStyle} />
                                     </div>
 
                                     {/* Offset */}
                                     <div>
                                         <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Offset (in)</div>
-                                        <input type="number" step="0.125" value={parseFloat((displayOp.offset ?? 0).toFixed(4))} onChange={e => upd({ offset: parseFloat(e.target.value) || 0 })} style={inputStyle} />
+                                        <NumericInput step="0.125" value={parseFloat((displayOp.offset ?? 0).toFixed(4))} onChange={val => upd({ offset: val })} style={inputStyle} />
                                     </div>
 
                                     {/* Through toggle */}
@@ -894,11 +895,11 @@ const ToolsPanel = () => {
                                         <>
                                             <div>
                                                 <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Length (in)</div>
-                                                <input type="number" min="0.125" step="0.125" value={parseFloat((displayOp.length ?? 2).toFixed(4))} onChange={e => upd({ length: Math.max(0.125, parseFloat(e.target.value) || 0.125) })} style={inputStyle} />
+                                                <NumericInput min="0.125" step="0.125" value={parseFloat((displayOp.length ?? 2).toFixed(4))} onChange={val => upd({ length: Math.max(0.125, val) })} style={inputStyle} />
                                             </div>
                                             <div>
                                                 <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Length Offset (in)</div>
-                                                <input type="number" step="0.125" value={parseFloat((displayOp.lengthOffset ?? 0).toFixed(4))} onChange={e => upd({ lengthOffset: parseFloat(e.target.value) || 0 })} style={inputStyle} />
+                                                <NumericInput step="0.125" value={parseFloat((displayOp.lengthOffset ?? 0).toFixed(4))} onChange={val => upd({ lengthOffset: val })} style={inputStyle} />
                                             </div>
                                         </>
                                     )}
@@ -1076,7 +1077,7 @@ const ToolsPanel = () => {
                                     {!isAutoSpacing && (
                                         <div style={{ gridColumn: '1 / -1' }}>
                                             <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Custom Spacing (in)</div>
-                                            <input type="number" min="0.5" step="0.25" value={parseFloat((displayOp.spacing ?? 2).toFixed(4))} onChange={e => upd({ spacing: Math.max(0.5, parseFloat(e.target.value) || 2) })} style={inputStyle} />
+                                            <NumericInput min="0.5" step="0.25" value={parseFloat((displayOp.spacing ?? 2).toFixed(4))} onChange={val => upd({ spacing: Math.max(0.5, val) })} style={inputStyle} />
                                         </div>
                                     )}
                                     <p className="hint" style={{ gridColumn: '1 / -1', marginTop: '0' }}>
@@ -1109,11 +1110,11 @@ const ToolsPanel = () => {
                                     </div>
                                     <div>
                                         <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Hole Diameter (in)</div>
-                                        <input type="number" min="0.02" step="0.0625" value={parseFloat(diameter.toFixed(4))} onChange={e => upd({ diameter: Math.max(0.01, parseFloat(e.target.value) || 0.375) })} style={inputStyle} />
+                                        <NumericInput min="0.02" step="0.0625" value={parseFloat(diameter.toFixed(4))} onChange={val => upd({ diameter: Math.max(0.01, val) })} style={inputStyle} />
                                     </div>
                                     <div>
                                         <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Hole Depth (in)</div>
-                                        <input type="number" min="0.1" step="0.125" value={parseFloat((displayOp.depth ?? 0.75).toFixed(4))} onChange={e => upd({ depth: Math.max(0.01, parseFloat(e.target.value) || 0.75) })} style={inputStyle} />
+                                        <NumericInput min="0.1" step="0.125" value={parseFloat((displayOp.depth ?? 0.75).toFixed(4))} onChange={val => upd({ depth: Math.max(0.01, val) })} style={inputStyle} />
                                     </div>
                                     <div>
                                         <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Spacing Mode</div>
@@ -1125,7 +1126,7 @@ const ToolsPanel = () => {
                                     {!isAutoSpacing && (
                                         <div style={{ gridColumn: '1 / -1' }}>
                                             <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Custom Spacing (in)</div>
-                                            <input type="number" min="0.5" step="0.25" value={parseFloat((displayOp.spacing ?? 2).toFixed(4))} onChange={e => upd({ spacing: Math.max(0.5, parseFloat(e.target.value) || 2) })} style={inputStyle} />
+                                            <NumericInput min="0.5" step="0.25" value={parseFloat((displayOp.spacing ?? 2).toFixed(4))} onChange={val => upd({ spacing: Math.max(0.5, val) })} style={inputStyle} />
                                         </div>
                                     )}
                                     <p className="hint" style={{ gridColumn: '1 / -1', marginTop: '0' }}>
@@ -1185,13 +1186,13 @@ const ToolsPanel = () => {
                                     {isRoundover ? (
                                         <div style={{ gridColumn: '1 / -1' }}>
                                             <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Roundover Radius (in)</div>
-                                            <input type="number" min="0.0625" step="0.0625" value={parseFloat((displayOp.radius ?? 0.25).toFixed(4))} onChange={e => upd({ radius: Math.max(0.01, parseFloat(e.target.value) || 0.25) })} style={inputStyle} />
+                                            <NumericInput min="0.0625" step="0.0625" value={parseFloat((displayOp.radius ?? 0.25).toFixed(4))} onChange={val => upd({ radius: Math.max(0.01, val) })} style={inputStyle} />
                                             <input type="range" min="0.0625" max="2" step="0.0625" value={displayOp.radius ?? 0.25} onChange={e => upd({ radius: parseFloat(e.target.value) })} style={{ width: '100%', marginTop: '4px', accentColor: 'var(--accent-color)' }} />
                                         </div>
                                     ) : (
                                         <div style={{ gridColumn: '1 / -1' }}>
                                             <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Chamfer Width (in)</div>
-                                            <input type="number" min="0.0625" step="0.0625" value={parseFloat((displayOp.width ?? 0.25).toFixed(4))} onChange={e => upd({ width: Math.max(0.01, parseFloat(e.target.value) || 0.25) })} style={inputStyle} />
+                                            <NumericInput min="0.0625" step="0.0625" value={parseFloat((displayOp.width ?? 0.25).toFixed(4))} onChange={val => upd({ width: Math.max(0.01, val) })} style={inputStyle} />
                                             <input type="range" min="0.0625" max="2" step="0.0625" value={displayOp.width ?? 0.25} onChange={e => upd({ width: parseFloat(e.target.value) })} style={{ width: '100%', marginTop: '4px', accentColor: 'var(--accent-color)' }} />
                                         </div>
                                     )}

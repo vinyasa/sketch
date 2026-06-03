@@ -92,14 +92,49 @@ export const toDisplay = (val, units) => {
 };
 
 /**
- * Parse a value into a float, falling back to a default value if undefined/null/empty or NaN.
+ * Parse a value that might contain fractions (e.g. "1 1/2", "1-1/2", "3/4") or decimal numbers,
+ * stripping trailing inches symbols (") or units (in) to avoid throwing errors.
+ * @param {any} val - The input value to parse
+ * @returns {number} The parsed float value, or NaN if parsing fails
+ */
+export const parseFraction = (val) => {
+    if (val === undefined || val === null) return NaN;
+    let cleanStr = val.toString().trim();
+    if (!cleanStr) return NaN;
+
+    // Remove any trailing/embedded inch/unit symbols (like " or in)
+    cleanStr = cleanStr.replace(/"/g, '').replace(/in/g, '').trim();
+
+    // Try normal float first
+    const floatVal = Number(cleanStr);
+    if (!isNaN(floatVal)) return floatVal;
+
+    // Check for fraction regex: matches optionally a whole number, then a space or hyphen, then a fraction
+    const fracRegex = /^(?:(\d+)[ -])?(\d+)\/(\d+)$/;
+    const match = cleanStr.match(fracRegex);
+    if (match) {
+        const whole = match[1] ? parseInt(match[1], 10) : 0;
+        const num = parseInt(match[2], 10);
+        const den = parseInt(match[3], 10);
+        if (den !== 0) {
+            return whole + (num / den);
+        }
+    }
+
+    // Try standard parseFloat for fallback
+    const parsed = parseFloat(cleanStr);
+    return isNaN(parsed) ? NaN : parsed;
+};
+
+/**
+ * Parse a value into a float (supporting fractions), falling back to a default value if undefined/null/empty or NaN.
  * @param {any} val - The input value to parse
  * @param {number} def - The default value if parsing fails (defaults to 0)
  * @returns {number} The parsed number or default
  */
 export const parseNum = (val, def = 0) => {
     if (val === undefined || val === null || val === '') return def;
-    const n = parseFloat(val);
+    const n = parseFraction(val);
     return isNaN(n) ? def : n;
 };
 

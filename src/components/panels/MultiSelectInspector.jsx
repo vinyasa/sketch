@@ -238,19 +238,19 @@ const MultiSelectInspector = () => {
                 </p>
                 <div className="vec3-inputs">
                     <div style={{ backgroundColor: 'rgba(255, 60, 60, 0.15)', ...bbRowStyle(axisEditable[0]) }}>
-                        X<input type="number" step="0.125" value={multiSize[0]}
+                        X<NumericInput step="0.125" value={multiSize[0]}
                             disabled={!axisEditable[0]}
-                            onChange={e => handleBBSizeChange(0, e.target.value)} />
+                            onChange={val => handleBBSizeChange(0, val)} />
                     </div>
                     <div style={{ backgroundColor: 'rgba(60, 200, 90, 0.15)', ...bbRowStyle(axisEditable[1]) }}>
-                        Y<input type="number" step="0.125" value={multiSize[1]}
+                        Y<NumericInput step="0.125" value={multiSize[1]}
                             disabled={!axisEditable[1]}
-                            onChange={e => handleBBSizeChange(1, e.target.value)} />
+                            onChange={val => handleBBSizeChange(1, val)} />
                     </div>
                     <div style={{ backgroundColor: 'rgba(60, 150, 255, 0.15)', ...bbRowStyle(axisEditable[2]) }}>
-                        Z<input type="number" step="0.125" value={multiSize[2]}
+                        Z<NumericInput step="0.125" value={multiSize[2]}
                             disabled={!axisEditable[2]}
-                            onChange={e => handleBBSizeChange(2, e.target.value)} />
+                            onChange={val => handleBBSizeChange(2, val)} />
                     </div>
                 </div>
                 {axisEditable.some(Boolean) && (

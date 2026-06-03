@@ -1,10 +1,13 @@
 import React from 'react';
 import useStore from '../../store/useStore';
 import { parseNum } from '../../utils/units';
+import NumericInput from '../NumericInput';
 
 const ShelvingBuilderDialog = () => {
-    const { shelvingDialog: dialog, setShelvingDialog: setDialog, buildShelving, groups } = useStore();
+    const { shelvingDialog: dialog, setShelvingDialog: setDialog, buildShelving, groups, units } = useStore();
     if (!dialog) return null;
+
+    const isMetric = units === 'metric';
 
     const cabinetGroupId = dialog.cabinetGroupId;
     const boxGroupId = dialog.boxGroupId;
@@ -15,13 +18,18 @@ const ShelvingBuilderDialog = () => {
 
     const parseIntSafe = (v, def) => { const n = parseInt(v, 10); return isNaN(n) ? def : n; };
 
-    const W = parseNum(dialog.width, 30);
-    const H = parseNum(dialog.height, 48);
-    const D = parseNum(dialog.depth, 11);
-    const t = parseNum(dialog.thickness, 0.75);
+    const W_in = parseNum(dialog.width, 30);
+    const H_in = parseNum(dialog.height, 48);
+    const D_in = parseNum(dialog.depth, 11);
+    const t_in = parseNum(dialog.thickness, 0.75);
     const count = parseIntSafe(dialog.count, 3);
 
-    const valid = W > 0 && H > (count * t) && D > 0 && count > 0;
+    const W = isMetric ? parseFloat((W_in * 25.4).toFixed(1)) : W_in;
+    const H = isMetric ? parseFloat((H_in * 25.4).toFixed(1)) : H_in;
+    const D = isMetric ? parseFloat((D_in * 25.4).toFixed(1)) : D_in;
+    const t = isMetric ? parseFloat((t_in * 25.4).toFixed(1)) : t_in;
+
+    const valid = W_in > 0 && H_in > (count * t_in) && D_in > 0 && count > 0;
 
     const inputStyle = {
         width: '100%', padding: '5px 8px',
@@ -33,6 +41,8 @@ const ShelvingBuilderDialog = () => {
     const labelStyle = {
         fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px',
     };
+
+    const unitFmtLabel = isMetric ? 'mm' : 'in';
 
     const handleBuild = () => {
         if (!valid) return;
@@ -82,27 +92,27 @@ const ShelvingBuilderDialog = () => {
                 )}
 
                 <div className="inspector-card" style={{ margin: 0 }}>
-                    <h4>Opening Dimensions (in)</h4>
+                    <h4>Opening Dimensions ({unitFmtLabel})</h4>
                     <p className="hint" style={{ marginTop: '2px', marginBottom: '8px' }}>
                         The internal width, depth, and total vertical height to distribute shelves across.
                     </p>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
                         <div>
                             <div style={labelStyle}>Width (X)</div>
-                            <input type="number" step="0.5" min="1" value={W}
-                                onChange={e => setDialog(p => ({ ...p, width: e.target.value }))}
+                            <NumericInput step={isMetric ? "10" : "0.5"} min="1" value={W}
+                                onChange={val => setDialog(p => ({ ...p, width: isMetric ? val / 25.4 : val }))}
                                 style={inputStyle} />
                         </div>
                         <div>
                             <div style={labelStyle}>Total Height (Y)</div>
-                            <input type="number" step="0.5" min="1" value={H}
-                                onChange={e => setDialog(p => ({ ...p, height: e.target.value }))}
+                            <NumericInput step={isMetric ? "10" : "0.5"} min="1" value={H}
+                                onChange={val => setDialog(p => ({ ...p, height: isMetric ? val / 25.4 : val }))}
                                 style={inputStyle} />
                         </div>
                         <div>
                             <div style={labelStyle}>Depth (Z)</div>
-                            <input type="number" step="0.5" min="1" value={D}
-                                onChange={e => setDialog(p => ({ ...p, depth: e.target.value }))}
+                            <NumericInput step={isMetric ? "10" : "0.5"} min="1" value={D}
+                                onChange={val => setDialog(p => ({ ...p, depth: isMetric ? val / 25.4 : val }))}
                                 style={inputStyle} />
                         </div>
                     </div>
@@ -118,9 +128,9 @@ const ShelvingBuilderDialog = () => {
                                 style={inputStyle} />
                         </div>
                         <div>
-                            <div style={labelStyle}>Material Thickness</div>
-                            <input type="number" step="0.125" min="0.25" value={t}
-                                onChange={e => setDialog(p => ({ ...p, thickness: e.target.value }))}
+                            <div style={labelStyle}>Material Thickness ({unitFmtLabel})</div>
+                            <NumericInput step={isMetric ? "1" : "0.125"} min={isMetric ? "3" : "0.25"} value={t}
+                                onChange={val => setDialog(p => ({ ...p, thickness: isMetric ? val / 25.4 : val }))}
                                 style={inputStyle} />
                         </div>
                     </div>

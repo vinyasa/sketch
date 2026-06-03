@@ -2,16 +2,19 @@ import React from 'react';
 import useStore from '../../store/useStore';
 import { collectChildBoards } from '../../utils/sceneGraph';
 import { parseNum } from '../../utils/units';
+import NumericInput from '../NumericInput';
 
 const TableTopBuilderDialog = () => {
-    const { tableTopDialog: dialog, setTableTopDialog: setDialog, buildTableTop, boards, groups } = useStore();
+    const { tableTopDialog: dialog, setTableTopDialog: setDialog, buildTableTop, boards, groups, units } = useStore();
     if (!dialog) return null;
 
-    const boardWidth = parseNum(dialog.boardWidth, 5.5);
-    const thickness = parseNum(dialog.thickness, 1.0);
-    const widthOverhang = parseNum(dialog.widthOverhang, 2.0);
-    const depthOverhang = parseNum(dialog.depthOverhang, 2.0);
-    const tenonSpacing = parseNum(dialog.tenonSpacing, 10.0);
+    const isMetric = units === 'metric';
+
+    const boardWidth_in = parseNum(dialog.boardWidth, 5.5);
+    const thickness_in = parseNum(dialog.thickness, 1.0);
+    const widthOverhang_in = parseNum(dialog.widthOverhang, 2.0);
+    const depthOverhang_in = parseNum(dialog.depthOverhang, 2.0);
+    const tenonSpacing_in = parseNum(dialog.tenonSpacing, 10.0);
     const jointType = dialog.jointType || 'loose-tenon';
 
     // Scan for base group to determine dimensions feedback
@@ -31,13 +34,24 @@ const TableTopBuilderDialog = () => {
         }
     }
 
-    const W = hasBase ? (baseWidth + 2 * widthOverhang) : parseNum(dialog.width, 52);
-    const D = hasBase ? (baseDepth + 2 * depthOverhang) : parseNum(dialog.depth, 34);
+    const W_in = hasBase ? (baseWidth + 2 * widthOverhang_in) : parseNum(dialog.width, 52);
+    const D_in = hasBase ? (baseDepth + 2 * depthOverhang_in) : parseNum(dialog.depth, 34);
 
-    const valid = boardWidth > 0 && thickness > 0 && W > 0 && D > 0;
+    const W = isMetric ? parseFloat((W_in * 25.4).toFixed(1)) : W_in;
+    const D = isMetric ? parseFloat((D_in * 25.4).toFixed(1)) : D_in;
+    const boardWidth = isMetric ? parseFloat((boardWidth_in * 25.4).toFixed(1)) : boardWidth_in;
+    const thickness = isMetric ? parseFloat((thickness_in * 25.4).toFixed(1)) : thickness_in;
+    const widthOverhang = isMetric ? parseFloat((widthOverhang_in * 25.4).toFixed(1)) : widthOverhang_in;
+    const depthOverhang = isMetric ? parseFloat((depthOverhang_in * 25.4).toFixed(1)) : depthOverhang_in;
+    const tenonSpacing = isMetric ? parseFloat((tenonSpacing_in * 25.4).toFixed(1)) : tenonSpacing_in;
+
+    const valid = boardWidth_in > 0 && thickness_in > 0 && W_in > 0 && D_in > 0;
 
     // Helper to format fraction nicely
     const formatFraction = (val) => {
+        if (isMetric) {
+            return `${val.toFixed(1)}mm`;
+        }
         const whole = Math.floor(val);
         const frac = val - whole;
         if (frac < 0.005) return `${whole}"`;
@@ -57,9 +71,10 @@ const TableTopBuilderDialog = () => {
     };
 
     // Calculate slat count and actual adjusted slat width
-    const slatCount = valid ? Math.max(1, Math.round(D / boardWidth)) : 0;
-    const adjSlatWidth = valid ? D / slatCount : 0;
-    const isPerfectFit = valid ? Math.abs(adjSlatWidth - boardWidth) < 0.015 : false;
+    const slatCount = valid ? Math.max(1, Math.round(D_in / boardWidth_in)) : 0;
+    const adjSlatWidth_in = valid ? D_in / slatCount : 0;
+    const adjSlatWidth = isMetric ? adjSlatWidth_in * 25.4 : adjSlatWidth_in;
+    const isPerfectFit = valid ? Math.abs(adjSlatWidth_in - boardWidth_in) < 0.015 : false;
 
     // Generate suggestions close to current slat count
     const suggestions = [];
@@ -68,16 +83,19 @@ const TableTopBuilderDialog = () => {
         const seen = new Set();
         countsToTry.forEach(n => {
             if (n <= 0) return;
-            const w = D / n;
-            const nearest16 = Math.round(w * 16) / 16;
-            const diff = Math.abs(w - nearest16);
-            const isClean = diff < 0.005;
-            const isStandard = Math.abs(w - Math.round(w * 4) / 4) < 0.005;
+            const w_in = D_in / n;
+            const w = isMetric ? w_in * 25.4 : w_in;
+            const nearestMetric = Math.round(w);
+            const nearestImperial = Math.round(w_in * 16) / 16;
+            const diff = isMetric ? Math.abs(w - nearestMetric) : Math.abs(w_in - nearestImperial);
+            const isClean = isMetric ? diff < 0.1 : diff < 0.005;
+            const isStandard = isMetric ? Math.abs(w - Math.round(w / 5) * 5) < 0.1 : Math.abs(w_in - Math.round(w_in * 4) / 4) < 0.005;
             
             if (!seen.has(n)) {
                 seen.add(n);
                 suggestions.push({
                     slatCount: n,
+                    width_in: w_in,
                     width: w,
                     formatted: formatFraction(w),
                     isClean,
@@ -105,6 +123,10 @@ const TableTopBuilderDialog = () => {
     const labelStyle = {
         fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px',
     };
+
+    const unitFmtLabel = isMetric ? 'mm' : 'in';
+    const unitLabel = isMetric ? 'mm' : '"';
+    const fmt = (v) => v.toFixed(v % 1 === 0 ? 0 : (isMetric ? 1 : 3));
 
     const handleBuild = () => {
         if (!valid) return;
@@ -158,15 +180,15 @@ const TableTopBuilderDialog = () => {
                     <h4>Slat Sizing</h4>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                         <div>
-                            <div style={labelStyle}>Slat Width (in)</div>
-                            <input type="number" step="0.125" min="2" value={boardWidth}
-                                onChange={e => setDialog(p => ({ ...p, boardWidth: e.target.value }))}
+                            <div style={labelStyle}>Slat Width ({unitFmtLabel})</div>
+                            <NumericInput step={isMetric ? "5" : "0.125"} min={isMetric ? "50" : "2"} value={boardWidth}
+                                onChange={val => setDialog(p => ({ ...p, boardWidth: isMetric ? val / 25.4 : val }))}
                                 style={inputStyle} />
                         </div>
                         <div>
-                            <div style={labelStyle}>Top Thickness (in)</div>
-                            <input type="number" step="0.125" min="0.5" value={thickness}
-                                onChange={e => setDialog(p => ({ ...p, thickness: e.target.value }))}
+                            <div style={labelStyle}>Top Thickness ({unitFmtLabel})</div>
+                            <NumericInput step={isMetric ? "1" : "0.125"} min={isMetric ? "10" : "0.5"} value={thickness}
+                                onChange={val => setDialog(p => ({ ...p, thickness: isMetric ? val / 25.4 : val }))}
                                 style={inputStyle} />
                         </div>
                     </div>
@@ -190,18 +212,18 @@ const TableTopBuilderDialog = () => {
 
                         <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', lineHeight: 1.4, margin: '0 0 10px 0' }}>
                             {isPerfectFit ? (
-                                `Your chosen ${boardWidth.toFixed(2)}" slat width divides the overall ${D.toFixed(2)}" depth perfectly into exactly ${slatCount} boards!`
+                                `Your chosen ${fmt(boardWidth)}${unitLabel} slat width divides the overall ${fmt(D)}${unitLabel} depth perfectly into exactly ${slatCount} boards!`
                             ) : (
                                 <span>
-                                    A <strong>{boardWidth.toFixed(2)}"</strong> board width does not divide the overall <strong>{D.toFixed(2)}"</strong> depth evenly.
-                                    The builder will adjust each of the <strong>{slatCount}</strong> boards to <strong>{formatFraction(adjSlatWidth)}</strong> ({adjSlatWidth.toFixed(3)}") to fit perfectly.
+                                    A <strong>{fmt(boardWidth)}{unitLabel}</strong> board width does not divide the overall <strong>{fmt(D)}{unitLabel}</strong> depth evenly.
+                                    The builder will adjust each of the <strong>{slatCount}</strong> boards to <strong>{formatFraction(adjSlatWidth)}</strong> ({fmt(adjSlatWidth)}{unitLabel}) to fit perfectly.
                                 </span>
                             )}
                         </p>
 
                         <div style={{ fontSize: '0.68rem', color: 'var(--text-main)' }}>
                             <div style={{ fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>
-                                Click a perfect-fit width for a {D.toFixed(2)}" depth:
+                                Click a perfect-fit width for a {fmt(D)}{unitLabel} depth:
                             </div>
                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                                 {suggestions.map(s => {
@@ -219,7 +241,7 @@ const TableTopBuilderDialog = () => {
                                         <div
                                             key={s.slatCount}
                                             onClick={() => {
-                                                setDialog(p => ({ ...p, boardWidth: s.width.toFixed(3) }));
+                                                setDialog(p => ({ ...p, boardWidth: s.width_in.toFixed(4) }));
                                             }}
                                             style={{
                                                 padding: '4px 8px',
@@ -234,7 +256,7 @@ const TableTopBuilderDialog = () => {
                                                 transition: 'all 0.1s ease',
                                                 flex: '1 0 30%',
                                             }}
-                                            title={`Set board width to ${s.width.toFixed(3)}"`}
+                                            title={`Set board width to ${fmt(s.width)}${unitLabel}`}
                                         >
                                             <span style={{ fontWeight: 700, fontSize: '0.74rem' }}>
                                                 {s.formatted} {s.isStandard && '⭐'}
@@ -247,7 +269,7 @@ const TableTopBuilderDialog = () => {
                                 })}
                             </div>
                             <div style={{ fontSize: '0.58rem', color: 'var(--text-muted)', marginTop: '6px', textAlign: 'right' }}>
-                                ⭐ Standard 1/4" increments
+                                {isMetric ? '⭐ Standard 5mm increments' : '⭐ Standard 1/4" increments'}
                             </div>
                         </div>
                     </div>
@@ -259,30 +281,30 @@ const TableTopBuilderDialog = () => {
                     {hasBase ? (
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                             <div>
-                                <div style={labelStyle}>Width Overhang (X)</div>
-                                <input type="number" step="0.125" min="0" value={widthOverhang}
-                                    onChange={e => setDialog(p => ({ ...p, widthOverhang: e.target.value }))}
+                                <div style={labelStyle}>Width Overhang ({unitFmtLabel})</div>
+                                <NumericInput step={isMetric ? "5" : "0.125"} min="0" value={widthOverhang}
+                                    onChange={val => setDialog(p => ({ ...p, widthOverhang: isMetric ? val / 25.4 : val }))}
                                     style={inputStyle} />
                             </div>
                             <div>
-                                <div style={labelStyle}>Depth Overhang (Z)</div>
-                                <input type="number" step="0.125" min="0" value={depthOverhang}
-                                    onChange={e => setDialog(p => ({ ...p, depthOverhang: e.target.value }))}
+                                <div style={labelStyle}>Depth Overhang ({unitFmtLabel})</div>
+                                <NumericInput step={isMetric ? "5" : "0.125"} min="0" value={depthOverhang}
+                                    onChange={val => setDialog(p => ({ ...p, depthOverhang: isMetric ? val / 25.4 : val }))}
                                     style={inputStyle} />
                             </div>
                         </div>
                     ) : (
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                             <div>
-                                <div style={labelStyle}>Total Width (X in)</div>
-                                <input type="number" step="0.125" min="6" value={W}
-                                    onChange={e => setDialog(p => ({ ...p, width: e.target.value }))}
+                                <div style={labelStyle}>Total Width ({unitFmtLabel})</div>
+                                <NumericInput step={isMetric ? "10" : "0.125"} min="6" value={W}
+                                    onChange={val => setDialog(p => ({ ...p, width: isMetric ? val / 25.4 : val }))}
                                     style={inputStyle} />
                             </div>
                             <div>
-                                <div style={labelStyle}>Total Depth (Z in)</div>
-                                <input type="number" step="0.125" min="6" value={D}
-                                    onChange={e => setDialog(p => ({ ...p, depth: e.target.value }))}
+                                <div style={labelStyle}>Total Depth ({unitFmtLabel})</div>
+                                <NumericInput step={isMetric ? "10" : "0.125"} min="6" value={D}
+                                    onChange={val => setDialog(p => ({ ...p, depth: isMetric ? val / 25.4 : val }))}
                                     style={inputStyle} />
                             </div>
                         </div>
@@ -310,16 +332,16 @@ const TableTopBuilderDialog = () => {
                                     </div>
                                     {(jointType === 'loose-tenon' || jointType === 'dowels') && (
                                         <div>
-                                            <div style={labelStyle}>Fastener Spacing (in)</div>
-                                            <input type="number" step="0.5" min="2" max="36" value={tenonSpacing}
-                                                onChange={e => setDialog(p => ({ ...p, tenonSpacing: e.target.value }))}
+                                            <div style={labelStyle}>Fastener Spacing ({unitFmtLabel})</div>
+                                            <NumericInput step={isMetric ? "50" : "0.5"} min={isMetric ? "50" : "2"} max={isMetric ? "900" : "36"} value={tenonSpacing}
+                                                onChange={val => setDialog(p => ({ ...p, tenonSpacing: isMetric ? val / 25.4 : val }))}
                                                 style={inputStyle} />
                                         </div>
                                     )}
                                 </div>
                                 {(jointType === 'loose-tenon' || jointType === 'dowels') && valid && (
                                     <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: '8px' }}>
-                                        Produces <strong>{dynamicTenonCount}</strong> {jointType === 'loose-tenon' ? 'tenons' : 'dowels'} per joint based on the {slatLength.toFixed(2)}" slat length.
+                                        Produces <strong>{dynamicTenonCount}</strong> {jointType === 'loose-tenon' ? 'tenons' : 'dowels'} per joint based on the {fmt(slatLength)}{unitLabel} slat length.
                                     </div>
                                 )}
                             </div>
@@ -329,9 +351,9 @@ const TableTopBuilderDialog = () => {
                                 <h4 style={{ color: valid ? '#34c759' : '#ff3b30' }}>{valid ? '✓ Table Top Summary' : '⚠ Invalid Configuration'}</h4>
                                 {valid ? (
                                     <div style={{ fontSize: '0.78rem', color: 'var(--text-main)', lineHeight: 1.5 }}>
-                                        <div><strong>Overall Size:</strong> {W.toFixed(2)}" Wide × {D.toFixed(2)}" Deep</div>
-                                        <div><strong>Thickness:</strong> {thickness}" stock</div>
-                                        <div><strong>Joinery:</strong> {jointType === 'loose-tenon' ? `Loose tenons (Dominoes) × ${dynamicTenonCount} (spaced every ${tenonSpacing}")` : jointType === 'dowels' ? `Dowel pins × ${dynamicTenonCount} (spaced every ${tenonSpacing}")` : 'Standard edge-glue'}</div>
+                                        <div><strong>Overall Size:</strong> {fmt(W)}{unitLabel} Wide × {fmt(D)}{unitLabel} Deep</div>
+                                        <div><strong>Thickness:</strong> {fmt(thickness)}{unitLabel} stock</div>
+                                        <div><strong>Joinery:</strong> {jointType === 'loose-tenon' ? `Loose tenons (Dominoes) × ${dynamicTenonCount} (spaced every ${fmt(tenonSpacing)}${unitLabel})` : jointType === 'dowels' ? `Dowel pins × ${dynamicTenonCount} (spaced every ${fmt(tenonSpacing)}${unitLabel})` : 'Standard edge-glue'}</div>
                                     </div>
                                 ) : (
                                     <div style={{ fontSize: '0.78rem', color: '#ff3b30' }}>

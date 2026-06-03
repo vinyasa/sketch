@@ -1,10 +1,13 @@
 import React from 'react';
 import useStore from '../../store/useStore';
 import { parseNum } from '../../utils/units';
+import NumericInput from '../NumericInput';
 
 const ShakerDoorBuilderDialog = () => {
-    const { shakerDoorDialog: dialog, setShakerDoorDialog: setDialog, buildShakerDoor, groups } = useStore();
+    const { shakerDoorDialog: dialog, setShakerDoorDialog: setDialog, buildShakerDoor, groups, units } = useStore();
     if (!dialog) return null;
+
+    const isMetric = units === 'metric';
 
     const cabinetGroupId = dialog.cabinetGroupId;
     const faceFrameGroupId = dialog.faceFrameGroupId;
@@ -15,21 +18,33 @@ const ShakerDoorBuilderDialog = () => {
     const cabinetName = cabinetGroup ? cabinetGroup.name : 'Selected Cabinet';
     const faceFrameName = faceFrameGroup ? faceFrameGroup.name : 'Selected Face Frame';
 
-    const W = parseNum(dialog.width, 18);
-    const H = parseNum(dialog.height, 30);
-    const tFrame = parseNum(dialog.thicknessFrame, 0.75);
-    const tPanel = parseNum(dialog.thicknessPanel, 0.25);
-    const wStileRail = parseNum(dialog.widthStileRail, 2);
-    const grooveDepth = parseNum(dialog.grooveDepth, 0.375);
-    const grooveWidth = parseNum(dialog.grooveWidth, 0.25);
-    const panelClearance = parseNum(dialog.panelClearance, 0.125);
+    const W_in = parseNum(dialog.width, 18);
+    const H_in = parseNum(dialog.height, 30);
+    const tFrame_in = parseNum(dialog.thicknessFrame, 0.75);
+    const tPanel_in = parseNum(dialog.thicknessPanel, 0.25);
+    const wStileRail_in = parseNum(dialog.widthStileRail, 2);
+    const grooveDepth_in = parseNum(dialog.grooveDepth, 0.375);
+    const grooveWidth_in = parseNum(dialog.grooveWidth, 0.25);
+    const panelClearance_in = parseNum(dialog.panelClearance, 0.125);
 
     const doorStyle = dialog.doorStyle || 'overlay';
-    const insetClearance = parseNum(dialog.insetClearance, 0.125);
-    const overlayReveal = parseNum(dialog.overlayReveal, 0.25);
+    const insetClearance_in = parseNum(dialog.insetClearance, 0.125);
+    const overlayReveal_in = parseNum(dialog.overlayReveal, 0.25);
     const doorConstruction = dialog.doorConstruction || 'shaker';
     const doorCount = parseNum(dialog.doorCount, 1);
-    const doubleDoorGap = parseNum(dialog.doubleDoorGap, 0.09375); // 3/32" gap default
+    const doubleDoorGap_in = parseNum(dialog.doubleDoorGap, 0.09375); // 3/32" gap default
+
+    const W = isMetric ? parseFloat((W_in * 25.4).toFixed(1)) : W_in;
+    const H = isMetric ? parseFloat((H_in * 25.4).toFixed(1)) : H_in;
+    const tFrame = isMetric ? parseFloat((tFrame_in * 25.4).toFixed(1)) : tFrame_in;
+    const tPanel = isMetric ? parseFloat((tPanel_in * 25.4).toFixed(1)) : tPanel_in;
+    const wStileRail = isMetric ? parseFloat((wStileRail_in * 25.4).toFixed(1)) : wStileRail_in;
+    const grooveDepth = isMetric ? parseFloat((grooveDepth_in * 25.4).toFixed(1)) : grooveDepth_in;
+    const grooveWidth = isMetric ? parseFloat((grooveWidth_in * 25.4).toFixed(1)) : grooveWidth_in;
+    const panelClearance = isMetric ? parseFloat((panelClearance_in * 25.4).toFixed(1)) : panelClearance_in;
+    const insetClearance = isMetric ? parseFloat((insetClearance_in * 25.4).toFixed(1)) : insetClearance_in;
+    const overlayReveal = isMetric ? parseFloat((overlayReveal_in * 25.4).toFixed(1)) : overlayReveal_in;
+    const doubleDoorGap = isMetric ? parseFloat((doubleDoorGap_in * 25.4).toFixed(1)) : doubleDoorGap_in;
 
     let openingW = W;
     let openingH = H;
@@ -84,7 +99,8 @@ const ShakerDoorBuilderDialog = () => {
         fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px',
     };
 
-    const fmt = (v) => v.toFixed(v % 1 === 0 ? 0 : 3);
+    const fmt = (v) => v.toFixed(v % 1 === 0 ? 0 : (isMetric ? 1 : 3));
+    const unitLabel = isMetric ? 'mm' : '"';
 
     const handleBuild = () => {
         if (!valid) return;
@@ -148,18 +164,18 @@ const ShakerDoorBuilderDialog = () => {
 
                 {/* Overall Dimensions */}
                 <div className="inspector-card" style={{ margin: 0 }}>
-                    <h4>Overall Dimensions (in)</h4>
+                    <h4>Overall Dimensions ({isMetric ? 'mm' : 'in'})</h4>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                         <div>
                             <div style={labelStyle}>Width (X)</div>
-                            <input type="number" step="0.5" min="4" value={W}
-                                onChange={e => setDialog(p => ({ ...p, width: e.target.value }))}
+                            <NumericInput step={isMetric ? "10" : "0.5"} min="4" value={W}
+                                onChange={val => setDialog(p => ({ ...p, width: isMetric ? val / 25.4 : val }))}
                                 style={inputStyle} />
                         </div>
                         <div>
                             <div style={labelStyle}>Height (Y)</div>
-                            <input type="number" step="0.5" min="4" value={H}
-                                onChange={e => setDialog(p => ({ ...p, height: e.target.value }))}
+                            <NumericInput step={isMetric ? "10" : "0.5"} min="4" value={H}
+                                onChange={val => setDialog(p => ({ ...p, height: isMetric ? val / 25.4 : val }))}
                                 style={inputStyle} />
                         </div>
                     </div>
@@ -198,9 +214,9 @@ const ShakerDoorBuilderDialog = () => {
                     </div>
                     {doorCount === 2 && (
                         <div style={{ marginTop: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <span style={labelStyle}>Gap between doors (in)</span>
-                            <input type="number" step="0.03125" min="0" value={dialog.doubleDoorGap !== undefined ? dialog.doubleDoorGap : 0.09375}
-                                onChange={e => setDialog(p => ({ ...p, doubleDoorGap: e.target.value }))}
+                            <span style={labelStyle}>Gap between doors ({isMetric ? 'mm' : 'in'})</span>
+                            <NumericInput step={isMetric ? "1" : "0.03125"} min="0" value={doubleDoorGap}
+                                onChange={val => setDialog(p => ({ ...p, doubleDoorGap: isMetric ? val / 25.4 : val }))}
                                 style={{ ...inputStyle, width: '90px', marginLeft: 'auto', padding: '4px 6px' }} />
                         </div>
                     )}
@@ -247,17 +263,17 @@ const ShakerDoorBuilderDialog = () => {
                         </div>
                         {doorStyle === 'overlay' && (
                             <div>
-                                <div style={labelStyle}>Overlay Reveal (in)</div>
-                                <input type="number" step="0.1" min="0" value={overlayReveal}
-                                    onChange={e => setDialog(p => ({ ...p, overlayReveal: e.target.value }))}
+                                <div style={labelStyle}>Overlay Reveal ({isMetric ? 'mm' : 'in'})</div>
+                                <NumericInput step={isMetric ? "1" : "0.1"} min="0" value={overlayReveal}
+                                    onChange={val => setDialog(p => ({ ...p, overlayReveal: isMetric ? val / 25.4 : val }))}
                                     style={inputStyle} />
                             </div>
                         )}
                         {doorStyle === 'inset' && (
                             <div>
-                                <div style={labelStyle}>Reveal Clearance (in)</div>
-                                <input type="number" step="0.03125" min="0" value={insetClearance}
-                                    onChange={e => setDialog(p => ({ ...p, insetClearance: e.target.value }))}
+                                <div style={labelStyle}>Reveal Clearance ({isMetric ? 'mm' : 'in'})</div>
+                                <NumericInput step={isMetric ? "0.5" : "0.03125"} min="0" value={insetClearance}
+                                    onChange={val => setDialog(p => ({ ...p, insetClearance: isMetric ? val / 25.4 : val }))}
                                     style={inputStyle} />
                             </div>
                         )}
@@ -269,18 +285,18 @@ const ShakerDoorBuilderDialog = () => {
                     <>
                         {/* Frame Details */}
                         <div className="inspector-card" style={{ margin: 0 }}>
-                            <h4>Frame Details (in)</h4>
+                            <h4>Frame Details ({isMetric ? 'mm' : 'in'})</h4>
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                                 <div>
                                     <div style={labelStyle}>Stile/Rail Width</div>
-                                    <input type="number" step="0.125" min="1" value={wStileRail}
-                                        onChange={e => setDialog(p => ({ ...p, widthStileRail: e.target.value }))}
+                                    <NumericInput step={isMetric ? "5" : "0.125"} min="1" value={wStileRail}
+                                        onChange={val => setDialog(p => ({ ...p, widthStileRail: isMetric ? val / 25.4 : val }))}
                                         style={inputStyle} />
                                 </div>
                                 <div>
                                     <div style={labelStyle}>Frame Thickness</div>
-                                    <input type="number" step="0.125" min="0.5" value={tFrame}
-                                        onChange={e => setDialog(p => ({ ...p, thicknessFrame: e.target.value }))}
+                                    <NumericInput step={isMetric ? "1" : "0.125"} min="0.5" value={tFrame}
+                                        onChange={val => setDialog(p => ({ ...p, thicknessFrame: isMetric ? val / 25.4 : val }))}
                                         style={inputStyle} />
                                 </div>
                             </div>
@@ -288,30 +304,30 @@ const ShakerDoorBuilderDialog = () => {
 
                         {/* Groove Details */}
                         <div className="inspector-card" style={{ margin: 0 }}>
-                            <h4>Groove & Panel Details (in)</h4>
+                            <h4>Groove & Panel Details ({isMetric ? 'mm' : 'in'})</h4>
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '8px' }}>
                                 <div>
                                     <div style={labelStyle}>Groove Depth</div>
-                                    <input type="number" step="0.0625" min="0" value={grooveDepth}
-                                        onChange={e => setDialog(p => ({ ...p, grooveDepth: e.target.value }))}
+                                    <NumericInput step={isMetric ? "1" : "0.0625"} min="0" value={grooveDepth}
+                                        onChange={val => setDialog(p => ({ ...p, grooveDepth: isMetric ? val / 25.4 : val }))}
                                         style={inputStyle} />
                                 </div>
                                 <div>
                                     <div style={labelStyle}>Groove Width</div>
-                                    <input type="number" step="0.0625" min="0" value={grooveWidth}
-                                        onChange={e => setDialog(p => ({ ...p, grooveWidth: e.target.value }))}
+                                    <NumericInput step={isMetric ? "1" : "0.0625"} min="0" value={grooveWidth}
+                                        onChange={val => setDialog(p => ({ ...p, grooveWidth: isMetric ? val / 25.4 : val }))}
                                         style={inputStyle} />
                                 </div>
                                 <div>
                                     <div style={labelStyle}>Panel Thickness</div>
-                                    <input type="number" step="0.0625" min="0.125" value={tPanel}
-                                        onChange={e => setDialog(p => ({ ...p, thicknessPanel: e.target.value }))}
+                                    <NumericInput step={isMetric ? "1" : "0.0625"} min="0.125" value={tPanel}
+                                        onChange={val => setDialog(p => ({ ...p, thicknessPanel: isMetric ? val / 25.4 : val }))}
                                         style={inputStyle} />
                                 </div>
                                 <div>
                                     <div style={labelStyle}>Panel Clearance</div>
-                                    <input type="number" step="0.0625" min="0" value={panelClearance}
-                                        onChange={e => setDialog(p => ({ ...p, panelClearance: e.target.value }))}
+                                    <NumericInput step={isMetric ? "0.5" : "0.0625"} min="0" value={panelClearance}
+                                        onChange={val => setDialog(p => ({ ...p, panelClearance: isMetric ? val / 25.4 : val }))}
                                         style={inputStyle} />
                                 </div>
                             </div>
@@ -323,12 +339,12 @@ const ShakerDoorBuilderDialog = () => {
                 ) : (
                     /* Flat Details */
                     <div className="inspector-card" style={{ margin: 0 }}>
-                        <h4>Slab Details (in)</h4>
+                        <h4>Slab Details ({isMetric ? 'mm' : 'in'})</h4>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '8px' }}>
                             <div>
                                 <div style={labelStyle}>Door Thickness</div>
-                                <input type="number" step="0.125" min="0.25" value={tFrame}
-                                    onChange={e => setDialog(p => ({ ...p, thicknessFrame: e.target.value }))}
+                                <NumericInput step={isMetric ? "1" : "0.125"} min="0.25" value={tFrame}
+                                    onChange={val => setDialog(p => ({ ...p, thicknessFrame: isMetric ? val / 25.4 : val }))}
                                     style={inputStyle} />
                             </div>
                         </div>
@@ -341,13 +357,13 @@ const ShakerDoorBuilderDialog = () => {
                     {valid ? (
                         <div style={{ fontSize: '0.78rem', color: 'var(--text-main)', lineHeight: 1.6 }}>
                             {doorConstruction === 'flat' ? (
-                                <div><strong>Flat Slab Door{doorCount === 2 ? 's (×2)' : ''}:</strong> {fmt(actualDoorW)}" × {fmt(actualDoorH)}" × {fmt(tFrame)}" <span style={{ color: 'var(--text-muted)' }}>({doorCount === 2 ? 'two single solid panels' : 'single solid panel'})</span></div>
+                                <div><strong>Flat Slab Door{doorCount === 2 ? 's (×2)' : ''}:</strong> {fmt(actualDoorW)}{unitLabel} × {fmt(actualDoorH)}{unitLabel} × {fmt(tFrame)}{unitLabel} <span style={{ color: 'var(--text-muted)' }}>({doorCount === 2 ? 'two single solid panels' : 'single solid panel'})</span></div>
                             ) : (
                                 <>
-                                    <div style={{ color: 'var(--accent-color)', fontWeight: 'bold', marginBottom: '3px' }}>Sizes per Door ({doorCount === 2 ? '2 Doors total' : '1 Door'}):</div>
-                                    <div><strong>Stiles (×{2 * doorCount}):</strong> {fmt(stile.x)}" × {fmt(stile.y)}" × {fmt(stile.z)}" <span style={{ color: 'var(--text-muted)' }}>(vertical frame)</span></div>
-                                    <div><strong>Rails (×{2 * doorCount}):</strong> {fmt(rail.x)}" × {fmt(rail.y)}" × {fmt(rail.z)}" <span style={{ color: 'var(--text-muted)' }}>(horizontal stiles fit)</span></div>
-                                    <div><strong>Center Panel{doorCount === 2 ? 's (×2)' : ''}:</strong> {fmt(panel.x)}" × {fmt(panel.y)}" × {fmt(panel.z)}" <span style={{ color: 'var(--text-muted)' }}>(inner panels)</span></div>
+                                    <div style={{ color: 'var(--accent-color)', fontWeight: 'bold', marginBottom: '3px' }}>Sizes per Door ({doorCount === 2 ? `2 Doors total, units: ${unitLabel}` : `1 Door, units: ${unitLabel}`}):</div>
+                                    <div><strong>Stiles (×{2 * doorCount}):</strong> {fmt(stile.x)}{unitLabel} × {fmt(stile.y)}{unitLabel} × {fmt(stile.z)}{unitLabel} <span style={{ color: 'var(--text-muted)' }}>(vertical frame)</span></div>
+                                    <div><strong>Rails (×{2 * doorCount}):</strong> {fmt(rail.x)}{unitLabel} × {fmt(rail.y)}{unitLabel} × {fmt(rail.z)}{unitLabel} <span style={{ color: 'var(--text-muted)' }}>(horizontal stiles fit)</span></div>
+                                    <div><strong>Center Panel{doorCount === 2 ? 's (×2)' : ''}:</strong> {fmt(panel.x)}{unitLabel} × {fmt(panel.y)}{unitLabel} × {fmt(panel.z)}{unitLabel} <span style={{ color: 'var(--text-muted)' }}>(inner panels)</span></div>
                                 </>
                             )}
                         </div>

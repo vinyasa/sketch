@@ -155,10 +155,9 @@ const NewBoardDialog = () => {
                         <div style={{ marginTop: '10px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                             <div>
                                 <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Radius ({units === 'metric' ? 'mm' : 'in'})</div>
-                                <input
-                                    type="number" min={units === 'metric' ? '1' : '0.0625'} step={units === 'metric' ? '1' : '0.125'} value={units === 'metric' ? parseFloat((cylRadius * 25.4).toFixed(2)) : parseFloat(cylRadius.toFixed(4))}
-                                    onChange={e => {
-                                        const val = parseFloat(e.target.value) || 0;
+                                <NumericInput
+                                    min={units === 'metric' ? '1' : '0.0625'} step={units === 'metric' ? '1' : '0.125'} value={units === 'metric' ? parseFloat((cylRadius * 25.4).toFixed(2)) : parseFloat(cylRadius.toFixed(4))}
+                                    onChange={val => {
                                         const r = units === 'metric' ? Math.max(1, val) / 25.4 : Math.max(0.0625, val);
                                         setDialog(p => ({ ...p, cylinder: { radius: r }, sizeX: r * 2, sizeZ: r * 2 }));
                                     }}
@@ -170,10 +169,9 @@ const NewBoardDialog = () => {
                             </div>
                             <div>
                                 <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px' }}>Height ({units === 'metric' ? 'mm' : 'in'})</div>
-                                <input
-                                    type="number" min={units === 'metric' ? '1' : '0.0625'} step={units === 'metric' ? '1' : '0.125'} value={units === 'metric' ? parseFloat((cylHeight * 25.4).toFixed(2)) : parseFloat(cylHeight.toFixed(4))}
-                                    onChange={e => {
-                                        const val = parseFloat(e.target.value) || 0;
+                                <NumericInput
+                                    min={units === 'metric' ? '1' : '0.0625'} step={units === 'metric' ? '1' : '0.125'} value={units === 'metric' ? parseFloat((cylHeight * 25.4).toFixed(2)) : parseFloat(cylHeight.toFixed(4))}
+                                    onChange={val => {
                                         const h = units === 'metric' ? Math.max(1, val) / 25.4 : Math.max(0.0625, val);
                                         setDialog(p => ({ ...p, sizeY: h, position: [p.position[0], h / 2, p.position[2]] }));
                                     }}

@@ -31,7 +31,8 @@ const AppHeader = () => {
         currentFileName,
         setHeaderBottom,
         panelLayoutMode,
-        showRecorderPanel, setShowRecorderPanel, isRecording
+        showRecorderPanel, setShowRecorderPanel, isRecording,
+        units, setUnits
     } = useStore();
 
     const isAdvanced = panelLayoutMode !== 'standard';
@@ -160,6 +161,32 @@ const AppHeader = () => {
                             <input type="checkbox" checked={showMeasurements} onChange={e => setShowMeasurements(e.target.checked)} style={{ accentColor: 'var(--accent-color)', width: '12px', height: '12px', cursor: 'pointer' }} />
                             Dims
                         </label>
+                        <button
+                            className="nav-btn"
+                            onClick={() => setUnits(units === 'imperial' ? 'metric' : 'imperial')}
+                            title="Toggle measurement system (Inches / Metric)"
+                            style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '4px',
+                                cursor: 'pointer',
+                                fontSize: '0.71rem',
+                                userSelect: 'none',
+                                margin: 0,
+                                padding: '3px 8px',
+                                gridColumn: 5,
+                                gridRow: 3,
+                                border: 'none',
+                                background: 'rgba(188, 138, 95, 0.1)',
+                                color: 'var(--accent-color)',
+                                borderRadius: '5px',
+                                height: '100%',
+                                transition: 'all 0.2s ease'
+                            }}
+                        >
+                            📏 {units === 'imperial' ? 'Inches' : 'Metric'}
+                        </button>
                         {/* <button 
                             className={`nav-btn ${showRecorderPanel ? 'active' : ''}`} 
                             onClick={() => setShowRecorderPanel(!showRecorderPanel)}

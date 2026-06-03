@@ -1,23 +1,32 @@
 import React from 'react';
 import useStore from '../../store/useStore';
 import { parseNum } from '../../utils/units';
+import NumericInput from '../NumericInput';
 
 const FaceFrameBuilderDialog = () => {
-    const { faceFrameDialog: dialog, setFaceFrameDialog: setDialog, buildFaceFrame, groups } = useStore();
+    const { faceFrameDialog: dialog, setFaceFrameDialog: setDialog, buildFaceFrame, groups, units } = useStore();
     if (!dialog) return null;
+
+    const isMetric = units === 'metric';
 
     const cabinetGroupId = dialog.cabinetGroupId;
     const hasCabinet = !!cabinetGroupId;
     const cabinetGroup = cabinetGroupId ? groups[cabinetGroupId] : null;
     const cabinetName = cabinetGroup ? cabinetGroup.name : 'Selected Cabinet';
 
-    const W = parseNum(dialog.width, 24);
-    const H = parseNum(dialog.height, 30);
-    const t = parseNum(dialog.thickness, 0.75);
-    const wStile = parseNum(dialog.stileWidth, 1.5);
-    const wRail = parseNum(dialog.railWidth, 1.5);
+    const W_in = parseNum(dialog.width, 24);
+    const H_in = parseNum(dialog.height, 30);
+    const t_in = parseNum(dialog.thickness, 0.75);
+    const wStile_in = parseNum(dialog.stileWidth, 1.5);
+    const wRail_in = parseNum(dialog.railWidth, 1.5);
 
-    const valid = W > (2 * wStile) && H > (2 * wRail);
+    const W = isMetric ? parseFloat((W_in * 25.4).toFixed(1)) : W_in;
+    const H = isMetric ? parseFloat((H_in * 25.4).toFixed(1)) : H_in;
+    const t = isMetric ? parseFloat((t_in * 25.4).toFixed(1)) : t_in;
+    const wStile = isMetric ? parseFloat((wStile_in * 25.4).toFixed(1)) : wStile_in;
+    const wRail = isMetric ? parseFloat((wRail_in * 25.4).toFixed(1)) : wRail_in;
+
+    const valid = W_in > (2 * wStile_in) && H_in > (2 * wRail_in);
 
     const inputStyle = {
         width: '100%', padding: '5px 8px',
@@ -29,6 +38,8 @@ const FaceFrameBuilderDialog = () => {
     const labelStyle = {
         fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '3px',
     };
+
+    const unitFmtLabel = isMetric ? 'mm' : 'in';
 
     const handleBuild = () => {
         if (!valid) return;
@@ -78,42 +89,42 @@ const FaceFrameBuilderDialog = () => {
                 )}
 
                 <div className="inspector-card" style={{ margin: 0 }}>
-                    <h4>Overall Opening (in)</h4>
+                    <h4>Overall Opening ({unitFmtLabel})</h4>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                         <div>
                             <div style={labelStyle}>Width (X)</div>
-                            <input type="number" step="0.5" min="1" value={W}
-                                onChange={e => setDialog(p => ({ ...p, width: e.target.value }))}
+                            <NumericInput step={isMetric ? "10" : "0.5"} min="1" value={W}
+                                onChange={val => setDialog(p => ({ ...p, width: isMetric ? val / 25.4 : val }))}
                                 style={inputStyle} />
                         </div>
                         <div>
                             <div style={labelStyle}>Height (Y)</div>
-                            <input type="number" step="0.5" min="1" value={H}
-                                onChange={e => setDialog(p => ({ ...p, height: e.target.value }))}
+                            <NumericInput step={isMetric ? "10" : "0.5"} min="1" value={H}
+                                onChange={val => setDialog(p => ({ ...p, height: isMetric ? val / 25.4 : val }))}
                                 style={inputStyle} />
                         </div>
                     </div>
                 </div>
 
                 <div className="inspector-card" style={{ margin: 0 }}>
-                    <h4>Frame Dimensions (in)</h4>
+                    <h4>Frame Dimensions ({unitFmtLabel})</h4>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
                         <div>
                             <div style={labelStyle}>Stile Width</div>
-                            <input type="number" step="0.125" min="0.5" value={wStile}
-                                onChange={e => setDialog(p => ({ ...p, stileWidth: e.target.value }))}
+                            <NumericInput step={isMetric ? "5" : "0.125"} min={isMetric ? "10" : "0.5"} value={wStile}
+                                onChange={val => setDialog(p => ({ ...p, stileWidth: isMetric ? val / 25.4 : val }))}
                                 style={inputStyle} />
                         </div>
                         <div>
                             <div style={labelStyle}>Rail Width</div>
-                            <input type="number" step="0.125" min="0.5" value={wRail}
-                                onChange={e => setDialog(p => ({ ...p, railWidth: e.target.value }))}
+                            <NumericInput step={isMetric ? "5" : "0.125"} min={isMetric ? "10" : "0.5"} value={wRail}
+                                onChange={val => setDialog(p => ({ ...p, railWidth: isMetric ? val / 25.4 : val }))}
                                 style={inputStyle} />
                         </div>
                         <div>
                             <div style={labelStyle}>Thickness</div>
-                            <input type="number" step="0.125" min="0.25" value={t}
-                                onChange={e => setDialog(p => ({ ...p, thickness: e.target.value }))}
+                            <NumericInput step={isMetric ? "1" : "0.125"} min={isMetric ? "3" : "0.25"} value={t}
+                                onChange={val => setDialog(p => ({ ...p, thickness: isMetric ? val / 25.4 : val }))}
                                 style={inputStyle} />
                         </div>
                     </div>
