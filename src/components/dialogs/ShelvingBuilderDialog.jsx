@@ -14,7 +14,9 @@ const ShelvingBuilderDialog = () => {
     const hasParent = !!cabinetGroupId || !!boxGroupId;
     const parentName = cabinetGroupId 
         ? (groups[cabinetGroupId]?.name || 'Selected Cabinet') 
-        : (boxGroupId ? (groups[boxGroupId]?.name || 'Selected Box') : '');
+        : (boxGroupId 
+            ? (groups[boxGroupId]?.name || 'Selected Box') 
+            : (dialog.parentCabinetName || dialog.parentBoxName || ''));
 
     const parseIntSafe = (v, def) => { const n = parseInt(v, 10); return isNaN(n) ? def : n; };
 
@@ -67,7 +69,7 @@ const ShelvingBuilderDialog = () => {
                 </h2>
 
                 {/* Parent Detection Banner */}
-                {hasParent ? (
+                {hasParent && (
                     <div style={{
                         padding: '10px 12px',
                         background: 'rgba(52, 199, 89, 0.1)',
@@ -78,7 +80,32 @@ const ShelvingBuilderDialog = () => {
                         <strong>✓ Parent Group Selected ("{parentName}")</strong><br/>
                         The shelves will be placed and auto-sized precisely to fit the internal opening of the selected {cabinetGroupId ? 'cabinet' : 'box'}.
                     </div>
-                ) : (
+                )}
+                {dialog.cabinetBoardSelected && (
+                    <div style={{
+                        padding: '10px 12px',
+                        background: 'rgba(255, 149, 0, 0.1)',
+                        border: '1px dashed rgba(255, 149, 0, 0.4)',
+                        borderRadius: '8px', fontSize: '0.75rem', color: '#ff9500',
+                        lineHeight: 1.4
+                    }}>
+                        <strong>⚠ Single Board Selected (Cabinet)</strong><br/>
+                        You selected a board belonging to a cabinet, but not the entire cabinet group. To automatically fit these shelves, close this builder, select the <strong>Cabinet</strong> group in the tree or double-click it, and try again.
+                    </div>
+                )}
+                {dialog.boxBoardSelected && (
+                    <div style={{
+                        padding: '10px 12px',
+                        background: 'rgba(255, 149, 0, 0.1)',
+                        border: '1px dashed rgba(255, 149, 0, 0.4)',
+                        borderRadius: '8px', fontSize: '0.75rem', color: '#ff9500',
+                        lineHeight: 1.4
+                    }}>
+                        <strong>⚠ Single Board Selected (Box)</strong><br/>
+                        You selected a board belonging to a box, but not the entire box group. To automatically fit these shelves, close this builder, select the <strong>Box</strong> group in the tree or double-click it, and try again.
+                    </div>
+                )}
+                {!hasParent && !dialog.cabinetBoardSelected && !dialog.boxBoardSelected && (
                     <div style={{
                         padding: '10px 12px',
                         background: 'rgba(188, 138, 95, 0.08)',
@@ -87,7 +114,8 @@ const ShelvingBuilderDialog = () => {
                         lineHeight: 1.4
                     }}>
                         <strong>No Cabinet or Box selected.</strong><br/>
-                        Building standalone shelving. You can input custom dimensions directly below.
+                        Building standalone shelving. You can input custom dimensions directly below.<br/>
+                        <span style={{ display: 'block', marginTop: '6px', color: 'var(--accent-color)', fontWeight: 'bold' }}>💡 Tip: To auto-fit, close this builder, select the entire Cabinet or Box group in the tree, and try again.</span>
                     </div>
                 )}
 

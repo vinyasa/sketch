@@ -15,8 +15,8 @@ const ShakerDoorBuilderDialog = () => {
     const hasFaceFrame = !!faceFrameGroupId;
     const cabinetGroup = cabinetGroupId ? groups[cabinetGroupId] : null;
     const faceFrameGroup = faceFrameGroupId ? groups[faceFrameGroupId] : null;
-    const cabinetName = cabinetGroup ? cabinetGroup.name : 'Selected Cabinet';
-    const faceFrameName = faceFrameGroup ? faceFrameGroup.name : 'Selected Face Frame';
+    const cabinetName = cabinetGroup ? cabinetGroup.name : (dialog.parentCabinetName || 'Selected Cabinet');
+    const faceFrameName = faceFrameGroup ? faceFrameGroup.name : (dialog.parentFaceFrameName || 'Selected Face Frame');
 
     const W_in = parseNum(dialog.width, 18);
     const H_in = parseNum(dialog.height, 30);
@@ -149,7 +149,31 @@ const ShakerDoorBuilderDialog = () => {
                         The doors will be placed flush against the front of the face frame, pre-populated to match its outer dimensions.
                     </div>
                 )}
-                {!hasCabinet && !hasFaceFrame && (
+                {dialog.cabinetBoardSelected && (
+                    <div style={{
+                        padding: '10px 12px',
+                        background: 'rgba(255, 149, 0, 0.1)',
+                        border: '1px dashed rgba(255, 149, 0, 0.4)',
+                        borderRadius: '8px', fontSize: '0.75rem', color: '#ff9500',
+                        lineHeight: 1.4
+                    }}>
+                        <strong>⚠ Single Board Selected ("{cabinetName}")</strong><br/>
+                        You selected a board belonging to a cabinet, but not the entire cabinet group. To automatically fit these doors, close this builder, select the <strong>Cabinet</strong> group in the tree or double-click it, and try again.
+                    </div>
+                )}
+                {dialog.faceFrameBoardSelected && (
+                    <div style={{
+                        padding: '10px 12px',
+                        background: 'rgba(255, 149, 0, 0.1)',
+                        border: '1px dashed rgba(255, 149, 0, 0.4)',
+                        borderRadius: '8px', fontSize: '0.75rem', color: '#ff9500',
+                        lineHeight: 1.4
+                    }}>
+                        <strong>⚠ Single Board Selected ("{faceFrameName}")</strong><br/>
+                        You selected a board belonging to a face frame, but not the entire face frame group. To automatically fit these doors, close this builder, select the <strong>Face Frame</strong> group in the tree, and try again.
+                    </div>
+                )}
+                {!hasCabinet && !hasFaceFrame && !dialog.cabinetBoardSelected && !dialog.faceFrameBoardSelected && (
                     <div style={{
                         padding: '10px 12px',
                         background: 'rgba(188, 138, 95, 0.08)',
@@ -158,7 +182,8 @@ const ShakerDoorBuilderDialog = () => {
                         lineHeight: 1.4
                     }}>
                         <strong>No Cabinet or Face Frame selected.</strong><br/>
-                        Building a standalone door. You can input custom dimensions directly below.
+                        Building a standalone door. You can input custom dimensions directly below.<br/>
+                        <span style={{ display: 'block', marginTop: '6px', color: 'var(--accent-color)', fontWeight: 'bold' }}>💡 Tip: To auto-fit, close this builder, select the entire Cabinet or Face Frame group in the tree, and try again.</span>
                     </div>
                 )}
 

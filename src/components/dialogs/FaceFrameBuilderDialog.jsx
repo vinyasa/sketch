@@ -12,7 +12,7 @@ const FaceFrameBuilderDialog = () => {
     const cabinetGroupId = dialog.cabinetGroupId;
     const hasCabinet = !!cabinetGroupId;
     const cabinetGroup = cabinetGroupId ? groups[cabinetGroupId] : null;
-    const cabinetName = cabinetGroup ? cabinetGroup.name : 'Selected Cabinet';
+    const cabinetName = cabinetGroup ? cabinetGroup.name : (dialog.parentCabinetName || 'Selected Cabinet');
 
     const W_in = parseNum(dialog.width, 24);
     const H_in = parseNum(dialog.height, 30);
@@ -64,7 +64,7 @@ const FaceFrameBuilderDialog = () => {
                 </h2>
 
                 {/* Cabinet Detection Banner */}
-                {hasCabinet ? (
+                {hasCabinet && (
                     <div style={{
                         padding: '10px 12px',
                         background: 'rgba(52, 199, 89, 0.1)',
@@ -75,7 +75,20 @@ const FaceFrameBuilderDialog = () => {
                         <strong>✓ Cabinet Group Selected ("{cabinetName}")</strong><br/>
                         The face frame will be placed and auto-sized precisely to fit the front face of the selected cabinet.
                     </div>
-                ) : (
+                )}
+                {dialog.cabinetBoardSelected && (
+                    <div style={{
+                        padding: '10px 12px',
+                        background: 'rgba(255, 149, 0, 0.1)',
+                        border: '1px dashed rgba(255, 149, 0, 0.4)',
+                        borderRadius: '8px', fontSize: '0.75rem', color: '#ff9500',
+                        lineHeight: 1.4
+                    }}>
+                        <strong>⚠ Single Board Selected ("{cabinetName}")</strong><br/>
+                        You selected a board belonging to a cabinet, but not the entire cabinet group. To automatically fit this face frame, close this builder, select the <strong>Cabinet</strong> group in the tree or double-click it, and try again.
+                    </div>
+                )}
+                {!hasCabinet && !dialog.cabinetBoardSelected && (
                     <div style={{
                         padding: '10px 12px',
                         background: 'rgba(188, 138, 95, 0.08)',
@@ -84,7 +97,8 @@ const FaceFrameBuilderDialog = () => {
                         lineHeight: 1.4
                     }}>
                         <strong>No Cabinet selected.</strong><br/>
-                        Building a standalone face frame. You can input custom dimensions directly below.
+                        Building a standalone face frame. You can input custom dimensions directly below.<br/>
+                        <span style={{ display: 'block', marginTop: '6px', color: 'var(--accent-color)', fontWeight: 'bold' }}>💡 Tip: To auto-fit, close this builder, select the entire Cabinet group in the tree, and try again.</span>
                     </div>
                 )}
 

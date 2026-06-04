@@ -73,11 +73,14 @@ const DrawerBuilderDialog = () => {
 
     // Detect if a cabinet is selected in the workspace
     let cabinetId = selectedItemIds?.find(id => groups[id]?.meta?.builder === 'cabinet');
+    let cabinetBoardSelected = dialog?.cabinetBoardSelected || false;
+    let parentCabinetName = '';
     if (!cabinetId) {
         selectedItemIds?.forEach(id => {
             const board = boards?.find(b => b.id.toString() === id.toString());
             if (board && groups[board.parentId]?.meta?.builder === 'cabinet') {
-                cabinetId = board.parentId;
+                cabinetBoardSelected = true;
+                parentCabinetName = groups[board.parentId].name || 'Cabinet';
             }
         });
     }
@@ -263,7 +266,20 @@ const DrawerBuilderDialog = () => {
                             </div>
                         </div>
                     )
-                ) : (
+                ) : null}
+                {cabinetBoardSelected && (
+                    <div style={{
+                        padding: '10px 12px',
+                        background: 'rgba(255, 149, 0, 0.1)',
+                        border: '1px dashed rgba(255, 149, 0, 0.4)',
+                        borderRadius: '8px', fontSize: '0.75rem', color: '#ff9500',
+                        lineHeight: 1.4
+                    }}>
+                        <strong>⚠ Single Board Selected ("{parentCabinetName}")</strong><br/>
+                        You selected a board belonging to a cabinet, but not the entire cabinet group. To automatically fit this drawer stack, close this builder, select the <strong>Cabinet</strong> group in the tree or double-click it, and try again.
+                    </div>
+                )}
+                {!isCabinetSelected && !cabinetBoardSelected && (
                     <div style={{
                         padding: '10px 12px',
                         background: 'rgba(188, 138, 95, 0.08)',
@@ -272,7 +288,8 @@ const DrawerBuilderDialog = () => {
                         lineHeight: 1.4
                     }}>
                         <strong>No Cabinet selected.</strong><br/>
-                        Building a standalone drawer stack. You can input custom dimensions directly below.
+                        Building a standalone drawer stack. You can input custom dimensions directly below.<br/>
+                        <span style={{ display: 'block', marginTop: '6px', color: 'var(--accent-color)', fontWeight: 'bold' }}>💡 Tip: To auto-fit, close this builder, select the entire Cabinet group in the tree, and try again.</span>
                     </div>
                 )}
 

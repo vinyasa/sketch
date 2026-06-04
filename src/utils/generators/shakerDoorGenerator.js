@@ -317,6 +317,7 @@ export function generateShakerDoor(cfg, boards, groups, defaultMaterial) {
         boardParentId = groupId + ' Right Door';
       }
     }
+    const isPanel = pd.name.toLowerCase().includes('panel');
     return {
       id: assignedId,
       name: pd.name,
@@ -324,6 +325,8 @@ export function generateShakerDoor(cfg, boards, groups, defaultMaterial) {
       size: pd.size,
       position: [pd.position[0] + pd.offset[0], pd.position[1] + pd.offset[1], pd.position[2] + pd.offset[2]],
       material: defaultMaterial,
+      lumberType: isPanel ? 'plywood' : 'solid',
+      grainDirection: 'length',
       joint: 'None',
       shape: 'box',
       operations: pd.operations,

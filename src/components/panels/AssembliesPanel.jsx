@@ -131,8 +131,40 @@ const AssembliesPanel = () => {
             }
         }
 
+        // Check if only a single board of a cabinet, box, or face frame is selected
+        let cabinetBoardSelected = false;
+        let faceFrameBoardSelected = false;
+        let boxBoardSelected = false;
+        let parentCabinetName = '';
+        let parentFaceFrameName = '';
+        let parentBoxName = '';
+
+        if (selectedItemIds && selectedItemIds.length === 1) {
+            const selId = selectedItemIds[0];
+            if (!groups[selId]) {
+                const b = boards.find(board => board.id.toString() === selId.toString());
+                if (b && b.parentId && groups[b.parentId]) {
+                    const builder = groups[b.parentId].meta?.builder;
+                    if (builder === 'cabinet') {
+                        cabinetBoardSelected = true;
+                        parentCabinetName = groups[b.parentId].name || 'Cabinet';
+                    }
+                    if (builder === 'face-frame') {
+                        faceFrameBoardSelected = true;
+                        parentFaceFrameName = groups[b.parentId].name || 'Face Frame';
+                    }
+                    if (builder === 'box') {
+                        boxBoardSelected = true;
+                        parentBoxName = groups[b.parentId].name || 'Box';
+                    }
+                }
+            }
+        }
+
+        const isSingleBoardOfAssembly = cabinetBoardSelected || faceFrameBoardSelected || boxBoardSelected;
+
         let defaultCfg = {};
-        if (bounds) {
+        if (bounds && !isSingleBoardOfAssembly) {
             defaultCfg.width = Math.abs(bounds.maxX - bounds.minX);
             defaultCfg.height = Math.abs(bounds.maxY - bounds.minY);
             defaultCfg.depth = Math.abs(bounds.maxZ - bounds.minZ);
@@ -178,21 +210,11 @@ const AssembliesPanel = () => {
                     } else if (builder === 'face-frame') {
                         faceFrameGroupId = selId;
                     }
-                } else {
-                    const b = boards.find(board => board.id.toString() === selId.toString());
-                    if (b && b.parentId && groups[b.parentId]) {
-                        const builder = groups[b.parentId].meta?.builder;
-                        if (builder === 'cabinet') {
-                            cabinetGroupId = b.parentId;
-                        } else if (builder === 'face-frame') {
-                            faceFrameGroupId = b.parentId;
-                        }
-                    }
                 }
             }
             setShakerDoorDialog({
-                width: bounds ? (bounds.maxX - bounds.minX) : (isMetric ? 450 / 25.4 : 18),
-                height: bounds ? (bounds.maxY - bounds.minY) : (isMetric ? 750 / 25.4 : 30),
+                width: bounds && !isSingleBoardOfAssembly ? (bounds.maxX - bounds.minX) : (isMetric ? 450 / 25.4 : 18),
+                height: bounds && !isSingleBoardOfAssembly ? (bounds.maxY - bounds.minY) : (isMetric ? 750 / 25.4 : 30),
                 thicknessFrame: isMetric ? (18 / 25.4) : 0.75,
                 thicknessPanel: isMetric ? (6 / 25.4) : 0.25,
                 widthStileRail: isMetric ? (50 / 25.4) : 2,
@@ -202,25 +224,23 @@ const AssembliesPanel = () => {
                 insetClearance: isMetric ? (3 / 25.4) : 0.125,
                 overlayReveal: isMetric ? (6 / 25.4) : 0.25,
                 ...defaultCfg,
-                offsetZ: bounds ? bounds.maxZ : 0, // Doors sit on the front
+                offsetZ: bounds && !isSingleBoardOfAssembly ? bounds.maxZ : 0, // Doors sit on the front
                 cabinetGroupId,
                 faceFrameGroupId,
+                cabinetBoardSelected,
+                faceFrameBoardSelected,
+                parentCabinetName,
+                parentFaceFrameName,
                 doorCount: 1,
                 doubleDoorGap: isMetric ? (3 / 25.4) : 0.09375
             });
         } else if (item.id === 'drawerStack') {
             let cabinetGroupId = null;
-            if (selectedItemIds && selectedItemIds.length > 0) {
-                selectedItemIds.forEach(selId => {
-                    if (groups[selId] && groups[selId].meta?.builder === 'cabinet') {
-                        cabinetGroupId = selId;
-                    } else {
-                        const b = boards.find(board => board.id.toString() === selId.toString());
-                        if (b && b.parentId && groups[b.parentId] && groups[b.parentId].meta?.builder === 'cabinet') {
-                            cabinetGroupId = b.parentId;
-                        }
-                    }
-                });
+            if (selectedItemIds && selectedItemIds.length === 1) {
+                const selId = selectedItemIds[0];
+                if (groups[selId] && groups[selId].meta?.builder === 'cabinet') {
+                    cabinetGroupId = selId;
+                }
             }
 
             let cabW = isMetric ? (600 / 25.4) : 24;
@@ -247,6 +267,7 @@ const AssembliesPanel = () => {
                 height: cabH,
                 depth: cabD,
                 cabinetGroupId: cabinetGroupId,
+                cabinetBoardSelected,
                 gap: isMetric ? (3 / 25.4) : 0.125,
                 reveal: isMetric ? (10 / 25.4) : 0.375,
                 slideWidth: isMetric ? (12.5 / 25.4) : 0.5,
@@ -262,22 +283,19 @@ const AssembliesPanel = () => {
                 const selId = selectedItemIds[0];
                 if (groups[selId] && groups[selId].meta?.builder === 'cabinet') {
                     cabinetGroupId = selId;
-                } else {
-                    const b = boards.find(board => board.id.toString() === selId.toString());
-                    if (b && b.parentId && groups[b.parentId] && groups[b.parentId].meta?.builder === 'cabinet') {
-                        cabinetGroupId = b.parentId;
-                    }
                 }
             }
             setFaceFrameDialog({
                 ...defaultCfg,
-                width: bounds ? (bounds.maxX - bounds.minX) : (isMetric ? (600 / 25.4) : 24),
-                height: bounds ? (bounds.maxY - bounds.minY) : (isMetric ? (750 / 25.4) : 30),
+                width: bounds && !isSingleBoardOfAssembly ? (bounds.maxX - bounds.minX) : (isMetric ? (600 / 25.4) : 24),
+                height: bounds && !isSingleBoardOfAssembly ? (bounds.maxY - bounds.minY) : (isMetric ? (750 / 25.4) : 30),
                 stileWidth: isMetric ? (40 / 25.4) : 1.5,
                 railWidth: isMetric ? (40 / 25.4) : 1.5,
                 thickness: isMetric ? (18 / 25.4) : 0.75,
-                offsetZ: bounds ? bounds.maxZ : 0, // Face frames sit on the front
-                cabinetGroupId: cabinetGroupId
+                offsetZ: bounds && !isSingleBoardOfAssembly ? bounds.maxZ : 0, // Face frames sit on the front
+                cabinetGroupId: cabinetGroupId,
+                cabinetBoardSelected,
+                parentCabinetName
             });
         } else if (item.id === 'shelving') {
             let cabinetGroupId = null;
@@ -291,16 +309,6 @@ const AssembliesPanel = () => {
                     } else if (builder === 'box') {
                         boxGroupId = selId;
                     }
-                } else {
-                    const b = boards.find(board => board.id.toString() === selId.toString());
-                    if (b && b.parentId && groups[b.parentId]) {
-                        const builder = groups[b.parentId].meta?.builder;
-                        if (builder === 'cabinet') {
-                            cabinetGroupId = b.parentId;
-                        } else if (builder === 'box') {
-                            boxGroupId = b.parentId;
-                        }
-                    }
                 }
             }
 
@@ -312,9 +320,9 @@ const AssembliesPanel = () => {
             let tBack = isMetric ? (6 / 25.4) : 0.25;
             let tFront = isMetric ? (12 / 25.4) : 0.5;
 
-            let finalOffsetX = bounds ? bounds.minX : 0;
-            let finalOffsetY = bounds ? bounds.minY : 0;
-            let finalOffsetZ = bounds ? bounds.minZ : 0;
+            let finalOffsetX = bounds && !isSingleBoardOfAssembly ? bounds.minX : 0;
+            let finalOffsetY = bounds && !isSingleBoardOfAssembly ? bounds.minY : 0;
+            let finalOffsetZ = bounds && !isSingleBoardOfAssembly ? bounds.minZ : 0;
 
             if (cabinetGroupId && groups[cabinetGroupId]) {
                 const cabParams = groups[cabinetGroupId].meta?.params || {};
@@ -350,7 +358,7 @@ const AssembliesPanel = () => {
                 finalOffsetX = finalOffsetX + tSide;
                 finalOffsetY = finalOffsetY + tTB;
                 finalOffsetZ = finalOffsetZ + tBack;
-            } else if (bounds) {
+            } else if (bounds && !isSingleBoardOfAssembly) {
                 cabW = Math.abs(bounds.maxX - bounds.minX);
                 cabH = Math.abs(bounds.maxY - bounds.minY);
                 cabD = Math.abs(bounds.maxZ - bounds.minZ);
@@ -361,14 +369,18 @@ const AssembliesPanel = () => {
                 width: cabW,
                 height: cabH,
                 depth: cabD,
+                cabinetGroupId,
+                boxGroupId,
+                cabinetBoardSelected,
+                boxBoardSelected,
+                parentCabinetName,
+                parentBoxName,
                 offsetX: finalOffsetX,
                 offsetY: finalOffsetY,
                 offsetZ: finalOffsetZ,
-                cabinetGroupId,
-                boxGroupId,
-                addShelfPins: false,
-                measureRef: 'top',
-                thickness: isMetric ? (18 / 25.4) : 0.75
+                count: 3,
+                thickness: isMetric ? (18 / 25.4) : 0.75,
+                addShelfPins: false
             });
         } else if (item.id === 'tableBase') {
             setTableBaseDialog({
