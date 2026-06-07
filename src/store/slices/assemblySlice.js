@@ -1,4 +1,6 @@
+import * as THREE from 'three';
 import { computeWorldAABB, collectChildBoards } from '../../utils/sceneGraph';
+import { calculateProceduralBoxWalls } from '../../utils/procedural';
 import { applySmartFastenersHelper } from '../../utils/assemblyFasteners';
 import { cloneAssemblyHelper } from '../../utils/assemblyCloner';
 import {
@@ -17,7 +19,7 @@ import {
 } from '../../utils/proceduralUpdaters';
 
 export const createAssemblySlice = (set, get) => ({
-  cloneAssembly: selectedGroupId => {
+  cloneAssembly: (selectedGroupId, cloneMode, cloneOffset) => {
     const {
       boards,
       groups,
@@ -31,7 +33,7 @@ export const createAssemblySlice = (set, get) => ({
     } = get();
     if (!groups[selectedGroupId]) return;
     pushHistory();
-    const { newBoards, newGroups, newConstraints, newRootId } = cloneAssemblyHelper(selectedGroupId, boards, groups, constraints);
+    const { newBoards, newGroups, newConstraints, newRootId } = cloneAssemblyHelper(selectedGroupId, boards, groups, constraints, cloneMode, cloneOffset);
     setGroups(prev => ({
       ...prev,
       ...newGroups
@@ -43,6 +45,84 @@ export const createAssemblySlice = (set, get) => ({
     }));
     setSelectedItemIds([newRootId]);
     showToast(`Cloned "${selectedGroupId}"`);
+  },
+  incrementAssemblyRotation: (groupId, axis, degrees) => {
+    const {
+      boards,
+      groups,
+      setBoards,
+      setConstraints,
+      pushHistory
+    } = get();
+    if (!groups[groupId]) return;
+    const childBoards = collectChildBoards(groupId, boards, groups);
+    if (childBoards.length === 0) return;
+
+    pushHistory();
+
+    const aabb = computeWorldAABB(childBoards);
+    const px = (aabb.minX + aabb.maxX) / 2;
+    const py = (aabb.minY + aabb.maxY) / 2;
+    const pz = (aabb.minZ + aabb.maxZ) / 2;
+    const pivot = new THREE.Vector3(px, py, pz);
+
+    const radians = degrees * Math.PI / 180;
+    const axisVec = new THREE.Vector3();
+    if (axis === 0) axisVec.set(1, 0, 0);
+    if (axis === 1) axisVec.set(0, 1, 0);
+    if (axis === 2) axisVec.set(0, 0, 1);
+    const qInc = new THREE.Quaternion().setFromAxisAngle(axisVec, radians);
+
+    const childIds = new Set(childBoards.map(b => b.id.toString()));
+
+    setBoards(prev => prev.map(b => {
+      if (childIds.has(b.id.toString())) {
+        const pos = new THREE.Vector3(...b.position);
+        pos.sub(pivot);
+        pos.applyQuaternion(qInc);
+        pos.add(pivot);
+
+        const currentEuler = new THREE.Euler(...(b.orientation || [0, 0, 0]), 'YXZ');
+        const qCurrent = new THREE.Quaternion().setFromEuler(currentEuler);
+        const qNew = qInc.clone().multiply(qCurrent);
+        const newEuler = new THREE.Euler().setFromQuaternion(qNew, 'YXZ');
+
+        const nx = parseFloat(pos.x.toFixed(4));
+        const ny = parseFloat(pos.y.toFixed(4));
+        const nz = parseFloat(pos.z.toFixed(4));
+
+        const rx = parseFloat(newEuler.x.toFixed(4));
+        const ry = parseFloat(newEuler.y.toFixed(4));
+        const rz = parseFloat(newEuler.z.toFixed(4));
+
+        return {
+          ...b,
+          position: [nx, ny, nz],
+          orientation: [rx, ry, rz]
+        };
+      }
+      return b;
+    }));
+
+    setConstraints(prev => {
+      const next = { ...prev };
+      Object.keys(next).forEach(cid => {
+        const c = next[cid];
+        if (c.type === 'Glue' && childIds.has(c.boardAId) && childIds.has(c.boardBId) && c.offset) {
+          const offsetVec = new THREE.Vector3(...c.offset);
+          offsetVec.applyQuaternion(qInc);
+          next[cid] = {
+            ...c,
+            offset: [
+              parseFloat(offsetVec.x.toFixed(4)),
+              parseFloat(offsetVec.y.toFixed(4)),
+              parseFloat(offsetVec.z.toFixed(4))
+            ]
+          };
+        }
+      });
+      return next;
+    });
   },
   updateProceduralBox: (groupId, metaUpdates) => {
     const {
@@ -540,7 +620,6 @@ export const createAssemblySlice = (set, get) => ({
       pushHistory,
       groups,
       boards,
-      constraints,
       setConstraints,
       showToast
     } = get();
@@ -781,7 +860,7 @@ export const createAssemblySlice = (set, get) => ({
   },
 
   applyAssemblyProfile: (boardIds, faceDirection, profileType, profileParams) => {
-    const { boards, groups, setBoards, pushHistory, showToast } = get();
+    const { boards, setBoards, pushHistory, showToast } = get();
     
     // Resolve boards to profile
     const selectedBoards = boards.filter(b => boardIds.includes(b.id.toString()));

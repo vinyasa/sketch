@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { normalizeMaterial, getMaterialDisplayColor, WOOD_CATALOGUE } from '../../utils/materialCatalogue';
 import useStore from '../../store/useStore';
 import ParametricControls from './ParametricControls';
-import { parseLumberyardNominal } from '../../utils/lumberyard';
 import NumericInput from '../NumericInput';
 
 // ── Build a compact summary string for each tool type ────────────────────────
@@ -33,7 +32,7 @@ const fmt4 = (v) => parseFloat(v.toFixed(4));
 const SingleBoardInspector = ({ selectedBoard }) => {
     const [cloneOffset, setCloneOffset] = useState(0.75);
     const [cloneMode, setCloneMode] = useState('local');
-    const [rotationStep, setRotationStep] = useState(5);
+    const [rotationStep, setRotationStep] = useState(5.0);
     const [alignmentsOpen, setAlignmentsOpen] = useState(false);
 
     const {
@@ -44,7 +43,7 @@ const SingleBoardInspector = ({ selectedBoard }) => {
         constraintTargetMode, setConstraintTargetMode,
         setShowToolsPanel,
         removeHardware, updateHardware, selectedHardwareId, setSelectedHardwareId,
-        lumberyardSnapEnabled, updateSelectedBoards, addRecordedStep
+        updateSelectedBoards, addRecordedStep
     } = useStore();
 
     // Cancel constraint mode if selection no longer includes the source board
@@ -67,11 +66,11 @@ const SingleBoardInspector = ({ selectedBoard }) => {
     const dimLabels = ['Length', 'Width', 'Thickness'];
 
     // Find all constraints involving this board from the central index
-    const boardConstraints = Object.entries(constraints || {}).filter(([_, c]) =>
+    const boardConstraints = Object.entries(constraints || {}).filter(([, c]) =>
         c.boardAId === selectedBoard.id.toString() || c.boardBId === selectedBoard.id.toString()
     );
-    const glueConstraints = boardConstraints.filter(([_, c]) => c.type === 'Glue');
-    const flushConstraints = boardConstraints.filter(([_, c]) => c.type === 'Flush');
+    const glueConstraints = boardConstraints.filter(([, c]) => c.type === 'Glue');
+    const flushConstraints = boardConstraints.filter(([, c]) => c.type === 'Flush');
 
     const handleClone = () => {
         if (!selectedBoard) return;
@@ -259,7 +258,7 @@ const SingleBoardInspector = ({ selectedBoard }) => {
                     ];
 
                     // Find which preset matches the current pivot
-                    const matchIdx = presets.findIndex(([_, p]) =>
+                    const matchIdx = presets.findIndex(([, p]) =>
                         Math.abs(p[0] - pivot[0]) < 0.001 &&
                         Math.abs(p[1] - pivot[1]) < 0.001 &&
                         Math.abs(p[2] - pivot[2]) < 0.001
@@ -337,7 +336,7 @@ const SingleBoardInspector = ({ selectedBoard }) => {
                                 }}
                             >
                                 {matchIdx < 0 && <option value={-1} disabled>Custom ({pivot.map(v => (units === 'metric' ? (v * 25.4).toFixed(1) : v.toFixed(2))).join(', ')}{units === 'metric' ? ' mm' : ''})</option>}
-                                {presets.map(([label, _], idx) => (
+                                {presets.map(([label], idx) => (
                                     <option key={idx} value={idx}>{label}</option>
                                 ))}
                             </select>
@@ -379,23 +378,36 @@ const SingleBoardInspector = ({ selectedBoard }) => {
 
             {/* ── Orientation (Local rotation increments) ── */}
             <div className="inspector-card">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                     <h4 style={{ margin: 0 }}>Local Orientation</h4>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                         <span style={{ fontSize: '0.64rem', color: 'var(--text-muted)' }}>Step:</span>
                         <select
-                            value={rotationStep}
-                            onChange={(e) => setRotationStep(parseInt(e.target.value))}
+                            value={[5, 10, 15, 22.5, 30, 45, 90].includes(rotationStep) ? rotationStep : ''}
+                            onChange={(e) => {
+                                const val = parseFloat(e.target.value);
+                                if (!isNaN(val)) setRotationStep(val);
+                            }}
                             style={{
-                                padding: '2px', background: 'var(--bg-color)', color: 'var(--text-main)',
+                                width: '50px', padding: '2px', background: 'var(--bg-color)', color: 'var(--text-main)',
                                 border: '1px solid var(--border-color)', borderRadius: '4px', fontSize: '0.65rem',
                                 cursor: 'pointer', outline: 'none'
                             }}
                         >
-                            {[5, 10, 15, 30, 45, 90].map(s => (
+                            {[5, 10, 15, 22.5, 30, 45, 90].map(s => (
                                 <option key={s} value={s}>{s}°</option>
                             ))}
+                            {![5, 10, 15, 22.5, 30, 45, 90].includes(rotationStep) && (
+                                <option value="" disabled>Custom</option>
+                            )}
                         </select>
+                        <NumericInput 
+                            step="1" 
+                            value={rotationStep} 
+                            onChange={val => setRotationStep(val)} 
+                            style={{ width: '50px', padding: '2px', background: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '4px', fontSize: '0.65rem' }} 
+                        />
+                        <span style={{ fontSize: '0.64rem', color: 'var(--text-muted)' }}>°</span>
                     </div>
                 </div>
 

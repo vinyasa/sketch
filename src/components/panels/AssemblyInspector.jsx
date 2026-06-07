@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { computeWorldAABB, collectChildBoards } from '../../utils/sceneGraph';
 import useStore from '../../store/useStore';
 import ParametricControls from './ParametricControls';
+import NumericInput from '../NumericInput';
 
 // Round to ≤4 decimal places, stripping trailing zeros
 const fmt4 = (v) => parseFloat(v.toFixed(4));
@@ -11,11 +12,15 @@ const fmt4 = (v) => parseFloat(v.toFixed(4));
 const AssemblyInspector = ({ selectedGroup }) => {
     const {
         boards, groups, selectedItemIds, constraints, units,
-        moveGroup, setBoards, setGroups, setSelectedItemIds,
+        moveGroup, setSelectedItemIds, setGroups, setBoards,
         dropGroupToFloor, glueAssembly, unglueAssembly, createPivotProxy,
         handleAssemblyDelete, cloneAssembly, updateProceduralBox,
-        constraintTargetMode, setConstraintTargetMode
+        constraintTargetMode, setConstraintTargetMode, incrementAssemblyRotation
     } = useStore();
+
+    const [cloneMode, setCloneMode] = useState('worldX');
+    const [cloneOffset, setCloneOffset] = useState(12);
+    const [rotationStep, setRotationStep] = useState(5.0);
 
     const isWorkspace = selectedGroup === 'Workspace';
     const meta = !isWorkspace && groups[selectedGroup] ? groups[selectedGroup].meta : null;
@@ -130,42 +135,12 @@ const AssemblyInspector = ({ selectedGroup }) => {
                     style={{ flex: 1, width: '100%', background: isWorkspace ? 'transparent' : 'rgba(128,128,128,0.15)', padding: '6px 12px', borderRadius: '6px', border: '1px solid', borderColor: isWorkspace ? 'transparent' : 'var(--border-color)', color: 'var(--accent-color)', fontSize: 'inherit', fontWeight: 'inherit', outline: 'none' }}
                 />
             </div>
-            <div className="inspector-section">
+            <div className="inspector-card">
                 <h4>Overall Dimensions ({units === 'metric' ? 'mm' : 'in'})</h4>
                 <div className="vec3-inputs">
-                    <div style={{ backgroundColor: 'rgba(255, 60, 60, 0.15)' }}>
-                        X
-                        <input 
-                            type="number" 
-                            step={units === 'metric' ? '1' : '0.125'} 
-                            value={units === 'metric' ? fmt4(overallSize[0] * 25.4) : fmt4(overallSize[0])} 
-                            disabled={!supportsX} 
-                            onChange={e => handleDimensionChange('X', e.target.value)}
-                            style={!supportsX ? { opacity: 0.5, cursor: 'not-allowed' } : undefined} 
-                        />
-                    </div>
-                    <div style={{ backgroundColor: 'rgba(60, 200, 90, 0.15)' }}>
-                        Y
-                        <input 
-                            type="number" 
-                            step={units === 'metric' ? '1' : '0.125'} 
-                            value={units === 'metric' ? fmt4(overallSize[1] * 25.4) : fmt4(overallSize[1])} 
-                            disabled={!supportsY} 
-                            onChange={e => handleDimensionChange('Y', e.target.value)}
-                            style={!supportsY ? { opacity: 0.5, cursor: 'not-allowed' } : undefined} 
-                        />
-                    </div>
-                    <div style={{ backgroundColor: 'rgba(60, 150, 255, 0.15)' }}>
-                        Z
-                        <input 
-                            type="number" 
-                            step={units === 'metric' ? '1' : '0.125'} 
-                            value={units === 'metric' ? fmt4(overallSize[2] * 25.4) : fmt4(overallSize[2])} 
-                            disabled={!supportsZ} 
-                            onChange={e => handleDimensionChange('Z', e.target.value)}
-                            style={!supportsZ ? { opacity: 0.5, cursor: 'not-allowed' } : undefined} 
-                        />
-                    </div>
+                    <div style={{ backgroundColor: 'rgba(255, 60, 60, 0.15)' }}>X<NumericInput step={units === 'metric' ? '1' : '0.125'} value={units === 'metric' ? fmt4(overallSize[0] * 25.4) : fmt4(overallSize[0])} disabled={!supportsX} onChange={val => handleDimensionChange('X', val)} style={!supportsX ? { opacity: 0.5, cursor: 'not-allowed' } : undefined} /></div>
+                    <div style={{ backgroundColor: 'rgba(60, 200, 90, 0.15)' }}>Y<NumericInput step={units === 'metric' ? '1' : '0.125'} value={units === 'metric' ? fmt4(overallSize[1] * 25.4) : fmt4(overallSize[1])} disabled={!supportsY} onChange={val => handleDimensionChange('Y', val)} style={!supportsY ? { opacity: 0.5, cursor: 'not-allowed' } : undefined} /></div>
+                    <div style={{ backgroundColor: 'rgba(60, 150, 255, 0.15)' }}>Z<NumericInput step={units === 'metric' ? '1' : '0.125'} value={units === 'metric' ? fmt4(overallSize[2] * 25.4) : fmt4(overallSize[2])} disabled={!supportsZ} onChange={val => handleDimensionChange('Z', val)} style={!supportsZ ? { opacity: 0.5, cursor: 'not-allowed' } : undefined} /></div>
                 </div>
             </div>
             {!isWorkspace && (() => {
@@ -184,16 +159,77 @@ const AssemblyInspector = ({ selectedGroup }) => {
                 };
 
                 return (
-                    <div className="inspector-section">
-                        <h4>Position ({units === 'metric' ? 'mm' : 'in'})</h4>
-                        <div className="vec3-inputs">
-                            <div style={{ backgroundColor: 'rgba(255, 60, 60, 0.15)' }}>X<input type="number" step={units === 'metric' ? '1' : '0.125'} value={units === 'metric' ? fmt4(centroid[0] * 25.4) : centroid[0]} onChange={e => handleCentroidChange(0, units === 'metric' ? parseFloat(e.target.value) / 25.4 : e.target.value)} /></div>
-                            <div style={{ backgroundColor: 'rgba(60, 200, 90, 0.15)' }}>Y<input type="number" step={units === 'metric' ? '1' : '0.125'} value={units === 'metric' ? fmt4(centroid[1] * 25.4) : centroid[1]} onChange={e => handleCentroidChange(1, units === 'metric' ? parseFloat(e.target.value) / 25.4 : e.target.value)} /></div>
-                            <div style={{ backgroundColor: 'rgba(60, 150, 255, 0.15)' }}>Z<input type="number" step={units === 'metric' ? '1' : '0.125'} value={units === 'metric' ? fmt4(centroid[2] * 25.4) : centroid[2]} onChange={e => handleCentroidChange(2, units === 'metric' ? parseFloat(e.target.value) / 25.4 : e.target.value)} /></div>
+                    <>
+                        <div className="inspector-card">
+                            <h4>Position ({units === 'metric' ? 'mm' : 'in'})</h4>
+                            <div className="vec3-inputs">
+                                <div style={{ backgroundColor: 'rgba(255, 60, 60, 0.15)' }}>X<NumericInput step={units === 'metric' ? '1' : '0.125'} value={units === 'metric' ? fmt4(centroid[0] * 25.4) : centroid[0]} onChange={val => handleCentroidChange(0, units === 'metric' ? val / 25.4 : val)} /></div>
+                                <div style={{ backgroundColor: 'rgba(60, 200, 90, 0.15)' }}>Y<NumericInput step={units === 'metric' ? '1' : '0.125'} value={units === 'metric' ? fmt4(centroid[1] * 25.4) : centroid[1]} onChange={val => handleCentroidChange(1, units === 'metric' ? val / 25.4 : val)} /></div>
+                                <div style={{ backgroundColor: 'rgba(60, 150, 255, 0.15)' }}>Z<NumericInput step={units === 'metric' ? '1' : '0.125'} value={units === 'metric' ? fmt4(centroid[2] * 25.4) : centroid[2]} onChange={val => handleCentroidChange(2, units === 'metric' ? val / 25.4 : val)} /></div>
+                            </div>
+                            <button style={{ marginTop: '8px', width: '100%' }} className="primary-btn" onClick={dropGroupToFloor}>↓ Set on Floor</button>
+                            <p className="hint" style={{ marginTop: '6px' }}>Assembly centroid — changes move all children in real time.</p>
                         </div>
-                        <button style={{ marginTop: '8px', width: '100%' }} className="primary-btn" onClick={dropGroupToFloor}>↓ Set on Floor</button>
-                        <p className="hint" style={{ marginTop: '6px' }}>Assembly centroid — changes move all children in real time.</p>
-                    </div>
+                        {/* ── Assembly Orientation ── */}
+                        <div className="inspector-card">
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                                <h4 style={{ margin: 0 }}>Assembly Orientation</h4>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                    <span style={{ fontSize: '0.64rem', color: 'var(--text-muted)' }}>Step:</span>
+                                    <select
+                                        value={[5, 10, 15, 22.5, 30, 45, 90].includes(rotationStep) ? rotationStep : ''}
+                                        onChange={(e) => {
+                                            const val = parseFloat(e.target.value);
+                                            if (!isNaN(val)) setRotationStep(val);
+                                        }}
+                                        style={{
+                                            width: '50px', padding: '2px', background: 'var(--bg-color)', color: 'var(--text-main)',
+                                            border: '1px solid var(--border-color)', borderRadius: '4px', fontSize: '0.65rem',
+                                            cursor: 'pointer', outline: 'none'
+                                        }}
+                                    >
+                                        {[5, 10, 15, 22.5, 30, 45, 90].map(s => (
+                                            <option key={s} value={s}>{s}°</option>
+                                        ))}
+                                        {![5, 10, 15, 22.5, 30, 45, 90].includes(rotationStep) && (
+                                            <option value="" disabled>Custom</option>
+                                        )}
+                                    </select>
+                                    <NumericInput 
+                                        step="1" 
+                                        value={rotationStep} 
+                                        onChange={val => setRotationStep(val)} 
+                                        style={{ width: '50px', padding: '2px', background: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '4px', fontSize: '0.65rem' }} 
+                                    />
+                                    <span style={{ fontSize: '0.64rem', color: 'var(--text-muted)' }}>°</span>
+                                </div>
+                            </div>
+
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '4px', marginTop: '6px' }}>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                    <div style={{ fontSize: '0.62rem', textAlign: 'center', color: '#ff3b30', fontWeight: 'bold' }}>Tilt Front/Back</div>
+                                    <div style={{ display: 'flex', gap: '2px' }}>
+                                        <button className="nav-btn" style={{ flex: 1, padding: '4px 0', fontSize: '0.72rem' }} onClick={() => incrementAssemblyRotation(selectedGroup, 0, -rotationStep)}>-</button>
+                                        <button className="nav-btn" style={{ flex: 1, padding: '4px 0', fontSize: '0.72rem' }} onClick={() => incrementAssemblyRotation(selectedGroup, 0, rotationStep)}>+</button>
+                                    </div>
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                    <div style={{ fontSize: '0.62rem', textAlign: 'center', color: '#3cc85a', fontWeight: 'bold' }}>Spin Flat</div>
+                                    <div style={{ display: 'flex', gap: '2px' }}>
+                                        <button className="nav-btn" style={{ flex: 1, padding: '4px 0', fontSize: '0.72rem' }} onClick={() => incrementAssemblyRotation(selectedGroup, 1, -rotationStep)}>-</button>
+                                        <button className="nav-btn" style={{ flex: 1, padding: '4px 0', fontSize: '0.72rem' }} onClick={() => incrementAssemblyRotation(selectedGroup, 1, rotationStep)}>+</button>
+                                    </div>
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                    <div style={{ fontSize: '0.62rem', textAlign: 'center', color: '#3c96ff', fontWeight: 'bold' }}>Tilt Left/Right</div>
+                                    <div style={{ display: 'flex', gap: '2px' }}>
+                                        <button className="nav-btn" style={{ flex: 1, padding: '4px 0', fontSize: '0.72rem' }} onClick={() => incrementAssemblyRotation(selectedGroup, 2, -rotationStep)}>-</button>
+                                        <button className="nav-btn" style={{ flex: 1, padding: '4px 0', fontSize: '0.72rem' }} onClick={() => incrementAssemblyRotation(selectedGroup, 2, rotationStep)}>+</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </>
                 );
             })()}
             {groups[selectedGroup].meta && groups[selectedGroup].meta.type === 'procedural-box' && (
@@ -243,13 +279,61 @@ const AssemblyInspector = ({ selectedGroup }) => {
                     >
                         Create Pivot Proxy
                     </button>
-                    <button
-                        className="primary-btn"
-                        style={{ width: '100%', padding: '8px', fontWeight: 'bold', marginBottom: '16px' }}
-                        onClick={() => cloneAssembly(selectedGroup)}
-                    >
-                        Clone Assembly
-                    </button>
+                    {/* ── Assembly Cloning ── */}
+                    <div className="inspector-card">
+                        <h4 style={{ margin: '0 0 8px 0' }}>Clone Assembly</h4>
+                        <div style={{ display: 'flex', gap: '4px', marginBottom: '8px' }}>
+                            <button 
+                                className="nav-btn" 
+                                type="button"
+                                style={{ flex: 1, padding: '4px 0', fontSize: '0.72rem', backgroundColor: cloneMode === 'local' ? 'rgba(188, 138, 95, 0.3)' : 'transparent', color: cloneMode === 'local' ? 'var(--accent-color)' : 'var(--text-main)', border: `1px solid ${cloneMode === 'local' ? 'var(--accent-color)' : 'var(--border-color)'}` }} 
+                                onClick={() => setCloneMode('local')}
+                            >
+                                Local (Auto)
+                            </button>
+                            <button 
+                                className="nav-btn" 
+                                type="button"
+                                style={{ flex: 1, padding: '4px 0', fontSize: '0.72rem', backgroundColor: cloneMode === 'worldX' ? 'rgba(255, 59, 48, 0.3)' : 'transparent', color: '#ff3b30', border: `1px solid ${cloneMode === 'worldX' ? '#ff3b30' : 'var(--border-color)'}` }} 
+                                onClick={() => setCloneMode('worldX')}
+                            >
+                                World X
+                            </button>
+                            <button 
+                                className="nav-btn" 
+                                type="button"
+                                style={{ flex: 1, padding: '4px 0', fontSize: '0.72rem', backgroundColor: cloneMode === 'worldY' ? 'rgba(52, 199, 89, 0.3)' : 'transparent', color: '#34c759', border: `1px solid ${cloneMode === 'worldY' ? '#34c759' : 'var(--border-color)'}` }} 
+                                onClick={() => setCloneMode('worldY')}
+                            >
+                                World Y
+                            </button>
+                            <button 
+                                className="nav-btn" 
+                                type="button"
+                                style={{ flex: 1, padding: '4px 0', fontSize: '0.72rem', backgroundColor: cloneMode === 'worldZ' ? 'rgba(0, 122, 255, 0.3)' : 'transparent', color: '#007aff', border: `1px solid ${cloneMode === 'worldZ' ? '#007aff' : 'var(--border-color)'}` }} 
+                                onClick={() => setCloneMode('worldZ')}
+                            >
+                                World Z
+                            </button>
+                        </div>
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                            <span style={{ fontSize: '0.78rem', whiteSpace: 'nowrap' }}>Offset ({units === 'metric' ? 'mm' : 'in'}):</span>
+                            <NumericInput 
+                                step={units === 'metric' ? '10' : '1'} 
+                                value={units === 'metric' ? fmt4(cloneOffset * 25.4) : fmt4(cloneOffset)} 
+                                onChange={val => setCloneOffset(units === 'metric' ? val / 25.4 : val)} 
+                                style={{ width: '60px', padding: '4px', background: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '4px' }} 
+                            />
+                            <button 
+                                className="primary-btn" 
+                                type="button"
+                                style={{ flex: 1, padding: '6px 0', fontSize: '0.85rem', fontWeight: 'bold' }} 
+                                onClick={() => cloneAssembly(selectedGroup, cloneMode, cloneOffset)}
+                            >
+                                {cloneMode === 'local' ? 'Clone (Thin Axis)' : `Clone along ${cloneMode.replace('world', '')}`}
+                            </button>
+                        </div>
+                    </div>
                     <button
                         className="nav-btn"
                         style={{ width: '100%', padding: '8px', color: '#ff3b30', border: '1px solid rgba(255, 59, 48, 0.3)', background: 'rgba(255, 59, 48, 0.05)', fontWeight: 'bold', transition: 'background 0.2s' }}

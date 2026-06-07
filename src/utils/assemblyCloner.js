@@ -1,3 +1,5 @@
+import { computeWorldAABB } from './sceneGraph';
+
 /**
  * assemblyCloner.js
  *
@@ -5,7 +7,7 @@
  * Does not interact with Zustand directly, making it highly readable and testable.
  */
 
-export const cloneAssemblyHelper = (selectedGroupId, boards, groups, constraints) => {
+export const cloneAssemblyHelper = (selectedGroupId, boards, groups, constraints, cloneMode = 'worldX', cloneOffset = 10) => {
   const collectGroupSubTree = rootId => {
     const result = {};
     const traverse = currentId => {
@@ -43,6 +45,37 @@ export const cloneAssemblyHelper = (selectedGroupId, boards, groups, constraints
       };
     }
   });
+
+  // Calculate shift delta [dx, dy, dz] based on cloneMode and cloneOffset
+  let dx = 0, dy = 0, dz = 0;
+  if (cloneMode === 'local') {
+    let overallSize = [0, 0, 0];
+    if (snapshotBoards.length > 0) {
+      const aabb = computeWorldAABB(snapshotBoards);
+      overallSize = [
+        Math.abs(aabb.maxX - aabb.minX),
+        Math.abs(aabb.maxY - aabb.minY),
+        Math.abs(aabb.maxZ - aabb.minZ)
+      ];
+    }
+    let thinnestAxis = 0;
+    if (overallSize[1] < overallSize[thinnestAxis]) thinnestAxis = 1;
+    if (overallSize[2] < overallSize[thinnestAxis]) thinnestAxis = 2;
+
+    dx = thinnestAxis === 0 ? cloneOffset : 0;
+    dy = thinnestAxis === 1 ? cloneOffset : 0;
+    dz = thinnestAxis === 2 ? cloneOffset : 0;
+  } else if (cloneMode === 'worldX') {
+    dx = cloneOffset;
+  } else if (cloneMode === 'worldY') {
+    dy = cloneOffset;
+  } else if (cloneMode === 'worldZ') {
+    dz = cloneOffset;
+  } else {
+    // Default fallback
+    dx = 10;
+    dz = 10;
+  }
 
   const existingGroupNames = new Set(Object.keys(groups));
   const uniqueGroupName = base => {
@@ -91,13 +124,14 @@ export const cloneAssemblyHelper = (selectedGroupId, boards, groups, constraints
     }));
     const operations = (b.operations || []).map(op => ({
       ...op,
-      partnerId: boardIdMap[op.partnerId]?.toString() ?? op.partnerId
+      partnerId: boardIdMap[op.partnerId]?.toString() ?? op.partnerId,
+      cutterId: boardIdMap[op.cutterId]?.toString() ?? op.cutterId
     }));
     return {
       ...b,
       id: boardIdMap[b.id.toString()],
       parentId: groupIdMap[b.parentId] ?? b.parentId,
-      position: [b.position[0] + 10, b.position[1], b.position[2] + 10],
+      position: [b.position[0] + dx, b.position[1] + dy, b.position[2] + dz],
       edgeJoints,
       operations
     };

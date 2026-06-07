@@ -1,3 +1,4 @@
+import * as THREE from 'three';
 import { computeWorldAABB, collectChildBoards } from '../../utils/sceneGraph';
 import { propagateMove } from '../../utils/constraintSolver';
 import { calculateProceduralBoxWalls } from '../../utils/procedural';
@@ -250,7 +251,6 @@ export const createIoSlice = (set, get) => ({
     showToast("Exporting 3D Model...");
 
     try {
-      const THREE = await import('three');
       const { GLTFExporter } = await import('three/examples/jsm/exporters/GLTFExporter.js');
 
       // Helper function to recursively clone only the actual boards and hardware parts

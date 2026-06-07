@@ -13,7 +13,7 @@ Luceysketch is definitely a work in progress, as is this User's Guide. It is pro
 
 Before diving into sawdust, let's look at the primary controls in your shop header. These are the tools you'll use to manage files, spawn boards, shape joints, and inspect dimensions.
 
-![Sketch Panel Menu](/panel_menu.png)
+![Sketch Panel Menu](/panel_menu.jpg)
 
 ### The Header Controls (by Column, Top-to-Bottom):
 
