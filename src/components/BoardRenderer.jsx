@@ -1,4 +1,4 @@
-import React, { useMemo, useEffect, Suspense, useState } from 'react';
+import React, { useMemo, useEffect, Suspense, useState, useRef } from 'react';
 import { useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useTexture, useGLTF, Edges, Html, Line } from '@react-three/drei';
@@ -11,6 +11,7 @@ import { buildTaperGeometry, normalizeTaper } from '../utils/geometryBuilders';
 import { computeHardwareTransform } from '../utils/hardwareCatalogue';
 import { Evaluator, SUBTRACTION, INTERSECTION, Brush } from 'three-bvh-csg';
 import { computeSnapPoints, findNearestSnap } from '../utils/snapHelpers';
+import { getFaceTriangles, getFaceLabel } from '../utils/faceMeasurement';
 
 const csgEvaluator = new Evaluator();
 
@@ -837,11 +838,41 @@ const HardwareAttachment = ({ hw, boardSize, boardId }) => {
   );
 };
 
+const FaceHighlightMesh = ({ parentGeometry, normal, localPt, color, opacity }) => {
+  const geom = useMemo(() => {
+    if (!parentGeometry || !normal || !localPt) return null;
+    const matchIndices = getFaceTriangles(parentGeometry, new THREE.Vector3(...normal), new THREE.Vector3(...localPt));
+    if (matchIndices.length === 0) return null;
+
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', parentGeometry.getAttribute('position'));
+    g.setIndex(new THREE.BufferAttribute(new Uint32Array(matchIndices), 1));
+    return g;
+  }, [parentGeometry, normal, localPt]);
+
+  useEffect(() => {
+    return () => {
+      if (geom) geom.dispose();
+    };
+  }, [geom]);
+
+  if (!geom) return null;
+
+  return (
+    <mesh geometry={geom} raycast={() => null}>
+      <meshBasicMaterial color={color} transparent opacity={opacity} depthWrite={false} depthTest={false} side={THREE.DoubleSide} />
+    </mesh>
+  );
+};
+
 const BoardMesh = ({ b, selectedItemIds, toggleSelection, textures, showEdges, constraintTargetMode, hoveredFaceData, setHoveredFaceData, modifierActive }) => {
   if (b.visible === false) return null;
   const isSelected = selectedItemIds.includes(b.id.toString());
   
   const boards = useStore(s => s.boards);
+  const meshRef = useRef();
+  const measureFaceAnglesActive = useStore(s => s.measureFaceAnglesActive);
+  const selectedFaces = useStore(s => s.selectedFaces);
   const dKeyPressed = useStore(s => s.dKeyPressed);
   const [draggingInfo, setDraggingInfo] = useState(null);
   const [snappedAxes, setSnappedAxes] = useState({ x: false, y: false, z: false });
@@ -1076,6 +1107,7 @@ const BoardMesh = ({ b, selectedItemIds, toggleSelection, textures, showEdges, c
       name={b.name}
     >
       <mesh
+        ref={meshRef}
         position={[-pivot[0], -pivot[1], -pivot[2]]}
         raycast={(modifierActive && constraintTargetMode?.active) ? () => null : undefined}
         castShadow
@@ -1102,6 +1134,18 @@ const BoardMesh = ({ b, selectedItemIds, toggleSelection, textures, showEdges, c
             setPivotMode(null);
             setPivotHoverSnap(null);
             useStore.getState().showToast('Pivot point set successfully.');
+            return;
+          }
+
+          // ── Measure Face Angles Mode ──
+          const { measureFaceAnglesActive, toggleFaceSelection } = useStore.getState();
+          if (measureFaceAnglesActive) {
+            if (e.face && e.face.normal && e.point && e.object) {
+              const localPt = e.object.worldToLocal(e.point.clone());
+              const norm = e.face.normal;
+              const label = getFaceLabel([norm.x, norm.y, norm.z]);
+              toggleFaceSelection(b.id.toString(), [norm.x, norm.y, norm.z], [localPt.x, localPt.y, localPt.z], label);
+            }
             return;
           }
 
@@ -1243,6 +1287,33 @@ const BoardMesh = ({ b, selectedItemIds, toggleSelection, textures, showEdges, c
             return;
           }
 
+          // ── Hover tracking for arbitrary face angle measurement ──
+          const { measureFaceAnglesActive } = useStore.getState();
+          if (measureFaceAnglesActive) {
+            e.stopPropagation();
+            if (e.face && e.face.normal && e.point && e.object) {
+              const localPt = e.object.worldToLocal(e.point.clone());
+              const norm = e.face.normal;
+              if (!hoveredFaceData || 
+                  hoveredFaceData.id !== b.id.toString() || 
+                  !hoveredFaceData.isArbitraryFace ||
+                  Math.abs(hoveredFaceData.normal[0] - norm.x) > 0.01 ||
+                  Math.abs(hoveredFaceData.normal[1] - norm.y) > 0.01 ||
+                  Math.abs(hoveredFaceData.normal[2] - norm.z) > 0.01 ||
+                  Math.abs(hoveredFaceData.localPt[0] - localPt.x) > 0.05 ||
+                  Math.abs(hoveredFaceData.localPt[1] - localPt.y) > 0.05 ||
+                  Math.abs(hoveredFaceData.localPt[2] - localPt.z) > 0.05) {
+                setHoveredFaceData({
+                  id: b.id.toString(),
+                  isArbitraryFace: true,
+                  normal: [norm.x, norm.y, norm.z],
+                  localPt: [localPt.x, localPt.y, localPt.z]
+                });
+              }
+            }
+            return;
+          }
+
           // ── Hover snap tracking for measure mode ──
           const { measureMode: mm, setMeasureHoverSnap, measureHoverSnap } = useStore.getState();
           if (mm?.active && !mm.dragging) {
@@ -1285,6 +1356,32 @@ const BoardMesh = ({ b, selectedItemIds, toggleSelection, textures, showEdges, c
         onPointerUp={null}
       >
         <CSGGeometry b={b} />
+        {measureFaceAnglesActive && meshRef.current?.geometry && (
+          <group>
+            {hoveredFaceData && hoveredFaceData.id === b.id.toString() && hoveredFaceData.isArbitraryFace && (
+              <FaceHighlightMesh
+                parentGeometry={meshRef.current.geometry}
+                normal={hoveredFaceData.normal}
+                localPt={hoveredFaceData.localPt}
+                color="#00ffff"
+                opacity={0.45}
+              />
+            )}
+            {selectedFaces.map((f, idx) => {
+              if (f.boardId !== b.id.toString()) return null;
+              return (
+                <FaceHighlightMesh
+                  key={`select-${idx}`}
+                  parentGeometry={meshRef.current.geometry}
+                  normal={f.normal}
+                  localPt={f.localPt}
+                  color={idx === 0 ? "#af40ff" : "#ffcc00"}
+                  opacity={0.55}
+                />
+              );
+            })}
+          </group>
+        )}
         {(() => {
           const matDesc = normalizeMaterial(b.material);
           const matKey = matDesc.type === 'color' ? `color-${matDesc.hex}` : `wood-${matDesc.id}`;

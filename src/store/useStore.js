@@ -533,6 +533,42 @@ const useStore = create((set, get) => ({
     measurements: loadState('measurements', []),
     setMeasurements: (v) => set({ measurements: typeof v === 'function' ? v(get().measurements) : v }),
 
+    // Face Angle Measurement Mode state
+    measureFaceAnglesActive: false,
+    setMeasureFaceAnglesActive: (active) => set({ measureFaceAnglesActive: active }),
+    selectedFaces: [],
+    toggleFaceSelection: (boardId, normal, localPt, label) => {
+        const { selectedFaces } = get();
+        const newFace = { boardId, normal, localPt, label };
+
+        // Reset selection if clicking a different board
+        if (selectedFaces.length > 0 && selectedFaces[0].boardId !== boardId) {
+            set({ selectedFaces: [newFace] });
+            return;
+        }
+
+        const index = selectedFaces.findIndex(f => 
+            f.boardId === boardId && 
+            Math.abs(f.normal[0] - normal[0]) < 0.01 &&
+            Math.abs(f.normal[1] - normal[1]) < 0.01 &&
+            Math.abs(f.normal[2] - normal[2]) < 0.01 &&
+            Math.abs(f.localPt[0] - localPt[0]) < 0.05 &&
+            Math.abs(f.localPt[1] - localPt[1]) < 0.05 &&
+            Math.abs(f.localPt[2] - localPt[2]) < 0.05
+        );
+
+        if (index > -1) {
+            set({ selectedFaces: selectedFaces.filter((_, i) => i !== index) });
+        } else {
+            if (selectedFaces.length >= 2) {
+                set({ selectedFaces: [newFace] });
+            } else {
+                set({ selectedFaces: [...selectedFaces, newFace] });
+            }
+        }
+    },
+    clearFaceSelection: () => set({ selectedFaces: [] }),
+
     // Visibility toggle (controls both auto-dims AND custom measurements)
     showMeasurements: loadState('showMeasurements', true),
     setShowMeasurements: (v) => set({ showMeasurements: typeof v === 'function' ? v(get().showMeasurements) : v }),

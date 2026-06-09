@@ -7,6 +7,7 @@ import { calculateBoardCuts } from '../../utils/miterSawCalculator';
 export const createBoardSlice = (set, get) => ({
   miterSawCuts: null,
   miterSawBoardId: null,
+  miterSawOriginalBoardId: null,
   selectedMiterCutIndex: null,
 
   setSelectedMiterCutIndex: (index) => {
@@ -1248,9 +1249,53 @@ export const createBoardSlice = (set, get) => ({
     set({
       miterSawCuts: cuts,
       miterSawBoardId: cloneId.toString(),
+      miterSawOriginalBoardId: boardId.toString(),
       selectedMiterCutIndex: null
     });
 
     showToast(`Prepared clone "${clone.name}" and calculated its miter/bevel angles.`);
+  },
+  closeMiterSawMode: () => {
+    const {
+      boards,
+      setBoards,
+      miterSawBoardId,
+      miterSawOriginalBoardId,
+      setSelectedItemIds,
+      pushHistory
+    } = get();
+
+    if (!miterSawBoardId) return;
+
+    pushHistory();
+
+    // Remove the clone board
+    const nextBoards = boards.filter(b => b.id.toString() !== miterSawBoardId.toString());
+
+    // Restore disableAutoAlign on original board
+    const updatedBoards = nextBoards.map(b => {
+      if (miterSawOriginalBoardId && b.id.toString() === miterSawOriginalBoardId.toString()) {
+        return {
+          ...b,
+          disableAutoAlign: false
+        };
+      }
+      return b;
+    });
+
+    setBoards(updatedBoards);
+
+    if (miterSawOriginalBoardId) {
+      setSelectedItemIds([miterSawOriginalBoardId.toString()]);
+    } else {
+      setSelectedItemIds([]);
+    }
+
+    set({
+      miterSawCuts: null,
+      miterSawBoardId: null,
+      miterSawOriginalBoardId: null,
+      selectedMiterCutIndex: null
+    });
   }
 });

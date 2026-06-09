@@ -84,7 +84,24 @@ export default function Viewport3D() {
         }
       }
 
-      if (e.key === 'Escape' && measureMode?.active) setMeasureMode(null);
+      if (e.key === 'Escape') {
+        const state = useStore.getState();
+        let acted = false;
+        if (measureMode?.active) {
+          setMeasureMode(null);
+          acted = true;
+        }
+        if (state.measureFaceAnglesActive) {
+          state.setMeasureFaceAnglesActive(false);
+          state.clearFaceSelection();
+          acted = true;
+        }
+        if (state.miterSawBoardId) {
+          state.closeMiterSawMode();
+          acted = true;
+        }
+        if (acted) e.preventDefault();
+      }
       if ((e.key === 'Delete' || e.key === 'Backspace') && !isInput) {
         const { selectedMeasurementId, removeMeasurement, setSelectedMeasurementId } = useStore.getState();
         if (selectedMeasurementId) {
