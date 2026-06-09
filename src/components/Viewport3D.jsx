@@ -17,6 +17,7 @@ import { MeasurementOverlay } from './MeasurementOverlay';
 import { MeasureSnapPreview } from './MeasureSnapPreview';
 import { MeasureDragHandler } from './MeasureDragHandler';
 import BuilderPreviewRenderer from './BuilderPreviewRenderer';
+import { MiterCutVisualizer } from './MiterCutVisualizer';
 
 // ── Custom Pivot Snapping Preview ───────────────────────────────────────────
 function PivotSnapPreview() {
@@ -189,6 +190,7 @@ export default function Viewport3D() {
         <MeasurementOverlay boards={boards} selectedItemIds={selectedItemIds} showMeasurements={showMeasurements} measurements={measurements} units={units} theme={theme} />
         <MeasureSnapPreview boards={boards} measureMode={measureMode} />
         <PivotSnapPreview />
+        <MiterCutVisualizer />
         <BuilderPreviewRenderer />
       </Canvas>
     </div>

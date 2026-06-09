@@ -27,6 +27,7 @@ const AppHeader = () => {
         showGrid, setShowGrid,
         showMeasurements, setShowMeasurements,
         measureMode, setMeasureMode,
+        showMeasurePanel, setShowMeasurePanel,
         isRightPanelOpen, setIsRightPanelOpen,
         currentFileName,
         setHeaderBottom,
@@ -130,9 +131,8 @@ const AppHeader = () => {
                         <button className={`nav-btn ${isOrtho ? 'active' : ''}`} onClick={() => setIsOrtho(!isOrtho)} title="Camera Mode" style={{ gridColumn: 2, gridRow: 1 }}>
                             {isOrtho ? '📐 Parallel' : '📷 Perspective'}
                         </button>
-                        <button className={`nav-btn ${measureMode?.active ? 'active' : ''}`} onClick={() => {
-                            if (measureMode?.active) setMeasureMode(null);
-                            else setMeasureMode({ active: true, firstPoint: null });
+                        <button className={`nav-btn ${showMeasurePanel ? 'active' : ''}`} onClick={() => {
+                            setShowMeasurePanel(!showMeasurePanel);
                         }} title="Measure distances" style={{ gridColumn: 3, gridRow: 1 }}>📏 Measure</button>
                         <button className={`nav-btn ${showOutlinerPanel ? 'active' : ''}`} onClick={() => setShowOutlinerPanel(!showOutlinerPanel)} title="Toggle Outliner" style={{ gridColumn: 4, gridRow: 1 }}>🗂️ Outliner</button>
 

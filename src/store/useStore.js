@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import * as THREE from 'three';
 import { createActions } from './actions';
 import { loadLibrarySync, loadLibraryFromDiskIfNeeded, loadStoredHandle } from '../utils/libraryPersistence';
 import { loadHardwareLibrarySync, loadHardwareLibraryFromDiskIfNeeded, loadStoredHardwareHandle, persistHardwareLibrary } from '../utils/hardwareLibraryPersistence';
@@ -225,6 +226,27 @@ const useStore = create((set, get) => ({
             get().addRecordedStep(next ? 'Click the **Animate** panel button.' : 'Close the **Animate** panel.');
         }
         set({ showAnimationPanel: next });
+    },
+
+    showMeasurePanel: false,
+    setShowMeasurePanel: (v) => {
+        const next = typeof v === 'function' ? v(get().showMeasurePanel) : v;
+        if (next !== get().showMeasurePanel && get().addRecordedStep) {
+            get().addRecordedStep(next ? 'Open measurement panel.' : 'Close measurement panel.');
+        }
+        set({ showMeasurePanel: next });
+    },
+
+    imperialFormat: loadState('imperialFormat', 'fraction'),
+    setImperialFormat: (v) => {
+        const next = typeof v === 'function' ? v(get().imperialFormat) : v;
+        set({ imperialFormat: next });
+        try {
+            const s = localStorage.getItem('lucey_save');
+            const p = s ? JSON.parse(s) : {};
+            p.imperialFormat = next;
+            localStorage.setItem('lucey_save', JSON.stringify(p));
+        } catch (e) {}
     },
 
     // ─── Animation state ──────────────────────────────────────────────────────
@@ -604,13 +626,13 @@ const useStore = create((set, get) => ({
         for (let axis = 0; axis < 3; axis++) {
             for (let i = 0; i < nextBoards.length; i++) {
                 const b = nextBoards[i];
-                if (b.visible === false) continue;
+                if (b.visible === false || b.disableAutoAlign) continue;
                 const b_size = b.size[axis];
                 const b_pos = b.position[axis];
 
                 for (let j = i + 1; j < nextBoards.length; j++) {
                     const other = nextBoards[j];
-                    if (other.visible === false) continue;
+                    if (other.visible === false || other.disableAutoAlign) continue;
                     const o_size = other.size[axis];
                     const o_pos = other.position[axis];
 
@@ -667,8 +689,62 @@ const useStore = create((set, get) => ({
             }
         }
 
-        if (changed) {
-            set({ boards: nextBoards, constraints: newConstraints });
+        // 3. Keep selected miter cut synchronized: if rotated such that selected cut is no longer visible, deselect/unhighlight
+        const miterSawBoardId = get().miterSawBoardId;
+        let selectedMiterCutIndex = get().selectedMiterCutIndex;
+        const miterSawCuts = get().miterSawCuts;
+
+        if (miterSawBoardId && selectedMiterCutIndex !== null && miterSawCuts) {
+            const newBoard = nextBoards.find(b => b.id.toString() === miterSawBoardId);
+            if (!newBoard) {
+                selectedMiterCutIndex = null;
+            } else {
+                const newOri = newBoard.orientation || [0, 0, 0];
+                const [rx, ry, rz] = newOri;
+                const euler = new THREE.Euler(rx, ry, rz, 'YXZ');
+                const upVectors = {
+                    top: new THREE.Vector3(0, 1, 0).applyEuler(euler).y,
+                    bottom: new THREE.Vector3(0, -1, 0).applyEuler(euler).y,
+                    front: new THREE.Vector3(0, 0, 1).applyEuler(euler).y,
+                    back: new THREE.Vector3(0, 0, -1).applyEuler(euler).y,
+                };
+                let maxVal = upVectors.top;
+                let upFace = 'top';
+                for (const [face, val] of Object.entries(upVectors)) {
+                    if (val > maxVal) {
+                        maxVal = val;
+                        upFace = face;
+                    }
+                }
+
+                const filteredCuts = miterSawCuts.filter(cut => {
+                    if (cut.isEndCut) return true;
+                    const cy = cut.centerY !== undefined ? cut.centerY : cut.positionY;
+                    const cz = cut.centerZ !== undefined ? cut.centerZ : cut.positionZ;
+                    if (upFace === 'top') return cy > 0.05;
+                    if (upFace === 'bottom') return cy < -0.05;
+                    if (upFace === 'front') return cz > 0.05;
+                    if (upFace === 'back') return cz < -0.05;
+                    return false;
+                });
+
+                const selectedCut = miterSawCuts[selectedMiterCutIndex];
+                const isVisible = filteredCuts.some(c => c === selectedCut);
+                if (!isVisible) {
+                    selectedMiterCutIndex = null;
+                }
+            }
+        }
+
+        const currentSelectedMiterCutIndex = get().selectedMiterCutIndex;
+        const selectedMiterCutIndexChanged = selectedMiterCutIndex !== currentSelectedMiterCutIndex;
+
+        if (changed || selectedMiterCutIndexChanged) {
+            set({ 
+                boards: nextBoards, 
+                constraints: newConstraints,
+                selectedMiterCutIndex
+            });
         } else {
             set({ boards: nextBoards });
         }

@@ -7,6 +7,8 @@ import { formatUnit } from '../utils/units';
 export function MeasureSnapPreview({ boards, measureMode }) {
   const measureHoverSnap = useStore(s => s.measureHoverSnap);
   const measurementStyle = useStore(s => s.measurementStyle) || 'arrows';
+  const units = useStore(s => s.units);
+  const imperialFormat = useStore(s => s.imperialFormat);
   if (!measureMode?.active) return null;
 
   // Helper: localOffset → world position
@@ -69,7 +71,6 @@ export function MeasureSnapPreview({ boards, measureMode }) {
         const oB = [wB[0] + dir[0]*off, wB[1] + dir[1]*off, wB[2] + dir[2]*off];
         const mid = [(oA[0]+oB[0])/2, (oA[1]+oB[1])/2, (oA[2]+oB[2])/2];
         const dist = Math.sqrt((wA[0]-wB[0])**2 + (wA[1]-wB[1])**2 + (wA[2]-wB[2])**2);
-        const units = useStore.getState().units;
         return (
           <group>
             {/* Leader lines */}
@@ -147,7 +148,7 @@ export function MeasureSnapPreview({ boards, measureMode }) {
             })()}
             <Billboard position={mid}>
               <Text fontSize={0.9} color="#ff9f0a" anchorX="center" anchorY="bottom" renderOrder={5} material-depthTest={false} outlineWidth={0.04} outlineColor="#000000">
-                {formatUnit(dist, units)}
+                {formatUnit(dist, units, imperialFormat)}
               </Text>
             </Billboard>
           </group>

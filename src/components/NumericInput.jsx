@@ -63,10 +63,10 @@ const NumericInput = ({ value, onChange, ...props }) => {
         const currentVal = isNaN(parsed) ? (parseFloat(value) || 0) : parsed;
         const stepNum = parseFloat(step) || 1;
         const newVal = direction === 'up' ? currentVal + stepNum : currentVal - stepNum;
-        
+
         // Round to avoid float precision issues (e.g. 0.1 + 0.2 = 0.30000000000000004)
         const rounded = parseFloat(newVal.toFixed(4));
-        
+
         onChange(rounded);
         setLocalVal(rounded.toString());
     };
@@ -101,16 +101,16 @@ const NumericInput = ({ value, onChange, ...props }) => {
     const shouldShowArrows = true;
 
     return (
-        <span 
+        <span
             className={`numeric-input-wrapper ${className || ''}`}
             onMouseEnter={() => setIsHovered(true)}
             onMouseLeave={() => setIsHovered(false)}
-            style={{ 
-                display: 'inline-flex', 
-                alignItems: 'center', 
-                position: 'relative', 
+            style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                position: 'relative',
                 width: '100%',
-                ...style 
+                ...style
             }}
         >
             <input
@@ -122,13 +122,13 @@ const NumericInput = ({ value, onChange, ...props }) => {
                 onBlur={handleBlur}
                 onKeyDown={handleKeyDown}
                 onWheel={handleWheel}
-                style={{ 
-                    width: '100%', 
-                    paddingRight: shouldShowArrows ? '16px' : '0px', 
-                    background: 'none', 
-                    border: 'none', 
-                    color: style?.color || 'var(--text-main)', 
-                    outline: 'none', 
+                style={{
+                    width: '100%',
+                    paddingRight: shouldShowArrows ? '16px' : '0px',
+                    background: 'none',
+                    border: 'none',
+                    color: style?.color || 'var(--text-main)',
+                    outline: 'none',
                     fontSize: style?.fontSize || '0.75rem',
                     fontWeight: style?.fontWeight || 500,
                     fontFamily: 'inherit',
@@ -140,7 +140,7 @@ const NumericInput = ({ value, onChange, ...props }) => {
                 {...inputProps}
             />
             {shouldShowArrows && (
-                <span 
+                <span
                     style={{
                         position: 'absolute',
                         right: '2px',
@@ -157,14 +157,14 @@ const NumericInput = ({ value, onChange, ...props }) => {
                         transition: 'opacity 0.15s ease'
                     }}
                 >
-                    <span 
-                        onClick={() => handleNudge('up')} 
-                        style={{ 
-                            height: '50%', 
-                            display: 'flex', 
-                            alignItems: 'center', 
-                            justifyContent: 'center', 
-                            fontSize: '8px', 
+                    <span
+                        onClick={() => handleNudge('up')}
+                        style={{
+                            height: '50%',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '8px',
                             lineHeight: '1',
                             padding: '1px 0'
                         }}
@@ -174,14 +174,14 @@ const NumericInput = ({ value, onChange, ...props }) => {
                     >
                         ▲
                     </span>
-                    <span 
-                        onClick={() => handleNudge('down')} 
-                        style={{ 
-                            height: '50%', 
-                            display: 'flex', 
-                            alignItems: 'center', 
-                            justifyContent: 'center', 
-                            fontSize: '8px', 
+                    <span
+                        onClick={() => handleNudge('down')}
+                        style={{
+                            height: '50%',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '8px',
                             lineHeight: '1',
                             padding: '1px 0'
                         }}

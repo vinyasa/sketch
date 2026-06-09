@@ -64,6 +64,7 @@ export const createIoSlice = (set, get) => ({
       workspaceLayout,
       lumberyardSnapEnabled,
       measurementStyle,
+      imperialFormat,
       setCurrentFileName
     } = get();
 
@@ -105,7 +106,8 @@ export const createIoSlice = (set, get) => ({
       panelLayoutMode,
       workspaceLayout,
       lumberyardSnapEnabled,
-      measurementStyle
+      measurementStyle,
+      imperialFormat
     };
     localStorage.setItem('lucey_save_' + name, JSON.stringify(payload));
     // Also update the active autosave buffer so manual saves survive page reloads immediately
@@ -144,7 +146,8 @@ export const createIoSlice = (set, get) => ({
       setPanelLayoutMode,
       setWorkspaceLayout,
       setLumberyardSnapEnabled,
-      setMeasurementStyle
+      setMeasurementStyle,
+      setImperialFormat
     } = get();
     const key = name ? 'lucey_save_' + name : 'lucey_save';
     const s = localStorage.getItem(key);
@@ -184,6 +187,7 @@ export const createIoSlice = (set, get) => ({
           if (p.workspaceLayout && setWorkspaceLayout) setWorkspaceLayout(p.workspaceLayout);
           if (p.lumberyardSnapEnabled !== undefined && setLumberyardSnapEnabled) setLumberyardSnapEnabled(p.lumberyardSnapEnabled);
           if (p.measurementStyle && setMeasurementStyle) setMeasurementStyle(p.measurementStyle);
+          if (p.imperialFormat && setImperialFormat) setImperialFormat(p.imperialFormat);
           if (name) setCurrentFileName(name);
 
           // Persist the loaded project to the active reload buffer 'lucey_save' so it survives page reloads

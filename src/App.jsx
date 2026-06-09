@@ -18,6 +18,7 @@ import HardwarePanel from './components/panels/HardwarePanel';
 import AssembliesPanel from './components/panels/AssembliesPanel';
 import AnimationPanel from './components/panels/AnimationPanel';
 import TutorialRecorderPanel from './components/panels/TutorialRecorderPanel';
+import MeasurePanel from './components/panels/MeasurePanel';
 import NewBoardDialog from './components/dialogs/NewBoardDialog';
 import CabinetBuilderDialog from './components/dialogs/CabinetBuilderDialog';
 import BoxBuilderDialog from './components/dialogs/BoxBuilderDialog';
@@ -99,6 +100,8 @@ export default function App() {
         showHardwarePanel, setShowHardwarePanel,
         showAnimationPanel, setShowAnimationPanel,
         showOutlinerPanel, setShowOutlinerPanel,
+        showMeasurePanel, setShowMeasurePanel,
+        imperialFormat,
         isRightPanelOpen, setIsRightPanelOpen,
         selectedItemIds,
         boards, groups,
@@ -166,8 +169,8 @@ export default function App() {
         if (autosaveInterval === 'off') return;
         const ms = parseInt(autosaveInterval, 10) * 60 * 1000;
         const id = setInterval(() => {
-            const { boards, groups, constraints, theme, units, gridSnap, defaultMaterial, showEdges, showDimensions, showBoundingBox, globalBounds, lighting, recentColors, autosaveInterval: ai, cameraState, measurements, showMeasurements, panelLayoutMode, workspaceLayout, lumberyardSnapEnabled, measurementStyle } = useStore.getState();
-            const payload = { boards, groups, constraints, theme, units, gridSnap, defaultMaterial, showEdges, showDimensions, showBoundingBox, globalBounds, lighting, recentColors, autosaveInterval: ai, cameraState, measurements, showMeasurements, panelLayoutMode, workspaceLayout, lumberyardSnapEnabled, measurementStyle };
+            const { boards, groups, constraints, theme, units, gridSnap, defaultMaterial, showEdges, showDimensions, showBoundingBox, globalBounds, lighting, recentColors, autosaveInterval: ai, cameraState, measurements, showMeasurements, panelLayoutMode, workspaceLayout, lumberyardSnapEnabled, measurementStyle, imperialFormat } = useStore.getState();
+            const payload = { boards, groups, constraints, theme, units, gridSnap, defaultMaterial, showEdges, showDimensions, showBoundingBox, globalBounds, lighting, recentColors, autosaveInterval: ai, cameraState, measurements, showMeasurements, panelLayoutMode, workspaceLayout, lumberyardSnapEnabled, measurementStyle, imperialFormat };
             localStorage.setItem('lucey_save', JSON.stringify(payload));
         }, ms);
         return () => clearInterval(id);
@@ -259,6 +262,12 @@ export default function App() {
                     {showRecorderPanel && (
                         <DraggablePanel title="🔴 Step-by-Step Recorder" defaultPosition={getSmartPosition(340, 480, 'center', headerBottom)} defaultSize={{ width: 340 }} topMargin={headerBottom} onClose={() => setShowRecorderPanel(false)} zIndex={600}>
                             <TutorialRecorderPanel />
+                        </DraggablePanel>
+                    )}
+
+                    {showMeasurePanel && (
+                        <DraggablePanel title="Measure" defaultPosition={getSmartPosition(200, 200, 'right', headerBottom)} defaultSize={{ width: 200 }} topMargin={headerBottom} onClose={() => setShowMeasurePanel(false)} zIndex={800}>
+                            <MeasurePanel />
                         </DraggablePanel>
                     )}
 

@@ -2,8 +2,29 @@ import * as THREE from 'three';
 import { computeWorldAABB, collectChildBoards } from '../../utils/sceneGraph';
 import { propagateMove, checkConstraintConflict, solveFlushSnap, faceToAxis } from '../../utils/constraintSolver';
 import { WOOD_CATALOGUE, PAINT_PALETTE } from '../../utils/materialCatalogue';
+import { calculateBoardCuts } from '../../utils/miterSawCalculator';
 
 export const createBoardSlice = (set, get) => ({
+  miterSawCuts: null,
+  miterSawBoardId: null,
+  selectedMiterCutIndex: null,
+
+  setSelectedMiterCutIndex: (index) => {
+    set({ selectedMiterCutIndex: index });
+  },
+
+  calculateMiterSawCuts: (boardId) => {
+    const { boards } = get();
+    const targetBoard = boards.find(b => b.id.toString() === boardId.toString());
+    if (!targetBoard) return;
+    const cuts = calculateBoardCuts(targetBoard);
+    set({
+      miterSawCuts: cuts,
+      miterSawBoardId: boardId.toString(),
+      selectedMiterCutIndex: null
+    });
+  },
+
   setCustomPivot: (boardId, localOffset) => {
     const {
       boards,
@@ -1153,5 +1174,83 @@ export const createBoardSlice = (set, get) => ({
     }]);
     setSelectedItemIds([newId.toString()]);
     setNewBoardDialog(null);
+  },
+  prepareBoardForMiterSaw: (boardId) => {
+    const {
+      boards,
+      setBoards,
+      setSelectedItemIds,
+      pushHistory,
+      showToast,
+      addRecordedStep,
+      setConstraints
+    } = get();
+    const targetBoard = boards.find(b => b.id.toString() === boardId.toString());
+    if (!targetBoard) return;
+
+    pushHistory();
+
+    // 1. Release alignments & constraints for the original board
+    setConstraints(prev => {
+      const next = {};
+      Object.entries(prev).forEach(([cId, c]) => {
+        if (c.boardAId !== boardId.toString() && c.boardBId !== boardId.toString()) {
+          next[cId] = c;
+        }
+      });
+      return next;
+    });
+
+    const aabb = computeWorldAABB(boards);
+    const maxX = boards.length > 0 ? aabb.maxX : 0;
+
+    const length = targetBoard.size[0];
+    const thickness = targetBoard.size[1];
+    const cloneId = Date.now();
+
+    const clone = {
+      ...targetBoard,
+      id: cloneId,
+      name: `${targetBoard.name} (Miter/Bevel Angles)`,
+      parentId: 'Workspace',
+      pivot: [0, 0, 0],
+      orientation: [0, 0, 0],
+      position: [
+        maxX + 10 + length / 2,
+        thickness / 2,
+        0
+      ],
+      constraints: [],
+      disableAutoAlign: true,
+      operations: targetBoard.operations ? JSON.parse(JSON.stringify(targetBoard.operations)) : []
+    };
+
+    if (addRecordedStep) {
+      addRecordedStep(`Clone board \`${targetBoard.name}\` for miter/bevel angles calculation, positioning it flat at [X: ${(maxX + 10 + length / 2).toFixed(2)}, Y: ${(thickness / 2).toFixed(2)}, Z: 0] and releasing its alignments and constraints.`);
+    }
+
+    // 2. Pre-calculate the cuts on the clone
+    const cuts = calculateBoardCuts(clone);
+
+    const updatedBoards = boards.map(b => {
+      if (b.id.toString() === boardId.toString()) {
+        return {
+          ...b,
+          disableAutoAlign: true,
+          constraints: []
+        };
+      }
+      return b;
+    });
+
+    setBoards(prev => [...updatedBoards, clone]);
+    setSelectedItemIds([cloneId.toString()]);
+    set({
+      miterSawCuts: cuts,
+      miterSawBoardId: cloneId.toString(),
+      selectedMiterCutIndex: null
+    });
+
+    showToast(`Prepared clone "${clone.name}" and calculated its miter/bevel angles.`);
   }
 });

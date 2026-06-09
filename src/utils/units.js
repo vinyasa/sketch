@@ -5,8 +5,13 @@
  * @param {string} units - 'imperial' or 'metric'
  * @returns {string} Formatted string with unit suffix
  */
-export const formatUnit = (val, units) => {
+export const formatUnit = (val, units, imperialFormat = 'fraction') => {
     if (units === 'metric') return `${(val * 25.4).toFixed(1)}mm`;
+    
+    if (imperialFormat === 'decimal') {
+        const rounded = Number(val.toFixed(4));
+        return `${rounded}"`;
+    }
     
     let whole = Math.floor(val);
     let num = Math.round((val % 1) * 16); // 1/16" precision
@@ -16,6 +21,10 @@ export const formatUnit = (val, units) => {
         whole += 1;
         num = 0;
     }
+    
+    // Check if the original value deviates from the rounded 1/16" value
+    const roundedDecimal = whole + (num / den);
+    const hasDeviation = Math.abs(val - roundedDecimal) > 0.001;
     
     if (num === 0) {
         return `${whole}"`;
@@ -27,11 +36,14 @@ export const formatUnit = (val, units) => {
         den /= 2;
     }
     
+    const is8or16 = (den === 8 || den === 16);
+    const prefix = (hasDeviation && is8or16) ? '≈ ' : '';
+    
     if (whole === 0) {
-        return `${num}/${den}"`;
+        return `${prefix}${num}/${den}"`;
     }
     
-    return `${whole} ${num}/${den}"`;
+    return `${prefix}${whole} ${num}/${den}"`;
 };
 
 /**

@@ -8,6 +8,7 @@ export function MeasurementOverlay({ boards, selectedItemIds, showMeasurements, 
   const printCapture = useStore(s => s.printCapture);
   const isPrinting = !!printCapture;
   const measurementStyle = useStore(s => s.measurementStyle) || 'arrows';
+  const imperialFormat = useStore(s => s.imperialFormat || 'fraction');
 
   // During print: hide auto-dims always; show custom measurements only if showDims is checked
   if (!showMeasurements && !isPrinting) return null;
@@ -71,7 +72,7 @@ export function MeasurementOverlay({ boards, selectedItemIds, showMeasurements, 
              <Line points={xT2} color={lineColor} lineWidth={1.5} depthTest={false} renderOrder={2} />
              <Billboard position={ptX}>
                 <Text fontSize={textSize} color={textColor} anchorX="center" anchorY="bottom" renderOrder={3} material-depthTest={false} outlineWidth={0.03} outlineColor={theme === 'dark' ? '#000000' : '#ffffff'}>
-                  {formatUnit(b.size[0], units)}
+                  {formatUnit(b.size[0], units, imperialFormat)}
                 </Text>
              </Billboard>
 
@@ -80,7 +81,7 @@ export function MeasurementOverlay({ boards, selectedItemIds, showMeasurements, 
              <Line points={yT2} color={lineColor} lineWidth={1.5} depthTest={false} renderOrder={2} />
              <Billboard position={ptY}>
                 <Text fontSize={textSize} color={textColor} anchorX="left" anchorY="middle" renderOrder={3} material-depthTest={false} outlineWidth={0.03} outlineColor={theme === 'dark' ? '#000000' : '#ffffff'}>
-                  {formatUnit(b.size[1], units)}
+                  {formatUnit(b.size[1], units, imperialFormat)}
                 </Text>
              </Billboard>
 
@@ -89,7 +90,7 @@ export function MeasurementOverlay({ boards, selectedItemIds, showMeasurements, 
              <Line points={zT2} color={lineColor} lineWidth={1.5} depthTest={false} renderOrder={2} />
              <Billboard position={ptZ}>
                 <Text fontSize={textSize} color={textColor} anchorX="center" anchorY="top" renderOrder={3} material-depthTest={false} outlineWidth={0.03} outlineColor={theme === 'dark' ? '#000000' : '#ffffff'}>
-                  {formatUnit(b.size[2], units)}
+                  {formatUnit(b.size[2], units, imperialFormat)}
                 </Text>
              </Billboard>
           </group>
@@ -204,7 +205,7 @@ export function MeasurementOverlay({ boards, selectedItemIds, showMeasurements, 
             {/* Label at offset midpoint */}
             <Billboard position={mid}>
               <Text fontSize={textSize * 1.1} color={color} anchorX="center" anchorY="bottom" renderOrder={5} material-depthTest={false} outlineWidth={0.04} outlineColor="#000000">
-                {formatUnit(dist, units)}
+                {formatUnit(dist, units, imperialFormat)}
               </Text>
             </Billboard>
             {/* Invisible click target along the offset line */}
