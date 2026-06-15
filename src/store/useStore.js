@@ -569,6 +569,44 @@ const useStore = create((set, get) => ({
     },
     clearFaceSelection: () => set({ selectedFaces: [] }),
 
+    // Edge Relationship Measurement Mode state
+    measureEdgesActive: false,
+    setMeasureEdgesActive: (active) => set({ measureEdgesActive: active }),
+    selectedEdges: [],
+    toggleEdgeSelection: (boardId, edgeStart, edgeEnd) => {
+        const { selectedEdges } = get();
+        const newEdge = { boardId, edgeStart, edgeEnd };
+
+        const index = selectedEdges.findIndex(e => 
+            e.boardId === boardId && (
+                (Math.abs(e.edgeStart[0] - edgeStart[0]) < 0.01 &&
+                 Math.abs(e.edgeStart[1] - edgeStart[1]) < 0.01 &&
+                 Math.abs(e.edgeStart[2] - edgeStart[2]) < 0.01 &&
+                 Math.abs(e.edgeEnd[0] - edgeEnd[0]) < 0.01 &&
+                 Math.abs(e.edgeEnd[1] - edgeEnd[1]) < 0.01 &&
+                 Math.abs(e.edgeEnd[2] - edgeEnd[2]) < 0.01)
+                ||
+                (Math.abs(e.edgeStart[0] - edgeEnd[0]) < 0.01 &&
+                 Math.abs(e.edgeStart[1] - edgeEnd[1]) < 0.01 &&
+                 Math.abs(e.edgeStart[2] - edgeEnd[2]) < 0.01 &&
+                 Math.abs(e.edgeEnd[0] - edgeStart[0]) < 0.01 &&
+                 Math.abs(e.edgeEnd[1] - edgeStart[1]) < 0.01 &&
+                 Math.abs(e.edgeEnd[2] - edgeStart[2]) < 0.01)
+            )
+        );
+
+        if (index > -1) {
+            set({ selectedEdges: selectedEdges.filter((_, i) => i !== index) });
+        } else {
+            if (selectedEdges.length >= 2) {
+                set({ selectedEdges: [newEdge] });
+            } else {
+                set({ selectedEdges: [...selectedEdges, newEdge] });
+            }
+        }
+    },
+    clearEdgeSelection: () => set({ selectedEdges: [] }),
+
     // Visibility toggle (controls both auto-dims AND custom measurements)
     showMeasurements: loadState('showMeasurements', true),
     setShowMeasurements: (v) => set({ showMeasurements: typeof v === 'function' ? v(get().showMeasurements) : v }),

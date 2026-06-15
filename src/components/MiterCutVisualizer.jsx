@@ -2,7 +2,7 @@ import React from 'react';
 import * as THREE from 'three';
 import { Html } from '@react-three/drei';
 import useStore from '../store/useStore';
-import { getTopFrontIntersection, getDynamicAngles } from '../utils/miterSawCalculator';
+import { getTopFrontIntersection, getDynamicAngles, getLabelAndDist } from '../utils/miterSawCalculator';
 import { formatUnit } from '../utils/units';
 
 export function MiterCutVisualizer() {
@@ -34,14 +34,14 @@ export function MiterCutVisualizer() {
   const { miter, bevel } = getDynamicAngles(board, cut);
 
   // 1. Calculate world position of the Top-Front edge intersection point
-  const { localX, worldPos } = getTopFrontIntersection(board, cut);
+  const { worldPos } = getTopFrontIntersection(board, cut);
   const [rx, ry, rz] = board.orientation || [0, 0, 0];
   const euler = new THREE.Euler(rx, ry, rz, 'YXZ');
 
   // Compute dynamic label based on intersection point and active format
-  let displayLabel = cut.label;
-  if (!['Left End', 'Right End'].includes(cut.label)) {
-    const distFromLeft = localX + board.size[0] / 2;
+  const { label, distFromLeft } = getLabelAndDist(board, cut);
+  let displayLabel = label;
+  if (!['Left End', 'Right End'].includes(label)) {
     if (units === 'metric') {
       displayLabel = `Cut at ${(distFromLeft * 25.4).toFixed(0)} mm`;
     } else {

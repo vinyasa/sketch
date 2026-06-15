@@ -5,699 +5,14 @@ import { useTexture, useGLTF, Edges, Html, Line } from '@react-three/drei';
 import useStore from '../store/useStore';
 import { checkConstraintConflict, propagateMove, getFaceWorldPos } from '../utils/constraintSolver';
 import { computeWorldAABB, collectChildBoards, calculateGroupAABB } from '../utils/sceneGraph';
-import { formatUnit, getGridStep } from '../utils/units';
+import { getGridStep } from '../utils/units';
 import { WOOD_CATALOGUE, WOOD_TEXTURE_URLS, normalizeMaterial } from '../utils/materialCatalogue';
 import { buildTaperGeometry, normalizeTaper } from '../utils/geometryBuilders';
 import { computeHardwareTransform } from '../utils/hardwareCatalogue';
-import { Evaluator, SUBTRACTION, INTERSECTION, Brush } from 'three-bvh-csg';
 import { computeSnapPoints, findNearestSnap } from '../utils/snapHelpers';
 import { getFaceTriangles, getFaceLabel } from '../utils/faceMeasurement';
+import CSGGeometry from './CSGGeometry';
 
-const csgEvaluator = new Evaluator();
-
-const _buildArcTool = (size, op) => {
-  const { startAngle = 0, endAngle = 90, innerRadius = 0, axis = 'y' } = op;
-  const axisIdx = axis === 'x' ? 0 : axis === 'z' ? 2 : 1;
-  const thickness = size[axisIdx];
-  
-  let dimX, dimY;
-  if (axis === 'y') { dimX = size[0]; dimY = size[2]; }
-  else if (axis === 'x') { dimX = size[2]; dimY = size[1]; }
-  else { dimX = size[0]; dimY = size[1]; }
-
-  const shape = new THREE.Shape();
-  const startRad = THREE.MathUtils.degToRad(startAngle);
-  const endRad = THREE.MathUtils.degToRad(endAngle);
-  
-  shape.absellipse(0, 0, dimX, dimY, startRad, endRad, false, 0);
-  if (innerRadius === 0) shape.lineTo(0, 0);
-  else {
-    const irX = Math.max(0.01, dimX - innerRadius);
-    const irY = Math.max(0.01, dimY - innerRadius);
-    shape.lineTo(Math.cos(endRad) * irX, Math.sin(endRad) * irY);
-    shape.absellipse(0, 0, irX, irY, endRad, startRad, true, 0);
-  }
-  
-  const g = new THREE.ExtrudeGeometry(shape, { depth: thickness, bevelEnabled: false, curveSegments: 12 });
-  g.computeBoundingBox();
-  const center = new THREE.Vector3();
-  g.boundingBox.getCenter(center);
-  g.translate(-center.x, -center.y, -center.z);
-  
-  if (axis === 'y') g.rotateX(-Math.PI / 2);
-  if (axis === 'x') g.rotateY(Math.PI / 2);
-  
-  g.computeBoundingBox();
-  const bboxSize = new THREE.Vector3();
-  g.boundingBox.getSize(bboxSize);
-  g.scale(size[0] / (bboxSize.x || 1), size[1] / (bboxSize.y || 1), size[2] / (bboxSize.z || 1));
-  return g;
-};
-
-const _buildCoveTool = (size, op) => {
-  const { edge = 'top', depth = 2, axis = 'y' } = op;
-  const axisIdx = axis === 'x' ? 0 : axis === 'z' ? 2 : 1;
-  const thickness = size[axisIdx];
-  let dimX, dimY;
-  if (axis === 'y') { dimX = size[0]; dimY = size[2]; }
-  else if (axis === 'x') { dimX = size[2]; dimY = size[1]; }
-  else { dimX = size[0]; dimY = size[1]; }
-
-  const shape = new THREE.Shape();
-  if (edge === 'bottom') { shape.moveTo(0, 0); shape.absellipse(dimX / 2, 0, dimX / 2, depth, Math.PI, 0, true, 0); } else { shape.moveTo(0, 0); shape.lineTo(dimX, 0); }
-  if (edge === 'right') { shape.absellipse(dimX, dimY / 2, depth, dimY / 2, -Math.PI / 2, Math.PI / 2, true, 0); } else { shape.lineTo(dimX, dimY); }
-  if (edge === 'top') { shape.absellipse(dimX / 2, dimY, dimX / 2, depth, 0, Math.PI, true, 0); } else { shape.lineTo(0, dimY); }
-  if (edge === 'left') { shape.absellipse(0, dimY / 2, depth, dimY / 2, Math.PI / 2, -Math.PI / 2, true, 0); } else { shape.lineTo(0, 0); }
-
-  const g = new THREE.ExtrudeGeometry(shape, { depth: thickness, bevelEnabled: false, curveSegments: 12 });
-  g.translate(-dimX/2, -dimY/2, -thickness/2);
-  if (axis === 'y') g.rotateX(-Math.PI / 2);
-  if (axis === 'x') g.rotateY(Math.PI / 2);
-  
-  g.computeBoundingBox();
-  const bboxSize = new THREE.Vector3();
-  g.boundingBox.getSize(bboxSize);
-  g.scale(size[0] / (bboxSize.x || 1), size[1] / (bboxSize.y || 1), size[2] / (bboxSize.z || 1));
-  return g;
-};
-
-// ── Dado / Groove / Rabbet tool builder ──────────────────────────────────────
-const _FACE_MAP = {
-  top:    { depthAxis: 1, sign: +1, faceAxes: [0, 2] },
-  bottom: { depthAxis: 1, sign: -1, faceAxes: [0, 2] },
-  front:  { depthAxis: 2, sign: +1, faceAxes: [0, 1] },
-  back:   { depthAxis: 2, sign: -1, faceAxes: [0, 1] },
-  right:  { depthAxis: 0, sign: +1, faceAxes: [1, 2] },
-  left:   { depthAxis: 0, sign: -1, faceAxes: [1, 2] },
-};
-const _AXIS_LABELS = ['x', 'y', 'z'];
-
-const _buildDadoTool = (size, op) => {
-  const face = _FACE_MAP[op.face || 'top'];
-  const { depthAxis, sign, faceAxes } = face;
-
-  const depth = Math.max(0.01, op.depth ?? 0.375);
-  const width = Math.max(0.01, op.width ?? 0.75);
-  const offset = op.offset ?? 0;
-  const lengthOffset = op.lengthOffset ?? 0;
-
-  // Direction: which face-plane axis the channel runs along
-  const dirAxis = op.direction === _AXIS_LABELS[faceAxes[1]] ? faceAxes[1] : faceAxes[0];
-  const widthAxis = dirAxis === faceAxes[0] ? faceAxes[1] : faceAxes[0];
-
-  // Channel length: 0 or missing = full through-cut
-  const channelLength = (op.length ?? 0) <= 0 ? size[dirAxis] + 2 : op.length;
-
-  // Build box dimensions
-  const boxSize = [0, 0, 0];
-  boxSize[dirAxis] = channelLength;
-  boxSize[widthAxis] = width;
-  boxSize[depthAxis] = depth;
-
-  // Position: flush against the chosen face
-  const pos = [0, 0, 0];
-  pos[depthAxis] = sign * (size[depthAxis] / 2 - depth / 2);
-  pos[widthAxis] = offset;
-  pos[dirAxis] = lengthOffset;
-
-  const geo = new THREE.BoxGeometry(boxSize[0], boxSize[1], boxSize[2]);
-  geo.translate(pos[0], pos[1], pos[2]);
-  return geo;
-};
-
-const _buildBlindHoleTool = (size, op) => {
-  const face = _FACE_MAP[op.face || 'top'];
-  const { depthAxis, sign, faceAxes } = face;
-
-  const depth = Math.max(0.01, op.depth ?? 1.0);
-  const radius = Math.max(0.01, op.radius ?? 0.1875);
-  const offset = op.offset ?? 0;
-  const offsetY = op.offsetY ?? 0;
-
-  // Identify which face axis is the "span" (longer) and which is "thickness" (shorter)
-  const fa0 = faceAxes[0];
-  const fa1 = faceAxes[1];
-  const spanFaceAxis = size[fa0] >= size[fa1] ? fa0 : fa1;
-  const thicknessFaceAxis = spanFaceAxis === fa0 ? fa1 : fa0;
-
-  const cyl = new THREE.CylinderGeometry(radius, radius, depth, 32);
-
-  if (depthAxis === 0) cyl.rotateZ(Math.PI / 2);
-  else if (depthAxis === 2) cyl.rotateX(Math.PI / 2);
-
-  const pos = [0, 0, 0];
-  pos[depthAxis] = sign * (size[depthAxis] / 2 - depth / 2);
-  pos[spanFaceAxis] = offset;
-  pos[thicknessFaceAxis] = offsetY;
-
-  cyl.translate(pos[0], pos[1], pos[2]);
-  return cyl;
-};
-
-// ── Miter Saw Cut tool builder ───────────────────────────────────────────────
-// The miter operation stores:
-//   face      — which end to cut ('x+', 'x-', 'z+', 'z-')
-//   fenceEdge — which edge of that end face the saw pivots from ('z-', 'z+', 'x-', 'x+')
-//   angle     — miter degrees from square (always positive, 0–60°)
-//   bevel     — bevel degrees (blade tilt from vertical, 0–45°)
-//
-// The fence edge stays at the measured length; the opposite edge gets shorter.
-// Both face and fenceEdge are LOCAL to the board and never remapped.
-//
-// Compound miter: miter swings the blade around Y (turntable),
-// bevel tilts the blade from vertical (motor head tilt).
-const _buildMiterTool = (size, op) => {
-  const face = op.face || 'x+';
-  const fence = op.fenceEdge || 'z-';
-  const angleDeg = Math.max(0, op.angle ?? 45);
-  const angleRad = (angleDeg * Math.PI) / 180;
-  const bevelDeg = op.bevel ?? 0;
-  const bevelRad = (bevelDeg * Math.PI) / 180;
-
-  const faceAxis = face[0] === 'x' ? 0 : face[0] === 'y' ? 1 : 2;
-  const faceSign = face[1] === '+' ? 1 : -1;
-  const fenceAxis = fence[0] === 'x' ? 0 : fence[0] === 'y' ? 1 : 2;
-  const fenceSign = fence[1] === '+' ? 1 : -1;
-
-  const cutterSize = Math.max(size[0], size[1], size[2]) * 4;
-  const geo = new THREE.BoxGeometry(cutterSize, cutterSize, cutterSize);
-
-  // 1. Position cutter so its cutting face is at the origin
-  const shift = [0, 0, 0];
-  shift[faceAxis] = faceSign * cutterSize / 2;
-  const shiftToOrigin = new THREE.Matrix4().makeTranslation(shift[0], shift[1], shift[2]);
-
-  // 2. Bevel rotation
-  let bevelMatrix = new THREE.Matrix4();
-  const thicknessAxis = [0, 1, 2].find(i => i !== faceAxis && i !== fenceAxis);
-  
-  if (Math.abs(bevelRad) > 0.001) {
-    const pivotVal = bevelDeg > 0 ? -size[thicknessAxis] / 2 : size[thicknessAxis] / 2;
-    
-    const tv = [0, 0, 0];
-    tv[thicknessAxis] = -pivotVal;
-    const toOrigin = new THREE.Matrix4().makeTranslation(tv[0], tv[1], tv[2]);
-    tv[thicknessAxis] = pivotVal;
-    const fromOrigin = new THREE.Matrix4().makeTranslation(tv[0], tv[1], tv[2]);
-    
-    let rot = new THREE.Matrix4();
-    
-    // The rotation angle must tilt the face normal towards the thickness axis.
-    // Based on right-hand rule rotations in Three.js (X->Y->Z->X cycle):
-    // "Forward" face axis in cycle uses positive sin, "Backward" face axis uses negative sin.
-    const isForward = 
-      (fenceAxis === 0 && faceAxis === 1) || 
-      (fenceAxis === 1 && faceAxis === 2) || 
-      (fenceAxis === 2 && faceAxis === 0);
-      
-    const rotAngle = (isForward ? 1 : -1) * faceSign * bevelRad;
-    
-    if (fenceAxis === 0) rot.makeRotationX(rotAngle);
-    else if (fenceAxis === 1) rot.makeRotationY(rotAngle);
-    else rot.makeRotationZ(rotAngle);
-    
-    bevelMatrix.multiply(fromOrigin).multiply(rot).multiply(toOrigin);
-  }
-
-  // 3. Miter rotation
-  let miterMatrix = new THREE.Matrix4();
-  if (Math.abs(angleRad) > 0.001) {
-    const rotAngle = faceSign * fenceSign * angleRad;
-    if (thicknessAxis === 0) miterMatrix.makeRotationX((faceAxis === 1 ? -1 : 1) * rotAngle);
-    else if (thicknessAxis === 1) miterMatrix.makeRotationY((faceAxis === 2 ? -1 : 1) * rotAngle);
-    else miterMatrix.makeRotationZ((faceAxis === 0 ? -1 : 1) * rotAngle);
-  }
-
-  // 4. Translate to pivot
-  const pivot = [0, 0, 0];
-  pivot[faceAxis] = faceSign * size[faceAxis] / 2;
-  pivot[fenceAxis] = fenceSign * size[fenceAxis] / 2;
-  const shiftToPivot = new THREE.Matrix4().makeTranslation(pivot[0], pivot[1], pivot[2]);
-
-  const m = new THREE.Matrix4()
-    .multiply(shiftToPivot)
-    .multiply(miterMatrix)
-    .multiply(bevelMatrix)
-    .multiply(shiftToOrigin);
-
-  geo.applyMatrix4(m);
-  return geo;
-};
-
-const _buildEdgeProfileTool = (size, op) => {
-  const { profile = 'roundover', edge = 'y+z+', radius = 0.25, width = 0.25 } = op;
-  
-  const match = edge.match(/^([xyz])([+-])([xyz])([+-])$/);
-  if (!match) return new THREE.BoxGeometry(0.01, 0.01, 0.01);
-  
-  const a1 = match[1];
-  const s1 = match[2] === '+' ? 1 : -1;
-  const a2 = match[3];
-  const s2 = match[4] === '+' ? 1 : -1;
-  
-  const axes = ['x', 'y', 'z'];
-  const a1Idx = axes.indexOf(a1);
-  const a2Idx = axes.indexOf(a2);
-  const runIdx = [0, 1, 2].find(i => i !== a1Idx && i !== a2Idx);
-  
-  const p1Idx = a1Idx;
-  const p2Idx = a2Idx;
-  
-  // Compute orthonormal basis with determinant +1 to avoid mirroring
-  const vec_p1 = new THREE.Vector3();
-  vec_p1.setComponent(p1Idx, 1);
-  
-  const vec_run = new THREE.Vector3();
-  vec_run.setComponent(runIdx, 1);
-  
-  const vec_p2 = new THREE.Vector3().crossVectors(vec_run, vec_p1);
-  const s_p2 = vec_p2.getComponent(p2Idx); // Will be 1 or -1
-  
-  const s2_adj = s2 * s_p2;
-  
-  const hw1 = size[p1Idx] / 2;
-  const hw2 = size[p2Idx] / 2;
-  const L = size[runIdx];
-  const R = profile === 'roundover' ? Math.max(0.01, radius) : Math.max(0.01, width);
-  
-  const shape = new THREE.Shape();
-  const Cx = s1 * hw1;
-  const Cy = s2_adj * hw2;
-  
-  const Ax = s1 * (hw1 - R);
-  const Ay = s2_adj * hw2;
-  
-  const Bx = s1 * hw1;
-  const By = s2_adj * (hw2 - R);
-  
-  shape.moveTo(Ax, Ay);
-  shape.lineTo(Cx, Cy);
-  shape.lineTo(Bx, By);
-  
-  if (profile === 'roundover') {
-    const Ox = s1 * (hw1 - R);
-    const Oy = s2_adj * (hw2 - R);
-    const startAngle = Math.atan2(By - Oy, Bx - Ox);
-    const endAngle = Math.atan2(Ay - Oy, Ax - Ox);
-    const clockwise = (s1 * s2_adj) < 0;
-    shape.absarc(Ox, Oy, R, startAngle, endAngle, clockwise);
-  } else {
-    shape.lineTo(Ax, Ay);
-  }
-  
-  const geom = new THREE.ExtrudeGeometry(shape, { depth: L + 2, bevelEnabled: false, curveSegments: 16 });
-  geom.translate(0, 0, -(L + 2) / 2);
-  
-  const matrix = new THREE.Matrix4();
-  matrix.set(
-    vec_p1.x,  vec_p2.x,  vec_run.x,  0,
-    vec_p1.y,  vec_p2.y,  vec_run.y,  0,
-    vec_p1.z,  vec_p2.z,  vec_run.z,  0,
-    0,         0,         0,          1
-  );
-  
-  geom.applyMatrix4(matrix);
-  return geom;
-};
-
-const CSGGeometry = ({ b }) => {
-  // Serialize only the fields that actually affect geometry.
-  const targetKey = JSON.stringify({
-    shape: b.shape,
-    size: b.size,
-    taper: b.taper,
-    cylinder: b.cylinder,
-    operations: b.operations,
-  });
-
-  const geo = useMemo(() => {
-    const MAX_TRIS = 250000; // Safety limit — real hangs happen at millions, 250K is fine for modern GPUs
-    let baseGeo;
-    try {
-      if (b.shape === 'taper') {
-        const { angleLeft, angleRight, angleFront, angleBack } = normalizeTaper(b.taper);
-        baseGeo = buildTaperGeometry(b.size[0], b.size[1], b.size[2], angleLeft, angleRight, angleFront, angleBack);
-      } else if (b.shape === 'cylinder') {
-        const axis = b.cylinder?.axis || 'y';
-        const axisIdx = axis === 'x' ? 0 : axis === 'z' ? 2 : 1;
-        const dim1 = b.size[(axisIdx + 1) % 3];
-        const dim2 = b.size[(axisIdx + 2) % 3];
-        const radius = Math.min(dim1, dim2) / 2;
-        const height = b.size[axisIdx];
-        baseGeo = new THREE.CylinderGeometry(radius, radius, height, 64, 1);
-        if (axis === 'x') baseGeo.rotateZ(Math.PI / 2);
-        if (axis === 'z') baseGeo.rotateX(Math.PI / 2);
-      } else {
-        baseGeo = new THREE.BoxGeometry(b.size[0], b.size[1], b.size[2]);
-      }
-
-      if (!b.operations || b.operations.length === 0) return baseGeo;
-
-      // Helper: count triangles in a geometry/brush
-      const triCount = (brush) => {
-        const g = brush.geometry || brush;
-        if (g.index) return g.index.count / 3;
-        const pos = g.getAttribute?.('position');
-        return pos ? pos.count / 3 : 0;
-      };
-
-      // ── CSG strategy ────────────────────────────────────────────────────────
-      const activeOps = b.operations.filter(op => op.enabled !== false);
-      if (activeOps.length === 0) return baseGeo;
-
-      const subOps    = activeOps.filter(op => op.type === 'hole' || op.type === 'dado' || op.type === 'miter' || op.type === 'subtract' || op.type === 'edge-profile' || op.type === 'pocket-holes' || op.type === 'dowel-holes');
-      const intersOps = activeOps.filter(op => op.type === 'arc' || op.type === 'cove');
-
-      let resultBrush = new Brush(baseGeo);
-      resultBrush.updateMatrixWorld();
-
-      // ── 1. Subtractions (holes / dados / miter / profiles / fasteners) ──────
-      for (const op of subOps) {
-        try {
-          let opBrush;
-          if (op.type === 'subtract') {
-            // ── Boolean subtract: rebuild cutter from snapshot ──────────
-            const cs = op.cutterSize;
-            let cutterGeo;
-            if (op.cutterShape === 'cylinder') {
-              const cAxis = op.cutterCylinder?.axis || 'y';
-              const cAxisIdx = cAxis === 'x' ? 0 : cAxis === 'z' ? 2 : 1;
-              const cDim1 = cs[(cAxisIdx + 1) % 3];
-              const cDim2 = cs[(cAxisIdx + 2) % 3];
-              const cRadius = Math.min(cDim1, cDim2) / 2;
-              const cHeight = cs[cAxisIdx];
-              cutterGeo = new THREE.CylinderGeometry(cRadius, cRadius, cHeight, 64, 1);
-              if (cAxis === 'x') cutterGeo.rotateZ(Math.PI / 2);
-              if (cAxis === 'z') cutterGeo.rotateX(Math.PI / 2);
-            } else if (op.cutterShape === 'taper' && op.cutterTaper) {
-              const { angleLeft, angleRight, angleFront, angleBack } = normalizeTaper(op.cutterTaper);
-              cutterGeo = buildTaperGeometry(cs[0], cs[1], cs[2], angleLeft, angleRight, angleFront, angleBack);
-            } else {
-              cutterGeo = new THREE.BoxGeometry(cs[0], cs[1], cs[2]);
-            }
-            // Apply the stored relative transform (positions cutter in target's local space)
-            if (op.relativeMatrix) {
-              const m = new THREE.Matrix4().fromArray(op.relativeMatrix);
-              cutterGeo.applyMatrix4(m);
-            }
-            opBrush = new Brush(cutterGeo);
-            opBrush.updateMatrixWorld();
-          } else if (op.type === 'miter') {
-            opBrush = new Brush(_buildMiterTool(b.size, op));
-            opBrush.updateMatrixWorld();
-          } else if (op.type === 'dado') {
-            opBrush = new Brush(_buildDadoTool(b.size, op));
-            opBrush.updateMatrixWorld();
-          } else if (op.type === 'edge-profile') {
-            opBrush = new Brush(_buildEdgeProfileTool(b.size, op));
-            opBrush.updateMatrixWorld();
-          } else if (op.type === 'pocket-holes') {
-            const { face = 'bottom', edge = 'left', count = 2, spacing = 'auto' } = op;
-            const faceMap = {
-              top:    { idx: 1, sign: 1 },
-              bottom: { idx: 1, sign: -1 },
-              front:  { idx: 2, sign: 1 },
-              back:   { idx: 2, sign: -1 },
-              right:  { idx: 0, sign: 1 },
-              left:   { idx: 0, sign: -1 }
-            };
-            const f = faceMap[face] || faceMap.bottom;
-            const faceIdx = f.idx;
-            const faceSign = f.sign;
-
-            const edgeMap = {
-              top:    { idx: 1, sign: 1 },
-              bottom: { idx: 1, sign: -1 },
-              front:  { idx: 2, sign: 1 },
-              back:   { idx: 2, sign: -1 },
-              right:  { idx: 0, sign: 1 },
-              left:   { idx: 0, sign: -1 }
-            };
-            const e = edgeMap[edge] || edgeMap.left;
-            const edgeIdx = e.idx;
-            const edgeSign = e.sign;
-
-            const spaceIdx = [0, 1, 2].find(i => i !== faceIdx && i !== edgeIdx);
-            if (spaceIdx !== undefined) {
-              const thickness = b.size[faceIdx];
-              const width = b.size[spaceIdx];
-
-              const coords = [];
-              if (count === 1) {
-                coords.push(0);
-              } else {
-                if (spacing === 'auto') {
-                  const margin = Math.min(2.0, width / 4);
-                  const span = width - 2 * margin;
-                  for (let i = 0; i < count; i++) {
-                    coords.push(-span / 2 + i * (span / (count - 1)));
-                  }
-                } else {
-                  const s = Math.max(0.5, parseFloat(spacing) || 2);
-                  const span = (count - 1) * s;
-                  for (let i = 0; i < count; i++) {
-                    coords.push(-span / 2 + i * s);
-                  }
-                }
-              }
-
-              const theta = 15 * Math.PI / 180;
-              const u = new THREE.Vector3(0, Math.sin(theta), -Math.cos(theta));
-              const L_pilot = 0.8;
-              const L_pocket = 2.0;
-
-              for (const x_space of coords) {
-                const pilotCyl = new THREE.CylinderGeometry(0.08, 0.08, L_pilot, 16);
-                pilotCyl.rotateX(-75 * Math.PI / 180);
-                const P_exit = new THREE.Vector3(0, -thickness / 2, 0);
-                const pilotCenter = P_exit.clone().addScaledVector(u, L_pilot / 2);
-                pilotCyl.translate(pilotCenter.x, pilotCenter.y, pilotCenter.z);
-
-                const pocketCyl = new THREE.CylinderGeometry(0.1875, 0.1875, L_pocket, 16);
-                pocketCyl.rotateX(-75 * Math.PI / 180);
-                const pocketCenter = P_exit.clone().addScaledVector(u, L_pilot + L_pocket / 2);
-                pocketCyl.translate(pocketCenter.x, pocketCenter.y, pocketCenter.z);
-
-                const v_y_vec = new THREE.Vector3();
-                v_y_vec.setComponent(faceIdx, faceSign);
-
-                const v_z_vec = new THREE.Vector3();
-                v_z_vec.setComponent(edgeIdx, edgeSign);
-
-                // Use cross product to ensure a right-handed coordinate system (determinant = +1).
-                // This prevents mirror reflection rendering issues and CSG subtraction bugs when directions change.
-                const v_x_vec = new THREE.Vector3().crossVectors(v_y_vec, v_z_vec);
-
-                const matrix = new THREE.Matrix4();
-                matrix.set(
-                  v_x_vec.x, v_y_vec.x, v_z_vec.x, 0,
-                  v_x_vec.y, v_y_vec.y, v_z_vec.y, 0,
-                  v_x_vec.z, v_y_vec.z, v_z_vec.z, 0,
-                  0,         0,         0,         1
-                );
-
-                pilotCyl.applyMatrix4(matrix);
-                pocketCyl.applyMatrix4(matrix);
-
-                const pos = [0, 0, 0];
-                pos[spaceIdx] = x_space;
-                pos[faceIdx] = faceSign * b.size[faceIdx] / 2;
-                pos[edgeIdx] = edgeSign * b.size[edgeIdx] / 2;
-
-                pilotCyl.translate(pos[0], pos[1], pos[2]);
-                pocketCyl.translate(pos[0], pos[1], pos[2]);
-
-                const pilotBrush = new Brush(pilotCyl);
-                pilotBrush.updateMatrixWorld();
-                const prevGeo1 = resultBrush.geometry;
-                resultBrush = csgEvaluator.evaluate(resultBrush, pilotBrush, SUBTRACTION);
-                resultBrush.updateMatrixWorld();
-                if (prevGeo1 !== baseGeo) prevGeo1?.dispose();
-                pilotBrush.geometry?.dispose();
-
-                const pocketBrush = new Brush(pocketCyl);
-                pocketBrush.updateMatrixWorld();
-                const prevGeo2 = resultBrush.geometry;
-                resultBrush = csgEvaluator.evaluate(resultBrush, pocketBrush, SUBTRACTION);
-                resultBrush.updateMatrixWorld();
-                if (prevGeo2 !== baseGeo) prevGeo2?.dispose();
-                pocketBrush.geometry?.dispose();
-              }
-            }
-            continue;
-          } else if (op.type === 'dowel-holes') {
-            const { face = 'top', count = 2, depth = 0.75, spacing = 'auto' } = op;
-            const diameter = op.diameter ?? (op.radius ? op.radius * 2 : 0.375);
-            const radius = diameter / 2;
-            const faceMap = {
-              top:    { idx: 1, sign: 1 },
-              bottom: { idx: 1, sign: -1 },
-              front:  { idx: 2, sign: 1 },
-              back:   { idx: 2, sign: -1 },
-              right:  { idx: 0, sign: 1 },
-              left:   { idx: 0, sign: -1 }
-            };
-            const f = faceMap[face] || faceMap.top;
-            const faceIdx = f.idx;
-            const faceSign = f.sign;
-
-            const fa1 = (faceIdx + 1) % 3;
-            const fa2 = (faceIdx + 2) % 3;
-            const thinIdx = b.size[fa1] < b.size[fa2] ? fa1 : fa2;
-            const wideIdx = thinIdx === fa1 ? fa2 : fa1;
-
-            const W = b.size[wideIdx];
-
-            const coords = [];
-            if (count === 1) {
-              coords.push(0);
-            } else {
-              if (spacing === 'auto') {
-                const margin = Math.min(2.0, W / 4);
-                const span = W - 2 * margin;
-                for (let i = 0; i < count; i++) {
-                  coords.push(-span / 2 + i * (span / (count - 1)));
-                }
-              } else {
-                const s = Math.max(0.5, parseFloat(spacing) || 2);
-                const span = (count - 1) * s;
-                for (let i = 0; i < count; i++) {
-                  coords.push(-span / 2 + i * s);
-                }
-              }
-            }
-
-            for (const x_wide of coords) {
-              const cyl = new THREE.CylinderGeometry(radius, radius, depth, 32);
-              if (faceIdx === 0) cyl.rotateZ(Math.PI / 2);
-              else if (faceIdx === 2) cyl.rotateX(Math.PI / 2);
-
-              const pos = [0, 0, 0];
-              pos[thinIdx] = 0;
-              pos[wideIdx] = x_wide;
-              pos[faceIdx] = faceSign * (b.size[faceIdx] / 2 - depth / 2);
-
-              cyl.translate(pos[0], pos[1], pos[2]);
-
-              const opBrush = new Brush(cyl);
-              opBrush.updateMatrixWorld();
-              const prevGeometry = resultBrush.geometry;
-              resultBrush = csgEvaluator.evaluate(resultBrush, opBrush, SUBTRACTION);
-              resultBrush.updateMatrixWorld();
-              if (prevGeometry !== baseGeo) prevGeometry?.dispose();
-              opBrush.geometry?.dispose();
-            }
-            continue;
-          } else {
-            // Hole (supports both blind face-aligned holes and standard through-holes)
-            let cylGeo;
-            if (op.depth !== undefined && op.face !== undefined) {
-              cylGeo = _buildBlindHoleTool(b.size, op);
-            } else {
-              const axis = op.axis || 'y';
-              const r = Math.max(0.01, op.radius || 1);
-              const hLength = Math.max(...b.size) + 10;
-              cylGeo = new THREE.CylinderGeometry(r, r, hLength, 32);
-              if (axis === 'x') cylGeo.rotateZ(Math.PI / 2);
-              else if (axis === 'z') cylGeo.rotateX(Math.PI / 2);
-              const ox = op.offsetX || 0;
-              const oy = op.offsetY || 0;
-              const pos = [0, 0, 0];
-              if (axis === 'z') { pos[0] = ox; pos[1] = oy; }
-              else if (axis === 'x') { pos[1] = oy; pos[2] = ox; }
-              else { pos[0] = ox; pos[2] = oy; }
-              cylGeo.translate(pos[0], pos[1], pos[2]);
-            }
-            opBrush = new Brush(cylGeo);
-            opBrush.updateMatrixWorld();
-          }
-
-          const prevGeometry = resultBrush.geometry;
-          resultBrush = csgEvaluator.evaluate(resultBrush, opBrush, SUBTRACTION);
-          resultBrush.updateMatrixWorld();
-          if (prevGeometry !== baseGeo) prevGeometry?.dispose();
-          opBrush.geometry?.dispose();
-
-          // Safety check
-          if (triCount(resultBrush) > MAX_TRIS) {
-            console.warn(`[CSG] Triangle limit exceeded after hole op on "${b.name}" (${triCount(resultBrush)} tris). Falling back.`);
-            return new THREE.BoxGeometry(b.size[0], b.size[1], b.size[2]);
-          }
-        } catch (e) {
-          console.error('CSG hole error:', e);
-        }
-      }
-
-      // ── 2. Intersections (arc / cove) — hybrid strategy ───────────────────
-      //   • Same-axis ops are merged into one tool first (cheap — tools
-      //     overlap cleanly on the same plane).
-      //   • Then each axis group is applied sequentially to the base mesh.
-      //     Each pass carves material away, keeping the mesh manageable
-      //     for multi-axis cuts.
-      if (intersOps.length > 0) {
-        const buildTool = (op) => {
-          if (op.type === 'arc')  return new Brush(_buildArcTool(b.size, op));
-          if (op.type === 'cove') return new Brush(_buildCoveTool(b.size, op));
-          return null;
-        };
-
-        // Group operations by axis
-        const byAxis = {};
-        for (const op of intersOps) {
-          const a = op.axis || 'y';
-          (byAxis[a] ??= []).push(op);
-        }
-
-        // Process each axis group
-        for (const [axisKey, ops] of Object.entries(byAxis)) {
-          try {
-            // Build first tool for this axis
-            let axisTool = buildTool(ops[0]);
-            if (!axisTool) continue;
-            axisTool.updateMatrixWorld();
-
-            // Merge additional same-axis tools (cheap — same-plane overlap)
-            for (let i = 1; i < ops.length; i++) {
-              const nextTool = buildTool(ops[i]);
-              if (!nextTool) continue;
-              nextTool.updateMatrixWorld();
-              const prevGeo = axisTool.geometry;
-              axisTool = csgEvaluator.evaluate(axisTool, nextTool, INTERSECTION);
-              axisTool.updateMatrixWorld();
-              prevGeo?.dispose();
-              nextTool.geometry?.dispose();
-            }
-
-            // Apply merged axis tool to the running result
-            const prevGeometry = resultBrush.geometry;
-            resultBrush = csgEvaluator.evaluate(resultBrush, axisTool, INTERSECTION);
-            resultBrush.updateMatrixWorld();
-            if (prevGeometry !== baseGeo) prevGeometry?.dispose();
-            axisTool.geometry?.dispose();
-
-            const tris = triCount(resultBrush);
-            if (tris > MAX_TRIS) {
-              console.warn(`[CSG] Triangle limit exceeded after ${axisKey}-axis ops on "${b.name}" (${tris} tris). Falling back.`);
-              return new THREE.BoxGeometry(b.size[0], b.size[1], b.size[2]);
-            }
-          } catch (e) {
-            console.error(`CSG ${axisKey}-axis error on "${b.name}":`, e);
-          }
-        }
-      }
-
-      return resultBrush.geometry;
-    } catch (e) {
-      console.error('CSG base error:', e);
-      // Fall back to plain box so the board is still visible
-      return new THREE.BoxGeometry(b.size[0], b.size[1], b.size[2]);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [targetKey]);
-
-
-  return <primitive object={geo} attach="geometry" />;
-};
 
 const getSemanticFace = (e, b) => {
   const hasBoxFaces = !b.shape || b.shape === 'taper';
@@ -865,6 +180,93 @@ const FaceHighlightMesh = ({ parentGeometry, normal, localPt, color, opacity }) 
   );
 };
 
+const getGeometryFeatures = (geometry, localPt, thresholdCorner = 0.35, thresholdEdge = 0.15) => {
+  const posAttr = geometry.getAttribute('position');
+  if (!posAttr) return null;
+
+  const indexAttr = geometry.index;
+  const vertexCount = posAttr.count;
+
+  let closestVertex = null;
+  let minVertexDist = Infinity;
+
+  const tempV = new THREE.Vector3();
+  for (let i = 0; i < vertexCount; i++) {
+    tempV.fromBufferAttribute(posAttr, i);
+    const dist = tempV.distanceTo(localPt);
+    if (dist < minVertexDist) {
+      minVertexDist = dist;
+      closestVertex = tempV.clone();
+    }
+  }
+
+  let closestEdgeStart = null;
+  let closestEdgeEnd = null;
+  let minEdgeDist = Infinity;
+
+  const getDistanceToSegment = (P, A, B) => {
+    const ab = new THREE.Vector3().subVectors(B, A);
+    const ap = new THREE.Vector3().subVectors(P, A);
+    const abLenSq = ab.lengthSq();
+    if (abLenSq < 0.0001) return P.distanceTo(A);
+    let t = ap.dot(ab) / abLenSq;
+    t = Math.max(0, Math.min(1, t));
+    const closest = A.clone().addScaledVector(ab, t);
+    return P.distanceTo(closest);
+  };
+
+  const processEdge = (A, B) => {
+    if (A.distanceTo(B) < 0.001) return;
+    const dist = getDistanceToSegment(localPt, A, B);
+    if (dist < minEdgeDist) {
+      minEdgeDist = dist;
+      closestEdgeStart = A.clone();
+      closestEdgeEnd = B.clone();
+    }
+  };
+
+  const vA = new THREE.Vector3();
+  const vB = new THREE.Vector3();
+  const vC = new THREE.Vector3();
+
+  if (indexAttr) {
+    const indexCount = indexAttr.count;
+    for (let i = 0; i < indexCount; i += 3) {
+      const idxA = indexAttr.getX(i);
+      const idxB = indexAttr.getX(i + 1);
+      const idxC = indexAttr.getX(i + 2);
+
+      vA.fromBufferAttribute(posAttr, idxA);
+      vB.fromBufferAttribute(posAttr, idxB);
+      vC.fromBufferAttribute(posAttr, idxC);
+
+      processEdge(vA, vB);
+      processEdge(vB, vC);
+      processEdge(vC, vA);
+    }
+  } else {
+    for (let i = 0; i < vertexCount; i += 3) {
+      vA.fromBufferAttribute(posAttr, i);
+      vB.fromBufferAttribute(posAttr, i + 1);
+      vC.fromBufferAttribute(posAttr, i + 2);
+
+      processEdge(vA, vB);
+      processEdge(vB, vC);
+      processEdge(vC, vA);
+    }
+  }
+
+  if (minVertexDist < thresholdCorner) {
+    return { type: 'corner', point: closestVertex, dist: minVertexDist };
+  }
+
+  if (minEdgeDist < thresholdEdge) {
+    return { type: 'edge', start: closestEdgeStart, end: closestEdgeEnd, dist: minEdgeDist };
+  }
+
+  return null;
+};
+
 const BoardMesh = ({ b, selectedItemIds, toggleSelection, textures, showEdges, constraintTargetMode, hoveredFaceData, setHoveredFaceData, modifierActive }) => {
   if (b.visible === false) return null;
   const isSelected = selectedItemIds.includes(b.id.toString());
@@ -873,11 +275,15 @@ const BoardMesh = ({ b, selectedItemIds, toggleSelection, textures, showEdges, c
   const meshRef = useRef();
   const measureFaceAnglesActive = useStore(s => s.measureFaceAnglesActive);
   const selectedFaces = useStore(s => s.selectedFaces);
+  const measureEdgesActive = useStore(s => s.measureEdgesActive);
+  const selectedEdges = useStore(s => s.selectedEdges);
   const dKeyPressed = useStore(s => s.dKeyPressed);
   const [draggingInfo, setDraggingInfo] = useState(null);
   const [snappedAxes, setSnappedAxes] = useState({ x: false, y: false, z: false });
   const isSnapped = snappedAxes.x || snappedAxes.y || snappedAxes.z;
   const { camera, gl } = useThree();
+
+
 
   // Premium per-board cloned texture layout optimizer
   const matDesc = useMemo(() => normalizeMaterial(b.material), [b.material]);
@@ -1149,6 +555,30 @@ const BoardMesh = ({ b, selectedItemIds, toggleSelection, textures, showEdges, c
             return;
           }
 
+          // ── Measure Edge Relationships Mode ──
+          const { measureEdgesActive: activeEdges, toggleEdgeSelection: toggleEdge } = useStore.getState();
+          if (activeEdges) {
+            console.log("Edge measure click detected on board", b.name);
+            if (e.object?.geometry) {
+              const localPt = e.object.worldToLocal(e.point.clone());
+              console.log("localPt:", localPt);
+              // Disable corner threshold (set to 0) to guarantee edge detection, using wider 5.0 inch threshold for click ease
+              const feature = getGeometryFeatures(e.object.geometry, localPt, 0, 5.0);
+              console.log("Detected feature:", feature);
+              if (feature && feature.type === 'edge') {
+                console.log("Toggling edge:", feature.start, feature.end);
+                toggleEdge(
+                  b.id.toString(),
+                  [feature.start.x, feature.start.y, feature.start.z],
+                  [feature.end.x, feature.end.y, feature.end.z]
+                );
+              } else {
+                console.log("No edge feature found within threshold");
+              }
+            }
+            return;
+          }
+
           // ── Measure Mode: first point only ──
           const { measureMode, setMeasureMode } = useStore.getState();
           if (measureMode?.active) {
@@ -1334,12 +764,72 @@ const BoardMesh = ({ b, selectedItemIds, toggleSelection, textures, showEdges, c
             }
           }
 
-          const isActiveMode = constraintTargetMode && constraintTargetMode.active;
-          if (isSelected || isActiveMode) {
+          const isActiveMode = (constraintTargetMode && constraintTargetMode.active) || measureEdgesActive;
+          if ((isSelected || isActiveMode) && e.object?.geometry) {
             e.stopPropagation();
-            const fStr = getSemanticFace(e, b);
-            if (fStr && (!hoveredFaceData || hoveredFaceData.id !== b.id.toString() || hoveredFaceData.faceStr !== fStr)) {
-              setHoveredFaceData({ id: b.id.toString(), faceStr: fStr });
+            const localPt = e.object.worldToLocal(e.point.clone());
+            
+            const feature = getGeometryFeatures(e.object.geometry, localPt, measureEdgesActive ? 0 : 0.35);
+            
+            let hoverType = 'face';
+            let hoverKey = '';
+            let cornerPos = null;
+            let edgeStart = null;
+            let edgeEnd = null;
+            
+            if (feature) {
+              hoverType = feature.type;
+              hoverKey = feature.type;
+              if (feature.type === 'corner') {
+                cornerPos = [feature.point.x, feature.point.y, feature.point.z];
+              } else if (feature.type === 'edge') {
+                edgeStart = [feature.start.x, feature.start.y, feature.start.z];
+                edgeEnd = [feature.end.x, feature.end.y, feature.end.z];
+              }
+            } else {
+              const hw = b.size[0] / 2;
+              const hh = b.size[1] / 2;
+              const hd = b.size[2] / 2;
+              const nx = localPt.x / hw;
+              const ny = localPt.y / hh;
+              const nz = localPt.z / hd;
+              const absX = Math.abs(nx);
+              const absY = Math.abs(ny);
+              const absZ = Math.abs(nz);
+              const signXStr = nx >= 0 ? '+' : '-';
+              const signYStr = ny >= 0 ? '+' : '-';
+              const signZStr = nz >= 0 ? '+' : '-';
+              
+              const maxVal = Math.max(absX, absY, absZ);
+              if (maxVal === absX) {
+                hoverKey = `x${signXStr}`;
+              } else if (maxVal === absY) {
+                hoverKey = `y${signYStr}`;
+              } else {
+                hoverKey = `z${signZStr}`;
+              }
+            }
+            
+            const needsUpdate = !hoveredFaceData || 
+              hoveredFaceData.id !== b.id.toString() || 
+              hoveredFaceData.hoverType !== hoverType || 
+              hoveredFaceData.hoverKey !== hoverKey ||
+              (hoverType === 'corner' && JSON.stringify(hoveredFaceData.cornerPos) !== JSON.stringify(cornerPos)) ||
+              (hoverType === 'edge' && (
+                JSON.stringify(hoveredFaceData.edgeStart) !== JSON.stringify(edgeStart) ||
+                JSON.stringify(hoveredFaceData.edgeEnd) !== JSON.stringify(edgeEnd)
+              ));
+              
+            if (needsUpdate) {
+              setHoveredFaceData({ 
+                id: b.id.toString(), 
+                hoverType, 
+                hoverKey,
+                cornerPos,
+                edgeStart,
+                edgeEnd,
+                faceStr: hoverType === 'face' ? hoverKey : null
+              });
             }
           }
         }}
@@ -1382,6 +872,24 @@ const BoardMesh = ({ b, selectedItemIds, toggleSelection, textures, showEdges, c
             })}
           </group>
         )}
+        {measureEdgesActive && (
+          <group>
+            {selectedEdges.map((edge, idx) => {
+              if (edge.boardId !== b.id.toString()) return null;
+              return (
+                <Line
+                  key={`select-edge-${idx}`}
+                  points={[edge.edgeStart, edge.edgeEnd]}
+                  color={idx === 0 ? "#af40ff" : "#ffcc00"}
+                  lineWidth={4}
+                  transparent
+                  opacity={0.9}
+                  depthTest={false}
+                />
+              );
+            })}
+          </group>
+        )}
         {(() => {
           const matDesc = normalizeMaterial(b.material);
           const matKey = matDesc.type === 'color' ? `color-${matDesc.hex}` : `wood-${matDesc.id}`;
@@ -1413,9 +921,34 @@ const BoardMesh = ({ b, selectedItemIds, toggleSelection, textures, showEdges, c
         {showEdges && <Edges scale={1} threshold={15} color={isSelected ? (dKeyPressed ? (isSnapped ? '#22c55e' : '#00f3ff') : '#ffffff') : '#222222'} />}
         {/* Axes helper on the mesh (at board center, not pivot) */}
         {isSelected && <axesHelper args={[Math.max(...b.size) * 0.75 + 2.25]} />}
-        {((isSelected || (constraintTargetMode && constraintTargetMode.active)) && hoveredFaceData && hoveredFaceData.id === b.id.toString()) && (() => {
-          const faceStr = hoveredFaceData.faceStr;
-          if (!faceStr) return null;
+        {((isSelected || (constraintTargetMode && constraintTargetMode.active) || measureEdgesActive) && hoveredFaceData && hoveredFaceData.id === b.id.toString()) && (() => {
+          const { hoverType = 'face', hoverKey, cornerPos, edgeStart, edgeEnd } = hoveredFaceData;
+          if (!hoverKey) return null;
+
+          if (hoverType === 'corner' && cornerPos) {
+            return (
+              <mesh position={cornerPos} raycast={() => null}>
+                <sphereGeometry args={[0.15, 16, 16]} />
+                <meshBasicMaterial color="#00ffff" transparent opacity={0.65} depthTest={false} />
+              </mesh>
+            );
+          }
+
+          if (hoverType === 'edge' && edgeStart && edgeEnd) {
+            return (
+              <Line
+                points={[edgeStart, edgeEnd]}
+                color="#00ffff"
+                lineWidth={3}
+                transparent
+                opacity={0.85}
+                depthTest={false}
+              />
+            );
+          }
+
+          // Fallback to face highlighting
+          const faceStr = hoverKey;
           let pos = [0, 0, 0], rot = [0, 0, 0];
           const w = b.size[0] / 2 + 0.01;
           const h = b.size[1] / 2 + 0.01;

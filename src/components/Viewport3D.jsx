@@ -96,6 +96,11 @@ export default function Viewport3D() {
           state.clearFaceSelection();
           acted = true;
         }
+        if (state.measureEdgesActive) {
+          state.setMeasureEdgesActive(false);
+          state.clearEdgeSelection();
+          acted = true;
+        }
         if (state.miterSawBoardId) {
           state.closeMiterSawMode();
           acted = true;

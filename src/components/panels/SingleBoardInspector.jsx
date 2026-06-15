@@ -1,12 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import * as THREE from 'three';
 import { normalizeMaterial, getMaterialDisplayColor, WOOD_CATALOGUE } from '../../utils/materialCatalogue';
 import useStore from '../../store/useStore';
 import ParametricControls from './ParametricControls';
 import NumericInput from '../NumericInput';
-import { calculateBoardCuts, getTopFrontIntersection, getDynamicAngles } from '../../utils/miterSawCalculator';
-import { formatUnit } from '../../utils/units';
-import { calculateAngleBetweenNormals } from '../../utils/faceMeasurement';
+
 
 // ── Build a compact summary string for each tool type ────────────────────────
 function getToolSummary(op) {
@@ -42,15 +40,13 @@ const SingleBoardInspector = ({ selectedBoard }) => {
     const {
         boards, groups, selectedItemIds, constraints, units,
         updateVector, setBoards, setSelectedItemIds, pushHistory,
-        dropBoardToFloor, incrementRotation, resetRotation, handleComponentDelete,
+        dropBoardToFloor, handleComponentDelete,
         toggleConstraint, removeConstraint,
         constraintTargetMode, setConstraintTargetMode,
         setShowToolsPanel,
         removeHardware, updateHardware, selectedHardwareId, setSelectedHardwareId,
         updateSelectedBoards, addRecordedStep,
-        prepareBoardForMiterSaw,
-        miterSawCuts, miterSawBoardId, selectedMiterCutIndex, setSelectedMiterCutIndex, calculateMiterSawCuts, imperialFormat,
-        measureFaceAnglesActive, setMeasureFaceAnglesActive, selectedFaces, clearFaceSelection, setMeasureMode, closeMiterSawMode
+        incrementRotation, resetRotation
     } = useStore();
 
     // Cancel constraint mode if selection no longer includes the source board
@@ -68,77 +64,7 @@ const SingleBoardInspector = ({ selectedBoard }) => {
         return () => window.removeEventListener('keydown', onKey);
     }, [constraintTargetMode, setConstraintTargetMode]);
 
-    const miterCardRef = useRef(null);
 
-    // Scroll to the Miter/Bevel Angles card when evaluated
-    useEffect(() => {
-        if (miterSawBoardId && selectedBoard.id.toString() === miterSawBoardId && miterCardRef.current) {
-            miterCardRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-        }
-    }, [miterSawBoardId, selectedBoard.id]);
-
-    // Calculate which face is pointing UP and filter the cuts list
-    let filteredCuts = [];
-    let upFace = 'top';
-
-    if (miterSawBoardId && selectedBoard.id.toString() === miterSawBoardId && miterSawCuts) {
-        const [rx, ry, rz] = selectedBoard.orientation || [0, 0, 0];
-        const euler = new THREE.Euler(rx, ry, rz, 'YXZ');
-        const upVectors = {
-            top: new THREE.Vector3(0, 1, 0).applyEuler(euler).y,
-            bottom: new THREE.Vector3(0, -1, 0).applyEuler(euler).y,
-            front: new THREE.Vector3(0, 0, 1).applyEuler(euler).y,
-            back: new THREE.Vector3(0, 0, -1).applyEuler(euler).y,
-        };
-
-        let maxVal = upVectors.top;
-        for (const [face, val] of Object.entries(upVectors)) {
-            if (val > maxVal) {
-                maxVal = val;
-                upFace = face;
-            }
-        }
-
-        filteredCuts = miterSawCuts.filter(cut => {
-            if (cut.isEndCut) return true;
-            // Filter intermediate cuts based on which local face points UP
-            const cy = cut.centerY !== undefined ? cut.centerY : cut.positionY;
-            const cz = cut.centerZ !== undefined ? cut.centerZ : cut.positionZ;
-            if (upFace === 'top') return cy > 0.05;
-            if (upFace === 'bottom') return cy < -0.05;
-            if (upFace === 'front') return cz > 0.05;
-            if (upFace === 'back') return cz < -0.05;
-            return false;
-        });
-
-        // Recalculate cut order: lowest cut dimension (distance from left) first in the list
-        filteredCuts.sort((a, b) => {
-            const aIsLeft = a.label === 'Left End';
-            const bIsLeft = b.label === 'Left End';
-            if (aIsLeft && !bIsLeft) return -1;
-            if (!aIsLeft && bIsLeft) return 1;
-
-            const aIsRight = a.label === 'Right End';
-            const bIsRight = b.label === 'Right End';
-            if (aIsRight && !bIsRight) return 1;
-            if (!aIsRight && bIsRight) return -1;
-
-            const aIntersection = getTopFrontIntersection(selectedBoard, a);
-            const bIntersection = getTopFrontIntersection(selectedBoard, b);
-            return aIntersection.localX - bIntersection.localX;
-        });
-    }
-
-    // Unhighlight/deselect cut if it is no longer visible on the UP face (after rotation)
-    useEffect(() => {
-        if (selectedMiterCutIndex !== null && miterSawCuts && filteredCuts) {
-            const selectedCut = miterSawCuts[selectedMiterCutIndex];
-            const isVisible = filteredCuts.some(c => c === selectedCut);
-            if (!isVisible) {
-                setSelectedMiterCutIndex(null);
-            }
-        }
-    }, [filteredCuts, selectedMiterCutIndex, miterSawCuts, setSelectedMiterCutIndex]);
 
     // Sort dimensions to show Length/Width/Thickness labels
     const sorted = [...selectedBoard.size].map((v, i) => ({ val: v, idx: i })).sort((a, b) => b.val - a.val);
@@ -897,219 +823,6 @@ const SingleBoardInspector = ({ selectedBoard }) => {
                         {cloneMode === 'local' ? 'Clone (Thin Axis)' : `Clone along ${cloneMode.replace('world', '')}`}
                     </button>
                 </div>
-            </div>
-
-            {/* ── Measure Face Angles Card ── */}
-            <div className="inspector-card" style={{ padding: '8px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <div 
-                    onClick={() => {
-                        if (measureFaceAnglesActive) {
-                            setMeasureFaceAnglesActive(false);
-                            clearFaceSelection();
-                        } else {
-                            setMeasureFaceAnglesActive(true);
-                            setMeasureMode(null);
-                        }
-                    }}
-                    style={{ 
-                        display: 'flex', 
-                        justifyContent: 'space-between', 
-                        alignItems: 'center', 
-                        cursor: 'pointer',
-                        userSelect: 'none'
-                    }}
-                >
-                    <h4 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>📐 Measure Face Angles</h4>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                        <span>{measureFaceAnglesActive ? 'ON' : 'OFF'}</span>
-                        <span style={{ fontSize: '0.6rem' }}>{measureFaceAnglesActive ? '⏷' : '⏵'}</span>
-                    </div>
-                </div>
-                {measureFaceAnglesActive && (
-                    <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        <p className="hint" style={{ fontSize: '0.62rem', color: 'var(--text-muted)', marginTop: 0, marginBottom: '4px', lineHeight: '1.3' }}>
-                            Hover and click any two faces on a board to measure the angle between them.
-                        </p>
-                        
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', background: 'rgba(255,255,255,0.03)', padding: '6px', borderRadius: '4px', border: '1px solid var(--border-color)' }}>
-                                <span style={{ color: 'var(--text-muted)' }}>Face 1:</span>
-                                <span style={{ fontWeight: 'bold', color: selectedFaces[0] ? '#c084fc' : 'var(--text-muted)' }}>
-                                    {selectedFaces[0] ? selectedFaces[0].label : 'Click a face...'}
-                                </span>
-                            </div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', background: 'rgba(255,255,255,0.03)', padding: '6px', borderRadius: '4px', border: '1px solid var(--border-color)' }}>
-                                <span style={{ color: 'var(--text-muted)' }}>Face 2:</span>
-                                <span style={{ fontWeight: 'bold', color: selectedFaces[1] ? '#ffd60a' : 'var(--text-muted)' }}>
-                                    {selectedFaces[1] ? selectedFaces[1].label : 'Click a face...'}
-                                </span>
-                            </div>
-                        </div>
-
-                        {selectedFaces.length === 2 && (() => {
-                            const { acute, obtuse } = calculateAngleBetweenNormals(selectedFaces[0].normal, selectedFaces[1].normal);
-                            return (
-                                <div style={{ marginTop: '8px', padding: '10px', background: 'rgba(175, 64, 255, 0.08)', borderRadius: '6px', border: '1px solid rgba(175, 64, 255, 0.25)', display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'center' }}>
-                                    <div style={{ fontSize: '0.64rem', textTransform: 'uppercase', fontWeight: 'bold', color: '#c084fc' }}>Angle Between Faces</div>
-                                    <div style={{ fontSize: '1.5rem', fontWeight: '900', color: '#e9d5ff' }}>
-                                        {acute}°
-                                    </div>
-                                    {acute !== obtuse && (
-                                        <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
-                                            Supplementary: {obtuse}°
-                                        </div>
-                                    )}
-                                </div>
-                            );
-                        })()}
-
-                        {selectedFaces.length > 0 && (
-                            <button
-                                onClick={clearFaceSelection}
-                                style={{
-                                    marginTop: '4px',
-                                    width: '100%',
-                                    padding: '6px 12px',
-                                    borderRadius: '4px',
-                                    border: '1px solid rgba(255,255,255,0.15)',
-                                    background: 'transparent',
-                                    color: 'var(--text-main)',
-                                    fontSize: '0.7rem',
-                                    cursor: 'pointer',
-                                    transition: 'all 0.15s'
-                                }}
-                            >
-                                Clear Selection
-                            </button>
-                        )}
-                    </div>
-                )}
-            </div>
-
-            {/* ── Miter Saw Prep & Cut List (Angles as Miter/Bevel) ── */}
-            <div ref={miterCardRef} className="inspector-card" style={{ padding: '8px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <div 
-                    onClick={() => {
-                        if (selectedBoard.id.toString() === miterSawBoardId) {
-                            closeMiterSawMode();
-                        } else {
-                            prepareBoardForMiterSaw(selectedBoard.id);
-                        }
-                    }}
-                    style={{ 
-                        display: 'flex', 
-                        justifyContent: 'space-between', 
-                        alignItems: 'center', 
-                        cursor: 'pointer',
-                        userSelect: 'none'
-                    }}
-                >
-                    <h4 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>📐 Angles as Miter/Bevel</h4>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                        <span>{selectedBoard.id.toString() === miterSawBoardId ? 'ON' : 'OFF'}</span>
-                        <span style={{ fontSize: '0.6rem' }}>{selectedBoard.id.toString() === miterSawBoardId ? '⏷' : '⏵'}</span>
-                    </div>
-                </div>
-                {selectedBoard.id.toString() === miterSawBoardId && (
-                    <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.02)', padding: '6px 10px', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
-                            <div style={{ fontSize: '0.78rem' }}>
-                                UP Face: <strong style={{ color: 'var(--accent-color)', textTransform: 'capitalize' }}>{upFace} Face</strong>
-                            </div>
-                            <button
-                                className="nav-btn"
-                                style={{ padding: '3px 8px', fontSize: '0.7rem', border: '1px solid var(--border-color)' }}
-                                onClick={() => incrementRotation(0, 90)}
-                            >
-                                🔄 Rotate 90°
-                            </button>
-                        </div>
-
-                        <div style={{ marginTop: '4px' }}>
-                            <div style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.3px', marginBottom: '6px' }}>
-                                Cuts on {upFace} face & Ends
-                            </div>
-                            {filteredCuts.length === 0 ? (
-                                <div className="hint" style={{ marginTop: 0 }}>No cuts on this face. Rotate the board to check other faces.</div>
-                            ) : (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                    {filteredCuts.map((cut, idx) => {
-                                        const originalIdx = miterSawCuts.indexOf(cut);
-                                        const isSelected = selectedMiterCutIndex === originalIdx;
-
-                                        // Calculate miter/bevel saw angles dynamically based on orientation
-                                        const { miter, bevel } = getDynamicAngles(selectedBoard, cut);
-
-                                        // Describe cut type
-                                        let desc = 'Square Cut';
-                                        if (miter !== 0 && bevel !== 0) {
-                                            desc = 'Compound Miter/Bevel';
-                                        } else if (miter !== 0) {
-                                            desc = 'Miter Cut';
-                                        } else if (bevel !== 0) {
-                                            desc = 'Bevel Cut';
-                                        }
-
-                                        // Custom label supporting metric & imperial formatting reactively
-                                        let displayLabel = cut.label;
-                                        if (!['Left End', 'Right End'].includes(cut.label)) {
-                                            const { localX } = getTopFrontIntersection(selectedBoard, cut);
-                                            const distFromLeft = localX + selectedBoard.size[0] / 2;
-                                            if (units === 'metric') {
-                                                displayLabel = `Cut at ${(distFromLeft * 25.4).toFixed(0)} mm`;
-                                            } else {
-                                                displayLabel = `Cut at ${formatUnit(distFromLeft, 'imperial', imperialFormat)}`;
-                                            }
-                                        }
-
-                                        const isMiterLarge = Math.abs(miter) > 60;
-                                        const isBevelLarge = Math.abs(bevel) > 60;
-                                        const isWarning = isMiterLarge || isBevelLarge;
-
-                                        return (
-                                            <div
-                                                key={idx}
-                                                onClick={() => setSelectedMiterCutIndex(isSelected ? null : originalIdx)}
-                                                style={{
-                                                    padding: '8px 10px',
-                                                    background: isSelected ? 'rgba(188,138,95,0.18)' : 'rgba(255, 255, 255, 0.03)',
-                                                    border: isSelected ? '1px solid var(--accent-color)' : '1px solid var(--border-color)',
-                                                    borderRadius: '6px',
-                                                    fontSize: '0.75rem',
-                                                    display: 'flex',
-                                                    flexDirection: 'column',
-                                                    gap: '4px',
-                                                    cursor: 'pointer',
-                                                    transition: 'all 0.15s',
-                                                }}
-                                            >
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 600 }}>
-                                                    <span style={{ color: 'var(--accent-color)' }}>{displayLabel}</span>
-                                                    <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>{desc}</span>
-                                                </div>
-                                                <div style={{ display: 'flex', gap: '12px', color: 'var(--text-main)' }}>
-                                                    <div>
-                                                        <span style={{ color: 'var(--text-muted)' }}>Miter: </span>
-                                                        <strong style={{ color: isMiterLarge ? '#ff3b30' : 'inherit' }}>{miter}°</strong>
-                                                    </div>
-                                                    <div>
-                                                        <span style={{ color: 'var(--text-muted)' }}>Bevel: </span>
-                                                        <strong style={{ color: isBevelLarge ? '#ff3b30' : 'inherit' }}>{bevel}°</strong>
-                                                    </div>
-                                                </div>
-                                                {isWarning && (
-                                                    <div style={{ fontSize: '0.62rem', color: '#ff3b30', marginTop: '2px', fontWeight: 'bold' }}>
-                                                        ⚠️ Angle exceeds 60° (not normal for miter saw)
-                                                    </div>
-                                                )}
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                )}
             </div>
 
 

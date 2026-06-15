@@ -1024,7 +1024,6 @@ export const createBoardSlice = (set, get) => ({
       selectedItemIds,
       groups,
       boards,
-      constraints,
       pushHistory,
       setBoards,
       setGroups,
@@ -1205,29 +1204,339 @@ export const createBoardSlice = (set, get) => ({
     const aabb = computeWorldAABB(boards);
     const maxX = boards.length > 0 ? aabb.maxX : 0;
 
-    const length = targetBoard.size[0];
-    const thickness = targetBoard.size[1];
     const cloneId = Date.now();
+
+    // Map size indices: longest is Length (X), shortest is Thickness (Y), middle is Width (Z)
+    const sizeWithIndices = targetBoard.size.map((val, idx) => ({ val, idx }));
+    sizeWithIndices.sort((a, b) => b.val - a.val);
+    const mapX = sizeWithIndices[0].idx; // longest (Length)
+    const mapZ = sizeWithIndices[1].idx; // middle (Width)
+    const mapY = sizeWithIndices[2].idx; // shortest (Thickness)
+
+    const isEven = 
+      (mapX === 0 && mapY === 1 && mapZ === 2) ||
+      (mapX === 1 && mapY === 2 && mapZ === 0) ||
+      (mapX === 2 && mapY === 0 && mapZ === 1);
+    const permDet = isEven ? 1 : -1;
+
+    const s_X = 1;
+    const s_Y = 1;
+    const s_Z = permDet;
+
+    const newSize = [targetBoard.size[mapX], targetBoard.size[mapY], targetBoard.size[mapZ]];
+
+    const oldPivot = targetBoard.pivot || [0, 0, 0];
+    const newPivot = oldPivot[0] === 0 && oldPivot[1] === 0 && oldPivot[2] === 0 
+      ? undefined 
+      : [s_X * oldPivot[mapX], s_Y * oldPivot[mapY], s_Z * oldPivot[mapZ]];
+
+    let newGrain = 'length';
+    const oldGrainAxis = targetBoard.grainDirection === 'width' ? 2 : 0;
+    if (mapX === oldGrainAxis) {
+      newGrain = 'length';
+    } else if (mapZ === oldGrainAxis) {
+      newGrain = 'width';
+    }
+
+    const FRIENDLY_FACES = {
+      top: { axis: 1, sign: 1, faceAxes: [0, 2] },
+      bottom: { axis: 1, sign: -1, faceAxes: [0, 2] },
+      front: { axis: 2, sign: 1, faceAxes: [0, 1] },
+      back: { axis: 2, sign: -1, faceAxes: [0, 1] },
+      right: { axis: 0, sign: 1, faceAxes: [1, 2] },
+      left: { axis: 0, sign: -1, faceAxes: [1, 2] }
+    };
+
+    const FRIENDLY_AXIS_SIGN_TO_FACE = {
+      '1_1': 'top',
+      '1_-1': 'bottom',
+      '2_1': 'front',
+      '2_-1': 'back',
+      '0_1': 'right',
+      '0_-1': 'left'
+    };
+
+    const getCoveEdgeVector = (axis, edge) => {
+      if (axis === 'y') {
+        if (edge === 'left') return [ -1, 0, 0 ];
+        if (edge === 'right') return [ 1, 0, 0 ];
+        if (edge === 'bottom') return [ 0, 0, -1 ];
+        if (edge === 'top') return [ 0, 0, 1 ];
+      } else if (axis === 'x') {
+        if (edge === 'left') return [ 0, 0, -1 ];
+        if (edge === 'right') return [ 0, 0, 1 ];
+        if (edge === 'bottom') return [ 0, -1, 0 ];
+        if (edge === 'top') return [ 0, 1, 0 ];
+      } else if (axis === 'z') {
+        if (edge === 'left') return [ -1, 0, 0 ];
+        if (edge === 'right') return [ 1, 0, 0 ];
+        if (edge === 'bottom') return [ 0, -1, 0 ];
+        if (edge === 'top') return [ 0, 1, 0 ];
+      }
+      return [0, 0, 0];
+    };
+
+    const getCoveEdgeFromVector = (newAxis, vec) => {
+      const nonZeroIdx = vec.findIndex(x => Math.abs(x) > 0.5);
+      if (nonZeroIdx === -1) return 'top';
+      const sign = vec[nonZeroIdx] > 0 ? 1 : -1;
+      if (newAxis === 'y') {
+        if (nonZeroIdx === 0) return sign > 0 ? 'right' : 'left';
+        if (nonZeroIdx === 2) return sign > 0 ? 'top' : 'bottom';
+      } else if (newAxis === 'x') {
+        if (nonZeroIdx === 2) return sign > 0 ? 'right' : 'left';
+        if (nonZeroIdx === 1) return sign > 0 ? 'top' : 'bottom';
+      } else if (newAxis === 'z') {
+        if (nonZeroIdx === 0) return sign > 0 ? 'right' : 'left';
+        if (nonZeroIdx === 1) return sign > 0 ? 'top' : 'bottom';
+      }
+      return 'top';
+    };
+
+    const liftAngleTo3D = (axis, deg) => {
+      const rad = (deg * Math.PI) / 180;
+      const c = Math.cos(rad);
+      const s = Math.sin(rad);
+      if (axis === 'y') return [c, 0, s];
+      if (axis === 'x') return [0, s, c];
+      return [c, s, 0];
+    };
+
+    const project3DToAngle = (newAxis, vec) => {
+      let x, y;
+      if (newAxis === 'y') {
+        x = vec[0];
+        y = vec[2];
+      } else if (newAxis === 'x') {
+        x = vec[2];
+        y = vec[1];
+      } else {
+        x = vec[0];
+        y = vec[1];
+      }
+      let rad = Math.atan2(y, x);
+      if (rad < 0) rad += 2 * Math.PI;
+      return (rad * 180) / Math.PI;
+    };
+
+    const parseEdgeProfileStr = (edgeStr) => {
+      const match = edgeStr.match(/^([xyz])([+-])([xyz])([+-])$/);
+      if (!match) return [0, 0, 0];
+      const a1 = match[1];
+      const s1 = match[2] === '+' ? 1 : -1;
+      const a2 = match[3];
+      const s2 = match[4] === '+' ? 1 : -1;
+      const vec = [0, 0, 0];
+      vec[a1 === 'x' ? 0 : (a1 === 'y' ? 1 : 2)] = s1;
+      vec[a2 === 'x' ? 0 : (a2 === 'y' ? 1 : 2)] = s2;
+      return vec;
+    };
+
+    const getEdgeProfileStrFromVector = (vec) => {
+      const nonZeroIndices = [];
+      vec.forEach((val, idx) => {
+        if (Math.abs(val) > 0.5) nonZeroIndices.push(idx);
+      });
+      if (nonZeroIndices.length < 2) return 'y+z+';
+      const idx1 = nonZeroIndices[0];
+      const idx2 = nonZeroIndices[1];
+      const a1 = ['x', 'y', 'z'][idx1];
+      const s1 = vec[idx1] > 0 ? '+' : '-';
+      const a2 = ['x', 'y', 'z'][idx2];
+      const s2 = vec[idx2] > 0 ? '+' : '-';
+      return `${a1}${s1}${a2}${s2}`;
+    };
+
+    const newOperations = (targetBoard.operations || []).map(op => {
+      const newOp = { ...op };
+
+      const transformFaceStr = (faceStr) => {
+        if (!faceStr) return faceStr;
+        const match = faceStr.match(/^([xyz])([+-])$/);
+        if (!match) return faceStr;
+        const oldAxis = match[1] === 'x' ? 0 : match[1] === 'y' ? 1 : 2;
+        const oldSign = match[2] === '+' ? 1 : -1;
+        let newAxis = 0;
+        let signVal = s_X;
+        if (mapX === oldAxis) {
+          newAxis = 0;
+          signVal = s_X;
+        } else if (mapY === oldAxis) {
+          newAxis = 1;
+          signVal = s_Y;
+        } else if (mapZ === oldAxis) {
+          newAxis = 2;
+          signVal = s_Z;
+        }
+        const newSign = oldSign * signVal;
+        const axisChar = ['x', 'y', 'z'][newAxis];
+        const signChar = newSign > 0 ? '+' : '-';
+        return `${axisChar}${signChar}`;
+      };
+
+      const transformFriendlyFaceStr = (faceStr) => {
+        if (!faceStr) return faceStr;
+        const faceInfo = FRIENDLY_FACES[faceStr];
+        if (!faceInfo) return faceStr;
+        const oldAxis = faceInfo.axis;
+        const oldSign = faceInfo.sign;
+        let newAxis = 0;
+        let signVal = s_X;
+        if (mapX === oldAxis) {
+          newAxis = 0;
+          signVal = s_X;
+        } else if (mapY === oldAxis) {
+          newAxis = 1;
+          signVal = s_Y;
+        } else if (mapZ === oldAxis) {
+          newAxis = 2;
+          signVal = s_Z;
+        }
+        const newSign = oldSign * signVal;
+        return FRIENDLY_AXIS_SIGN_TO_FACE[`${newAxis}_${newSign}`] || faceStr;
+      };
+
+      const transformAxisChar = (axisChar) => {
+        if (!axisChar) return axisChar;
+        const oldAxis = axisChar === 'x' ? 0 : axisChar === 'y' ? 1 : 2;
+        let newAxis = 0;
+        if (mapX === oldAxis) newAxis = 0;
+        else if (mapY === oldAxis) newAxis = 1;
+        else if (mapZ === oldAxis) newAxis = 2;
+        return ['x', 'y', 'z'][newAxis];
+      };
+
+      const transformOffset = (oldAxis, oldOffset) => {
+        if (oldOffset === undefined || oldOffset === null) return oldOffset;
+        let signVal = s_X;
+        if (mapX === oldAxis) {
+          signVal = s_X;
+        } else if (mapY === oldAxis) {
+          signVal = s_Y;
+        } else if (mapZ === oldAxis) {
+          signVal = s_Z;
+        }
+        return signVal * oldOffset;
+      };
+
+      if (op.type === 'miter') {
+        newOp.face = transformFaceStr(op.face);
+        newOp.fenceEdge = transformFaceStr(op.fenceEdge);
+      } else if (op.type === 'dado') {
+        newOp.face = transformFriendlyFaceStr(op.face);
+        newOp.direction = transformAxisChar(op.direction);
+        const face = FRIENDLY_FACES[op.face || 'top'];
+        if (face) {
+          const { faceAxes } = face;
+          const dirAxis = op.direction === ['x', 'y', 'z'][faceAxes[1]] ? faceAxes[1] : faceAxes[0];
+          const widthAxis = dirAxis === faceAxes[0] ? faceAxes[1] : faceAxes[0];
+          newOp.offset = transformOffset(widthAxis, op.offset);
+          newOp.lengthOffset = transformOffset(dirAxis, op.lengthOffset);
+        }
+      } else if (op.type === 'hole') {
+        if (op.depth !== undefined && op.face !== undefined) {
+          newOp.face = transformFriendlyFaceStr(op.face);
+          const face = FRIENDLY_FACES[op.face || 'top'];
+          if (face) {
+            const { faceAxes } = face;
+            const fa0 = faceAxes[0];
+            const fa1 = faceAxes[1];
+            const spanFaceAxis = targetBoard.size[fa0] >= targetBoard.size[fa1] ? fa0 : fa1;
+            const thicknessFaceAxis = spanFaceAxis === fa0 ? fa1 : fa0;
+            newOp.offset = transformOffset(spanFaceAxis, op.offset);
+            newOp.offsetY = transformOffset(thicknessFaceAxis, op.offsetY);
+          }
+        } else {
+          let oldAxisX, oldAxisY;
+          if (op.axis === 'x') {
+            oldAxisX = 2;
+            oldAxisY = 1;
+          } else if (op.axis === 'z') {
+            oldAxisX = 0;
+            oldAxisY = 1;
+          } else {
+            oldAxisX = 0;
+            oldAxisY = 2;
+          }
+          newOp.offsetX = transformOffset(oldAxisX, op.offsetX);
+          newOp.offsetY = transformOffset(oldAxisY, op.offsetY);
+          newOp.axis = transformAxisChar(op.axis);
+        }
+      } else if (op.type === 'cove') {
+        const oldAxis = op.axis || 'y';
+        const oldEdge = op.edge || 'top';
+        const vOld = getCoveEdgeVector(oldAxis, oldEdge);
+        const vNew = [transformOffset(0, vOld[0]), transformOffset(1, vOld[1]), transformOffset(2, vOld[2])];
+        const newAxis = transformAxisChar(oldAxis);
+        newOp.edge = getCoveEdgeFromVector(newAxis, vNew);
+        newOp.axis = newAxis;
+      } else if (op.type === 'arc') {
+        const oldAxis = op.axis || 'y';
+        const newAxis = transformAxisChar(oldAxis);
+        const vStartOld = liftAngleTo3D(oldAxis, op.startAngle ?? 0);
+        const vEndOld = liftAngleTo3D(oldAxis, op.endAngle ?? 90);
+        const vStartNew = [transformOffset(0, vStartOld[0]), transformOffset(1, vStartOld[1]), transformOffset(2, vStartOld[2])];
+        const vEndNew = [transformOffset(0, vEndOld[0]), transformOffset(1, vEndOld[1]), transformOffset(2, vEndOld[2])];
+        let newStart = project3DToAngle(newAxis, vStartNew);
+        let newEnd = project3DToAngle(newAxis, vEndNew);
+        while (newEnd < newStart) {
+          newEnd += 360;
+        }
+        newOp.startAngle = newStart;
+        newOp.endAngle = newEnd;
+        newOp.axis = newAxis;
+      } else if (op.type === 'edge-profile') {
+        const vOld = parseEdgeProfileStr(op.edge);
+        const vNew = [transformOffset(0, vOld[0]), transformOffset(1, vOld[1]), transformOffset(2, vOld[2])];
+        newOp.edge = getEdgeProfileStrFromVector(vNew);
+      } else if (op.type === 'pocket-holes') {
+        newOp.face = transformFriendlyFaceStr(op.face);
+        newOp.edge = transformFriendlyFaceStr(op.edge);
+      } else if (op.type === 'dowel-holes') {
+        newOp.face = transformFriendlyFaceStr(op.face);
+      } else if (op.type === 'subtract') {
+        if (op.relativeMatrix) {
+          const matOld = new THREE.Matrix4().fromArray(op.relativeMatrix);
+          const rpe = new Array(16).fill(0);
+          rpe[15] = 1;
+          rpe[mapX] = s_X;
+          rpe[4 + mapY] = s_Y;
+          rpe[8 + mapZ] = s_Z;
+          const matPerm = new THREE.Matrix4().fromArray(rpe);
+          const matPermT = matPerm.clone().transpose();
+          const matNew = matPermT.multiply(matOld);
+          newOp.relativeMatrix = matNew.toArray();
+        }
+      }
+      return newOp;
+    });
 
     const clone = {
       ...targetBoard,
       id: cloneId,
       name: `${targetBoard.name} (Miter/Bevel Angles)`,
       parentId: 'Workspace',
-      pivot: [0, 0, 0],
+      size: newSize,
+      pivot: newPivot,
       orientation: [0, 0, 0],
       position: [
-        maxX + 10 + length / 2,
-        thickness / 2,
+        maxX + 10,
+        0,
         0
       ],
       constraints: [],
       disableAutoAlign: true,
-      operations: targetBoard.operations ? JSON.parse(JSON.stringify(targetBoard.operations)) : []
+      hardware: [],
+      grainDirection: newGrain,
+      operations: newOperations
     };
 
+    const cloneAabb = computeWorldAABB([clone]);
+    clone.position[0] += (maxX + 10) - cloneAabb.minX;
+    clone.position[1] = -cloneAabb.minY;
+
     if (addRecordedStep) {
-      addRecordedStep(`Clone board \`${targetBoard.name}\` for miter/bevel angles calculation, positioning it flat at [X: ${(maxX + 10 + length / 2).toFixed(2)}, Y: ${(thickness / 2).toFixed(2)}, Z: 0] and releasing its alignments and constraints.`);
+      addRecordedStep(`Clone board \`${targetBoard.name}\` for miter/bevel angles calculation, keeping its original orientation and positioning it at [X: ${clone.position[0].toFixed(2)}, Y: ${clone.position[1].toFixed(2)}, Z: ${clone.position[2].toFixed(2)}] and releasing its alignments and constraints.`);
     }
 
     // 2. Pre-calculate the cuts on the clone
@@ -1244,7 +1553,7 @@ export const createBoardSlice = (set, get) => ({
       return b;
     });
 
-    setBoards(prev => [...updatedBoards, clone]);
+    setBoards([...updatedBoards, clone]);
     setSelectedItemIds([cloneId.toString()]);
     set({
       miterSawCuts: cuts,
