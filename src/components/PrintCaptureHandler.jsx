@@ -21,8 +21,8 @@ export function PrintCaptureHandler() {
       let savedPos;
       if (framing === 'fitAll' || framing === 'fitSelection') {
         const targetBoards = framing === 'fitSelection' && selectedItemIds.length > 0
-          ? boards.filter(b => selectedItemIds.includes(b.id.toString()))
-          : boards.filter(b => b.visible !== false);
+          ? boards.filter(b => selectedItemIds.includes(b.id.toString()) && b.shape !== 'plane')
+          : boards.filter(b => b.visible !== false && b.shape !== 'plane');
 
         if (targetBoards.length > 0) {
           const bbox = new THREE.Box3();

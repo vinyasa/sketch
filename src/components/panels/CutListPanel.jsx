@@ -51,7 +51,7 @@ const CutListPanel = () => {
         const lowerLegs = new Map(); // key: parentId + leg index -> lower board
         const upperLegs = new Map(); // key: parentId + leg index -> upper board
 
-        boards.forEach(b => {
+        boards.filter(b => b.shape !== 'plane').forEach(b => {
             const matchUpper = b.name.match(/^Leg (\d+) Upper$/);
             const matchLower = b.name.match(/^Leg (\d+) Lower$/);
             if (matchUpper) {

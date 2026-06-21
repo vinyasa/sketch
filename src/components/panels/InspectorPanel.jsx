@@ -2,7 +2,7 @@ import React from 'react';
 import useStore from '../../store/useStore';
 import AssemblyInspector from './AssemblyInspector';
 import MultiSelectInspector from './MultiSelectInspector';
-import SingleBoardInspector from './SingleBoardInspector';
+import SingleBoardInspector, { PlaneInspector } from './SingleBoardInspector';
 
 const InspectorPanel = () => {
     const { selectedItemIds, boards, groups } = useStore();
@@ -24,6 +24,9 @@ const InspectorPanel = () => {
 
     const selectedBoard = boards.find(b => b.id.toString() === selectedId);
     if (selectedBoard) {
+        if (selectedBoard.shape === 'plane') {
+            return <PlaneInspector selectedBoard={selectedBoard} />;
+        }
         return <SingleBoardInspector selectedBoard={selectedBoard} />;
     }
 

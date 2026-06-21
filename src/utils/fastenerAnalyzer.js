@@ -7,6 +7,7 @@ import { OBB } from 'three/addons/math/OBB.js';
  */
 export function analyzeTouchConnection(boardA, boardB) {
   if (!boardA || !boardB) return null;
+  if (boardA.shape === 'plane' || boardB.shape === 'plane') return null;
 
   // 1. Create OBBs to verify physical touch / intersection (slightly expanded)
   const createOBB = (b, expandAmount = 0.02) => {

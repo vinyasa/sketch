@@ -105,6 +105,10 @@ export default function Viewport3D() {
           state.closeMiterSawMode();
           acted = true;
         }
+        if (state.definePlaneActive) {
+          state.setDefinePlaneActive(false);
+          acted = true;
+        }
         if (acted) e.preventDefault();
       }
       if ((e.key === 'Delete' || e.key === 'Backspace') && !isInput) {
@@ -133,8 +137,9 @@ export default function Viewport3D() {
   const storeWorkspaceSize = useStore(s => s.workspaceSize) || 120;
 
   const workspaceSize = useMemo(() => {
-    if (boards.length === 0) return storeWorkspaceSize;
-    const maxBoundary = Math.max(...boards.map(b => {
+    const physicalBoards = boards.filter(b => b.shape !== 'plane');
+    if (physicalBoards.length === 0) return storeWorkspaceSize;
+    const maxBoundary = Math.max(...physicalBoards.map(b => {
       const xBoundary = Math.abs(b.position[0]) + b.size[0] / 2;
       const zBoundary = Math.abs(b.position[2]) + b.size[2] / 2;
       return Math.max(xBoundary, zBoundary);

@@ -5,7 +5,7 @@ export function getOverlappingBoards(boards) {
     if (!boards || boards.length < 2) return { pairs: [], overlappingIds: [] };
 
     // We consider all physical boards, even if hidden by group, because geometry still exists.
-    const obbs = boards.map(b => {
+    const obbs = boards.filter(b => b.shape !== 'plane').map(b => {
         const rot = b.orientation || b.rotation || [0, 0, 0];
         const euler = new THREE.Euler(
             rot[0],

@@ -831,14 +831,205 @@ const SingleBoardInspector = ({ selectedBoard }) => {
                 <button
                     className="nav-btn"
                     style={{ width: '100%', padding: '8px', color: '#ff3b30', border: '1px solid rgba(255, 59, 48, 0.3)', background: 'rgba(255, 59, 48, 0.05)', fontWeight: 'bold', transition: 'background 0.2s' }}
-                    onMouseEnter={e => e.target.style.background = 'rgba(255, 59, 48, 0.15)'}
-                    onMouseLeave={e => e.target.style.background = 'rgba(255, 59, 48, 0.05)'}
+                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(255, 59, 48, 0.15)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'rgba(255, 59, 48, 0.05)'}
                     onClick={handleComponentDelete}
                 >
                     Delete Component
                 </button>
             </div>
         </>
+    );
+};
+
+export const PlaneInspector = ({ selectedBoard }) => {
+    const { updateSelectedBoards, handleComponentDelete, createSlabFromPlane, cutBoardWithPlane, boards } = useStore();
+    const centroid = selectedBoard.centroid || [0, 0, 0];
+    const normal = selectedBoard.normal || [0, 0, 1];
+
+    const [slabWidth, setSlabWidth] = useState(24);
+    const [slabHeight, setSlabHeight] = useState(24);
+    const [slabThickness, setSlabThickness] = useState(0.75);
+    const [slabName, setSlabName] = useState('Slab Board');
+    const [thicknessDirection, setThicknessDirection] = useState('up');
+    const [cutTargetId, setCutTargetId] = useState('');
+
+    return (
+        <div className="inspector-panel-content">
+            <div className="inspector-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Plane:</span>
+                <input
+                    type="text"
+                    value={selectedBoard.name || ''}
+                    onChange={(e) => {
+                        const newName = e.target.value;
+                        updateSelectedBoards('name', newName);
+                    }}
+                    style={{
+                        background: 'none', border: 'none', borderBottom: '1px solid transparent',
+                        color: 'var(--text-main)', fontSize: '1rem', fontWeight: 'bold', width: '100%',
+                        outline: 'none', padding: '2px 0'
+                    }}
+                    onFocus={(e) => e.target.style.borderBottom = '1px solid var(--accent-color)'}
+                    onBlur={(e) => e.target.style.borderBottom = '1px solid transparent'}
+                />
+            </div>
+            
+            <div className="inspector-card">
+                <h4>Centroid</h4>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', fontSize: '0.8rem', marginTop: '6px' }}>
+                    <div>
+                        <span style={{ color: 'var(--text-muted)' }}>X:</span> {fmt4(centroid[0])}"
+                    </div>
+                    <div>
+                        <span style={{ color: 'var(--text-muted)' }}>Y:</span> {fmt4(centroid[1])}"
+                    </div>
+                    <div>
+                        <span style={{ color: 'var(--text-muted)' }}>Z:</span> {fmt4(centroid[2])}"
+                    </div>
+                </div>
+            </div>
+
+            <div className="inspector-card">
+                <h4>Normal Vector</h4>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', fontSize: '0.8rem', marginTop: '6px' }}>
+                    <div>
+                        <span style={{ color: 'var(--text-muted)' }}>X:</span> {fmt4(normal[0])}
+                    </div>
+                    <div>
+                        <span style={{ color: 'var(--text-muted)' }}>Y:</span> {fmt4(normal[1])}
+                    </div>
+                    <div>
+                        <span style={{ color: 'var(--text-muted)' }}>Z:</span> {fmt4(normal[2])}
+                    </div>
+                </div>
+            </div>
+
+            {/* Slab Conversion & Plane Cutting Tools */}
+            <div className="inspector-card" style={{
+                background: 'rgba(0, 243, 255, 0.04)',
+                borderColor: 'rgba(0, 243, 255, 0.25)',
+                marginTop: '12px',
+                padding: '12px',
+                borderRadius: '8px',
+                border: '1px solid rgba(0, 243, 255, 0.25)'
+            }}>
+                <h4 style={{ color: '#00f3ff', margin: '0 0 6px 0', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    📐 Plane Operations
+                </h4>
+                <p className="hint" style={{ marginTop: '2px', marginBottom: '8px', fontSize: '0.66rem' }}>
+                    Convert this plane to a slab board or use it to cut another board.
+                </p>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '6px 8px', background: 'rgba(255, 255, 255, 0.02)', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
+                    <div style={{ fontSize: '0.7rem', fontWeight: 'bold', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Slab Conversion Options</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                        <div>
+                            <div style={{ fontSize: '0.64rem', color: 'var(--text-muted)', marginBottom: '2px' }}>Width (in)</div>
+                            <NumericInput min="1" step="0.5" value={slabWidth} onChange={setSlabWidth} style={{ width: '100%', fontSize: '0.7rem' }} />
+                        </div>
+                        <div>
+                            <div style={{ fontSize: '0.64rem', color: 'var(--text-muted)', marginBottom: '2px' }}>Height (in)</div>
+                            <NumericInput min="1" step="0.5" value={slabHeight} onChange={setSlabHeight} style={{ width: '100%', fontSize: '0.7rem' }} />
+                        </div>
+                        <div>
+                            <div style={{ fontSize: '0.64rem', color: 'var(--text-muted)', marginBottom: '2px' }}>Thickness (in)</div>
+                            <NumericInput min="0.1" step="0.125" value={slabThickness} onChange={setSlabThickness} style={{ width: '100%', fontSize: '0.7rem' }} />
+                        </div>
+                        <div>
+                            <div style={{ fontSize: '0.64rem', color: 'var(--text-muted)', marginBottom: '2px' }}>Name</div>
+                            <input
+                                type="text"
+                                value={slabName}
+                                onChange={e => setSlabName(e.target.value)}
+                                style={{
+                                    width: '100%', padding: '4px 6px', background: 'var(--bg-color)', color: 'var(--text-main)',
+                                    border: '1px solid var(--border-color)', borderRadius: '6px', fontSize: '0.7rem', outline: 'none'
+                                }}
+                            />
+                        </div>
+                        <div style={{ gridColumn: 'span 2' }}>
+                            <div style={{ fontSize: '0.64rem', color: 'var(--text-muted)', marginBottom: '2px' }}>Thickness Extrusion Direction</div>
+                            <select
+                                value={thicknessDirection}
+                                onChange={e => setThicknessDirection(e.target.value)}
+                                style={{
+                                    width: '100%', padding: '4px 6px', background: 'var(--bg-color)', color: 'var(--text-main)',
+                                    border: '1px solid var(--border-color)', borderRadius: '6px', fontSize: '0.7rem', outline: 'none', cursor: 'pointer'
+                                }}
+                            >
+                                <option value="up">Up (Along Plane Normal)</option>
+                                <option value="down">Down (Opposite Plane Normal)</option>
+                                <option value="centered">Centered (Centered on Plane)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <button
+                        className="primary-btn"
+                        style={{ width: '100%', padding: '5px 10px', fontSize: '0.72rem', fontWeight: 'bold', marginTop: '4px' }}
+                        onClick={() => createSlabFromPlane(
+                            selectedBoard.centroid || selectedBoard.position,
+                            selectedBoard.normal,
+                            selectedBoard.points || [],
+                            slabWidth,
+                            slabHeight,
+                            slabThickness,
+                            slabName,
+                            thicknessDirection,
+                            selectedBoard.id
+                        )}
+                    >
+                        Convert to Slab Board
+                    </button>
+                    
+                    <div style={{ borderTop: '1px solid var(--border-color)', margin: '6px 0' }} />
+
+                    <div style={{ fontSize: '0.7rem', fontWeight: 'bold', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Cut Target Board</div>
+                    <div>
+                        <select
+                            value={cutTargetId}
+                            onChange={e => setCutTargetId(e.target.value)}
+                            style={{
+                                width: '100%', padding: '4px 6px', background: 'var(--bg-color)', color: 'var(--text-main)',
+                                border: '1px solid var(--border-color)', borderRadius: '6px', fontSize: '0.7rem', outline: 'none', cursor: 'pointer'
+                            }}
+                        >
+                            <option value="">-- Select board to cut --</option>
+                            {boards.filter(b => b.id.toString() !== selectedBoard.id.toString() && b.shape !== 'plane').map(b => (
+                                <option key={b.id} value={b.id.toString()}>{b.name}</option>
+                            ))}
+                        </select>
+                    </div>
+                    
+                    <button
+                        className="primary-btn"
+                        style={{
+                            width: '100%', padding: '6px 10px', fontSize: '0.72rem', fontWeight: 'bold',
+                            background: 'rgba(255, 140, 50, 0.15)', borderColor: 'rgba(255, 140, 50, 0.35)', color: '#ff8c32'
+                        }}
+                        disabled={!cutTargetId}
+                        onClick={() => {
+                            if (cutTargetId) {
+                                cutBoardWithPlane([cutTargetId], selectedBoard.centroid || selectedBoard.position, selectedBoard.normal);
+                                setCutTargetId('');
+                            }
+                        }}
+                    >
+                        Cut Board with Plane
+                    </button>
+                </div>
+            </div>
+
+            <div className="inspector-card" style={{ borderTop: '1px solid var(--border-color)', paddingTop: '12px', marginTop: '12px' }}>
+                <button
+                    className="danger-btn"
+                    style={{ width: '100%', padding: '8px', fontSize: '0.8rem', cursor: 'pointer', background: '#ff3b30', color: '#fff', border: 'none', borderRadius: '4px' }}
+                    onClick={handleComponentDelete}
+                >
+                    Delete Plane
+                </button>
+            </div>
+        </div>
     );
 };
 

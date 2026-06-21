@@ -267,8 +267,49 @@ const getGeometryFeatures = (geometry, localPt, thresholdCorner = 0.35, threshol
   return null;
 };
 
-const BoardMesh = ({ b, selectedItemIds, toggleSelection, textures, showEdges, constraintTargetMode, hoveredFaceData, setHoveredFaceData, modifierActive }) => {
+const PlaneMesh = ({ b, selectedItemIds }) => {
+  const toggleSelection = useStore(s => s.toggleSelection);
   if (b.visible === false) return null;
+  const isSelected = selectedItemIds.includes(b.id.toString());
+  const euler = new THREE.Euler(...(b.orientation || [0, 0, 0]), 'YXZ');
+  const quaternion = new THREE.Quaternion().setFromEuler(euler);
+
+  return (
+    <mesh
+      position={b.position}
+      quaternion={quaternion}
+      onClick={(e) => {
+        e.stopPropagation();
+        toggleSelection(b.id.toString(), e.shiftKey || e.ctrlKey || e.metaKey);
+      }}
+      onPointerOver={(e) => {
+        e.stopPropagation();
+        document.body.style.cursor = 'pointer';
+      }}
+      onPointerOut={(e) => {
+        e.stopPropagation();
+        document.body.style.cursor = 'auto';
+      }}
+    >
+      <planeGeometry args={[48, 48]} />
+      <meshBasicMaterial
+        color="#00ffff"
+        transparent
+        opacity={isSelected ? 0.25 : 0.1}
+        side={THREE.DoubleSide}
+        depthWrite={false}
+      />
+      <Edges color={isSelected ? '#00ffff' : 'rgba(0, 243, 255, 0.4)'} scale={1} />
+      <gridHelper
+        args={[48, 24, '#00ffff', isSelected ? 'rgba(0, 243, 255, 0.25)' : 'rgba(0, 243, 255, 0.1)']}
+        rotation={[Math.PI / 2, 0, 0]}
+      />
+      <axesHelper args={[12]} />
+    </mesh>
+  );
+};
+
+const BoardMesh = ({ b, selectedItemIds, toggleSelection, textures, showEdges, constraintTargetMode, hoveredFaceData, setHoveredFaceData, modifierActive }) => {
   const isSelected = selectedItemIds.includes(b.id.toString());
   
   const boards = useStore(s => s.boards);
@@ -476,6 +517,8 @@ const BoardMesh = ({ b, selectedItemIds, toggleSelection, textures, showEdges, c
     };
   }, [draggingInfo, boards, b, gl, camera]);
 
+  if (b.visible === false) return null;
+
   const handleDragPointerDown = (e) => {
     if (!dKeyPressed) return;
     e.stopPropagation();
@@ -522,6 +565,38 @@ const BoardMesh = ({ b, selectedItemIds, toggleSelection, textures, showEdges, c
         name={b.name}
         onClick={(e) => {
           e.stopPropagation();
+
+          // ── Define Plane Mode ──
+          const { definePlaneActive, definePlaneFeatures, addDefinePlaneFeature } = useStore.getState();
+          if (definePlaneActive) {
+            if (e.object?.geometry) {
+              const localPt = e.object.worldToLocal(e.point.clone());
+              const feature = getGeometryFeatures(e.object.geometry, localPt, 0.35, 0.25);
+              if (feature) {
+                if (feature.type === 'corner') {
+                  const worldPt = feature.point.clone().applyMatrix4(meshRef.current.matrixWorld).toArray();
+                  addDefinePlaneFeature({
+                    type: 'point',
+                    pos: worldPt,
+                    boardId: b.id.toString(),
+                    localPos: [feature.point.x, feature.point.y, feature.point.z]
+                  });
+                } else if (feature.type === 'edge') {
+                  const worldStart = feature.start.clone().applyMatrix4(meshRef.current.matrixWorld).toArray();
+                  const worldEnd = feature.end.clone().applyMatrix4(meshRef.current.matrixWorld).toArray();
+                  addDefinePlaneFeature({
+                    type: 'edge',
+                    start: worldStart,
+                    end: worldEnd,
+                    boardId: b.id.toString(),
+                    localStart: [feature.start.x, feature.start.y, feature.start.z],
+                    localEnd: [feature.end.x, feature.end.y, feature.end.z]
+                  });
+                }
+              }
+            }
+            return;
+          }
 
           // ── Pivot Mode ──
           const { pivotMode, setPivotMode, gridSnap, setCustomPivot, setPivotHoverSnap, units } = useStore.getState();
@@ -599,6 +674,13 @@ const BoardMesh = ({ b, selectedItemIds, toggleSelection, textures, showEdges, c
           toggleSelection(b.id.toString(), e.shiftKey || e.ctrlKey || e.metaKey, faceStr);
         }}
         onPointerDown={(e) => {
+          // ── Define Plane Mode ──
+          const { definePlaneActive } = useStore.getState();
+          if (definePlaneActive) {
+            e.stopPropagation();
+            return;
+          }
+
           // ── Pivot Mode Click Snapping ──
           const { pivotMode, setPivotMode, gridSnap, setCustomPivot, setPivotHoverSnap, units } = useStore.getState();
           if (pivotMode?.active && pivotMode.boardId === b.id.toString()) {
@@ -695,6 +777,56 @@ const BoardMesh = ({ b, selectedItemIds, toggleSelection, textures, showEdges, c
           }
         }}
         onPointerMove={(e) => {
+          // ── Define Plane Hover Snapping ──
+          const { definePlaneActive } = useStore.getState();
+          if (definePlaneActive && e.object?.geometry) {
+            e.stopPropagation();
+            const localPt = e.object.worldToLocal(e.point.clone());
+            const feature = getGeometryFeatures(e.object.geometry, localPt, 0.35, 0.25);
+            
+            let hoverType = null;
+            let hoverKey = null;
+            let cornerPos = null;
+            let edgeStart = null;
+            let edgeEnd = null;
+            
+            if (feature) {
+              hoverType = feature.type;
+              hoverKey = feature.type;
+              if (feature.type === 'corner') {
+                cornerPos = [feature.point.x, feature.point.y, feature.point.z];
+              } else if (feature.type === 'edge') {
+                edgeStart = [feature.start.x, feature.start.y, feature.start.z];
+                edgeEnd = [feature.end.x, feature.end.y, feature.end.z];
+              }
+              document.body.style.cursor = 'pointer';
+            } else {
+              document.body.style.cursor = 'auto';
+            }
+            
+            const needsUpdate = !hoveredFaceData || 
+              hoveredFaceData.id !== b.id.toString() || 
+              hoveredFaceData.hoverType !== hoverType || 
+              hoveredFaceData.hoverKey !== hoverKey ||
+              (hoverType === 'corner' && JSON.stringify(hoveredFaceData.cornerPos) !== JSON.stringify(cornerPos)) ||
+              (hoverType === 'edge' && (
+                JSON.stringify(hoveredFaceData.edgeStart) !== JSON.stringify(edgeStart) ||
+                JSON.stringify(hoveredFaceData.edgeEnd) !== JSON.stringify(edgeEnd)
+              ));
+              
+            if (needsUpdate) {
+              setHoveredFaceData({ 
+                id: b.id.toString(), 
+                hoverType, 
+                hoverKey,
+                cornerPos,
+                edgeStart,
+                edgeEnd
+              });
+            }
+            return;
+          }
+
           // ── Pivot Mode hover snap tracking ──
           const { pivotMode, setPivotHoverSnap, gridSnap, units } = useStore.getState();
           if (pivotMode?.active && pivotMode.boardId === b.id.toString()) {
@@ -836,9 +968,12 @@ const BoardMesh = ({ b, selectedItemIds, toggleSelection, textures, showEdges, c
         onPointerOut={(e) => {
           if (draggingInfo) return; // skip pointer out when dragging
           // Clear measure and pivot hover snap when leaving this board
-          const { measureMode: mm, setMeasureHoverSnap, pivotMode, setPivotHoverSnap } = useStore.getState();
+          const { measureMode: mm, setMeasureHoverSnap, pivotMode, setPivotHoverSnap, definePlaneActive } = useStore.getState();
           if (mm?.active) setMeasureHoverSnap(null);
           if (pivotMode?.active) setPivotHoverSnap(null);
+          if (definePlaneActive) {
+            document.body.style.cursor = 'auto';
+          }
           if (hoveredFaceData && hoveredFaceData.id === b.id.toString()) {
             setHoveredFaceData(null);
           }
@@ -1048,6 +1183,14 @@ const RecursiveNode = ({ nodeId, groups, boards, selectedItemIds, toggleSelectio
   if (!isGroup) {
     const b = boards.find(x => x.id.toString() === nodeId);
     if (!b) return null;
+    if (b.shape === 'plane') {
+      return (
+        <PlaneMesh
+          b={b}
+          selectedItemIds={selectedItemIds}
+        />
+      );
+    }
     return (
       <BoardMesh
         b={b}
@@ -1144,6 +1287,40 @@ const RecursiveNode = ({ nodeId, groups, boards, selectedItemIds, toggleSelectio
 };
 
 function WoodJoint({ boards, groups, selectedItemIds, toggleSelection, showEdges, showMeasurements, measurements, showBoundingBox, units, theme, constraintTargetMode, hoveredFaceData, setHoveredFaceData, modifierActive, constraints, measureMode }) {
+  const definePlaneActive = useStore(s => s.definePlaneActive);
+  const definePlaneFeatures = useStore(s => s.definePlaneFeatures || []);
+
+  const planePoints = React.useMemo(() => {
+    const pts = [];
+    definePlaneFeatures.forEach(f => {
+      if (f.type === 'point') pts.push(new THREE.Vector3(...f.pos));
+      if (f.type === 'edge') {
+        pts.push(new THREE.Vector3(...f.start));
+        pts.push(new THREE.Vector3(...f.end));
+      }
+    });
+    return pts;
+  }, [definePlaneFeatures]);
+
+  const isPlaneEstablished = planePoints.length >= 3;
+
+  const planeVisual = React.useMemo(() => {
+    if (!isPlaneEstablished) return null;
+    const p0 = planePoints[0];
+    const p1 = planePoints[1];
+    const p2 = planePoints[2];
+
+    const centroid = new THREE.Vector3().add(p0).add(p1).add(p2).multiplyScalar(1 / 3);
+    const v1 = new THREE.Vector3().subVectors(p1, p0);
+    const v2 = new THREE.Vector3().subVectors(p2, p0);
+    const normal = new THREE.Vector3().crossVectors(v1, v2).normalize();
+
+    if (normal.lengthSq() < 0.0001) return null;
+
+    const quaternion = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), normal);
+    return { centroid, quaternion, normal };
+  }, [planePoints, isPlaneEstablished]);
+
   // WOOD_TEXTURE_URLS is a stable module-level object — safe to pass to useTexture()
   const textures = useTexture(WOOD_TEXTURE_URLS);
 
@@ -1178,11 +1355,61 @@ function WoodJoint({ boards, groups, selectedItemIds, toggleSelection, showEdges
         <RecursiveNode key={k} nodeId={k} groups={groups} boards={boards} selectedItemIds={selectedItemIds} toggleSelection={toggleSelection} textures={textures} showEdges={showEdges} constraintTargetMode={constraintTargetMode} hoveredFaceData={hoveredFaceData} setHoveredFaceData={setHoveredFaceData} modifierActive={modifierActive} />
       ))}
       {rootBoards.map(b => (
-        <BoardMesh key={`root_${b.id}`} b={b} selectedItemIds={selectedItemIds} toggleSelection={toggleSelection} textures={textures} showEdges={showEdges} constraintTargetMode={constraintTargetMode} hoveredFaceData={hoveredFaceData} setHoveredFaceData={setHoveredFaceData} modifierActive={modifierActive} />
+        b.shape === 'plane' ? (
+          <PlaneMesh key={`root_${b.id}`} b={b} selectedItemIds={selectedItemIds} />
+        ) : (
+          <BoardMesh key={`root_${b.id}`} b={b} selectedItemIds={selectedItemIds} toggleSelection={toggleSelection} textures={textures} showEdges={showEdges} constraintTargetMode={constraintTargetMode} hoveredFaceData={hoveredFaceData} setHoveredFaceData={setHoveredFaceData} modifierActive={modifierActive} />
+        )
       ))}
       {orphanedBoards.map(b => (
-        <BoardMesh key={`orphan_${b.id}`} b={b} selectedItemIds={selectedItemIds} toggleSelection={toggleSelection} textures={textures} showEdges={showEdges} constraintTargetMode={constraintTargetMode} hoveredFaceData={hoveredFaceData} setHoveredFaceData={setHoveredFaceData} modifierActive={modifierActive} />
+        b.shape === 'plane' ? (
+          <PlaneMesh key={`orphan_${b.id}`} b={b} selectedItemIds={selectedItemIds} />
+        ) : (
+          <BoardMesh key={`orphan_${b.id}`} b={b} selectedItemIds={selectedItemIds} toggleSelection={toggleSelection} textures={textures} showEdges={showEdges} constraintTargetMode={constraintTargetMode} hoveredFaceData={hoveredFaceData} setHoveredFaceData={setHoveredFaceData} modifierActive={modifierActive} />
+        )
       ))}
+
+      {/* ── Define Plane Visualization ── */}
+      {definePlaneActive && (
+        <group>
+          {/* If plane is not established, render the selected features */}
+          {!isPlaneEstablished && definePlaneFeatures.map((f, idx) => {
+            if (f.type === 'point') {
+              return (
+                <mesh position={f.pos} key={`plane-feat-pt-${idx}`} raycast={() => null}>
+                  <sphereGeometry args={[0.2, 16, 16]} />
+                  <meshBasicMaterial color="#ffcc00" depthTest={false} transparent opacity={0.9} />
+                </mesh>
+              );
+            }
+            if (f.type === 'edge') {
+              return (
+                <Line
+                  points={[f.start, f.end]}
+                  color="#ffcc00"
+                  lineWidth={4}
+                  depthTest={false}
+                  transparent
+                  opacity={0.9}
+                  key={`plane-feat-edge-${idx}`}
+                />
+              );
+            }
+            return null;
+          })}
+
+          {/* If plane is established, render the semi-transparent cyan plane */}
+          {isPlaneEstablished && planeVisual && (
+            <mesh position={planeVisual.centroid} quaternion={planeVisual.quaternion} raycast={() => null}>
+              <planeGeometry args={[48, 48]} />
+              <meshBasicMaterial color="#00ffff" transparent opacity={0.125} side={THREE.DoubleSide} depthWrite={false} />
+              <Edges color="#00ffff" scale={1} />
+              <gridHelper args={[48, 24, '#00ffff', 'rgba(0, 243, 255, 0.2)']} rotation={[Math.PI / 2, 0, 0]} />
+              <axesHelper args={[12]} />
+            </mesh>
+          )}
+        </group>
+      )}
     </group>
   );
 }

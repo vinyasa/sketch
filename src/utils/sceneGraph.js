@@ -21,6 +21,7 @@ export const computeWorldAABB = (boardList) => {
     let minZ = Infinity, maxZ = -Infinity;
 
     boardList.forEach(b => {
+        if (b.shape === 'plane') return;
         const [px, py, pz] = b.position;
         const hx = b.size[0] / 2, hy = b.size[1] / 2, hz = b.size[2] / 2;
         const [rx, ry, rz] = b.orientation || [0, 0, 0];

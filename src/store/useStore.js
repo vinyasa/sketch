@@ -700,13 +700,13 @@ const useStore = create((set, get) => ({
         for (let axis = 0; axis < 3; axis++) {
             for (let i = 0; i < nextBoards.length; i++) {
                 const b = nextBoards[i];
-                if (b.visible === false || b.disableAutoAlign) continue;
+                if (b.visible === false || b.disableAutoAlign || b.shape === 'plane') continue;
                 const b_size = b.size[axis];
                 const b_pos = b.position[axis];
 
                 for (let j = i + 1; j < nextBoards.length; j++) {
                     const other = nextBoards[j];
-                    if (other.visible === false || other.disableAutoAlign) continue;
+                    if (other.visible === false || other.disableAutoAlign || other.shape === 'plane') continue;
                     const o_size = other.size[axis];
                     const o_pos = other.position[axis];
 

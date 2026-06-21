@@ -24,6 +24,9 @@ const ToolsPanel = () => {
         applyBulkEdgeJoints, removeBulkEdgeJoints,
         applySubtraction, toggleBoardVisibility,
         applyAssemblyProfile, clearAssemblyProfile,
+        definePlaneActive, setDefinePlaneActive,
+        definePlaneFeatures, clearDefinePlaneFeatures,
+        createSlabFromPlane, cutBoardWithPlane,
     } = useStore();
 
     // Smart Edge Profiler State
@@ -32,13 +35,48 @@ const ToolsPanel = () => {
     const [radius, setRadius] = useState(0.25);
     const [width, setWidth] = useState(0.25);
 
+    // Define a Plane Mode UI State
+    const [slabWidth, setSlabWidth] = useState(24);
+    const [slabHeight, setSlabHeight] = useState(24);
+    const [slabThickness, setSlabThickness] = useState(0.75);
+    const [slabName, setSlabName] = useState('Slab Plane');
+    const [thicknessDirection, setThicknessDirection] = useState('up');
+    const hasSelectedPlane = useMemo(() => selectedItemIds.length === 1 && boards.some(b => b.id.toString() === selectedItemIds[0] && b.shape === 'plane'), [selectedItemIds, boards]);
+
+    const planePoints = useMemo(() => {
+        const pts = [];
+        (definePlaneFeatures || []).forEach(f => {
+            if (f.type === 'point') pts.push(new THREE.Vector3(...f.pos));
+            if (f.type === 'edge') {
+                pts.push(new THREE.Vector3(...f.start));
+                pts.push(new THREE.Vector3(...f.end));
+            }
+        });
+        return pts;
+    }, [definePlaneFeatures]);
+
+    const isPlaneEstablished = planePoints.length >= 3;
+
+    const planeData = useMemo(() => {
+        if (!isPlaneEstablished) return null;
+        const p0 = planePoints[0];
+        const p1 = planePoints[1];
+        const p2 = planePoints[2];
+        const centroid = new THREE.Vector3().add(p0).add(p1).add(p2).multiplyScalar(1 / 3);
+        const v1 = new THREE.Vector3().subVectors(p1, p0);
+        const v2 = new THREE.Vector3().subVectors(p2, p0);
+        const normal = new THREE.Vector3().crossVectors(v1, v2).normalize();
+        if (normal.lengthSq() < 0.0001) return null;
+        return { centroid, normal };
+    }, [planePoints, isPlaneEstablished]);
+
     // Collect all board IDs from selectedItemIds (including children of selected groups)
     const targetBoardIds = useMemo(() => {
         const ids = [];
         (selectedItemIds || []).forEach(id => {
             if (groups?.[id]) {
-                ids.push(...collectChildBoards(id, boards, groups).map(b => b.id.toString()));
-            } else if (boards.some(b => b.id.toString() === id)) {
+                ids.push(...collectChildBoards(id, boards, groups).filter(b => b.shape !== 'plane').map(b => b.id.toString()));
+            } else if (boards.some(b => b.id.toString() === id && b.shape !== 'plane')) {
                 ids.push(id.toString());
             }
         });
@@ -260,6 +298,142 @@ const ToolsPanel = () => {
                     </div>
                 </div>
             )}
+
+            {/* ── Define a Plane Section ── */}
+            {!editingOp && targetBoardIds.length >= 1 && !hasSelectedPlane && (
+                <div className="inspector-card" style={{
+                    background: 'rgba(0, 243, 255, 0.04)',
+                    borderColor: 'rgba(0, 243, 255, 0.25)',
+                    marginBottom: '12px',
+                }}>
+                    <h4 style={{ color: '#00f3ff', margin: '0 0 6px 0', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        📐 Define a Plane
+                    </h4>
+                    <p className="hint" style={{ marginTop: '2px', marginBottom: '8px', fontSize: '0.66rem' }}>
+                        Establish a 3D plane by selecting 3 points or 1 edge + 1 point on the selection.
+                    </p>
+
+                    {!definePlaneActive ? (
+                        <button
+                            className="primary-btn"
+                            style={{
+                                width: '100%', padding: '6px 12px', fontSize: '0.75rem', fontWeight: 'bold',
+                                background: 'rgba(0, 243, 255, 0.15)', borderColor: 'rgba(0, 243, 255, 0.35)', color: '#00f3ff'
+                            }}
+                            onClick={() => setDefinePlaneActive(true)}
+                        >
+                            Start Plane Definition
+                        </button>
+                    ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            <div style={{
+                                padding: '6px 8px', borderRadius: '6px', background: 'rgba(0, 0, 0, 0.25)',
+                                border: '1px dashed rgba(0, 243, 255, 0.3)', fontSize: '0.72rem', color: 'var(--text-main)'
+                            }}>
+                                <div style={{ fontWeight: 'bold', color: isPlaneEstablished ? '#34c759' : '#00f3ff', marginBottom: '4px' }}>
+                                    {isPlaneEstablished ? '✓ Plane Established' : 'Selecting Plane Features...'}
+                                </div>
+                                <div style={{ fontSize: '0.66rem', color: 'var(--text-muted)' }}>
+                                    Points selected: {planePoints.length} / 3
+                                </div>
+                                {definePlaneFeatures.length > 0 && (
+                                    <ul style={{ margin: '4px 0 0 0', paddingLeft: '14px', fontSize: '0.64rem', color: '#ffcc00' }}>
+                                        {definePlaneFeatures.map((f, idx) => (
+                                            <li key={idx}>
+                                                {f.type === 'point' ? `Point: [${f.pos.map(n => n.toFixed(1)).join(', ')}]` : `Edge: [${f.start.map(n => n.toFixed(1)).join(', ')}]`}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
+                            </div>
+
+                            {isPlaneEstablished && planeData && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '6px 8px', background: 'rgba(255, 255, 255, 0.02)', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
+                                    <div style={{ fontSize: '0.7rem', fontWeight: 'bold', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Slab Creation Options</div>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                                        <div>
+                                            <div style={{ fontSize: '0.64rem', color: 'var(--text-muted)', marginBottom: '2px' }}>Width (in)</div>
+                                            <NumericInput min="1" step="0.5" value={slabWidth} onChange={setSlabWidth} style={{ width: '100%', fontSize: '0.7rem' }} />
+                                        </div>
+                                        <div>
+                                            <div style={{ fontSize: '0.64rem', color: 'var(--text-muted)', marginBottom: '2px' }}>Height (in)</div>
+                                            <NumericInput min="1" step="0.5" value={slabHeight} onChange={setSlabHeight} style={{ width: '100%', fontSize: '0.7rem' }} />
+                                        </div>
+                                        <div>
+                                            <div style={{ fontSize: '0.64rem', color: 'var(--text-muted)', marginBottom: '2px' }}>Thickness (in)</div>
+                                            <NumericInput min="0.1" step="0.125" value={slabThickness} onChange={setSlabThickness} style={{ width: '100%', fontSize: '0.7rem' }} />
+                                        </div>
+                                        <div>
+                                            <div style={{ fontSize: '0.64rem', color: 'var(--text-muted)', marginBottom: '2px' }}>Name</div>
+                                            <input
+                                                type="text" value={slabName} onChange={e => setSlabName(e.target.value)}
+                                                style={{
+                                                    width: '100%', padding: '4px 6px', background: 'var(--bg-color)', color: 'var(--text-main)',
+                                                    border: '1px solid var(--border-color)', borderRadius: '6px', fontSize: '0.7rem', outline: 'none'
+                                                }}
+                                            />
+                                        </div>
+                                        <div style={{ gridColumn: 'span 2' }}>
+                                            <div style={{ fontSize: '0.64rem', color: 'var(--text-muted)', marginBottom: '2px' }}>Thickness Extrusion Direction</div>
+                                            <select
+                                                value={thicknessDirection}
+                                                onChange={e => setThicknessDirection(e.target.value)}
+                                                style={{
+                                                    width: '100%', padding: '4px 6px', background: 'var(--bg-color)', color: 'var(--text-main)',
+                                                    border: '1px solid var(--border-color)', borderRadius: '6px', fontSize: '0.7rem', outline: 'none', cursor: 'pointer'
+                                                }}
+                                            >
+                                                <option value="up">Up (Along Plane Normal)</option>
+                                                <option value="down">Down (Opposite Plane Normal)</option>
+                                                <option value="centered">Centered (Centered on Plane)</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <button
+                                        className="primary-btn"
+                                        style={{ width: '100%', padding: '5px 10px', fontSize: '0.72rem', fontWeight: 'bold', marginTop: '4px' }}
+                                        onClick={() => createSlabFromPlane(planeData.centroid.toArray(), planeData.normal.toArray(), planePoints.map(p => p.toArray()), slabWidth, slabHeight, slabThickness, slabName, thicknessDirection)}
+                                    >
+                                        Create Slab Board
+                                    </button>
+                                    
+                                    <div style={{ borderTop: '1px solid var(--border-color)', margin: '4px 0' }} />
+                                    
+                                    <button
+                                        className="primary-btn"
+                                        style={{
+                                            width: '100%', padding: '6px 10px', fontSize: '0.72rem', fontWeight: 'bold',
+                                            background: 'rgba(255, 140, 50, 0.15)', borderColor: 'rgba(255, 140, 50, 0.35)', color: '#ff8c32'
+                                        }}
+                                        onClick={() => cutBoardWithPlane(targetBoardIds, planeData.centroid.toArray(), planeData.normal.toArray())}
+                                    >
+                                        Cut Board(s) with Plane
+                                    </button>
+                                </div>
+                            )}
+
+                            <div style={{ display: 'flex', gap: '6px' }}>
+                                {definePlaneFeatures.length > 0 && (
+                                    <button
+                                        className="nav-btn" style={{ flex: 1, padding: '5px', fontSize: '0.7rem' }}
+                                        onClick={clearDefinePlaneFeatures}
+                                    >
+                                        Clear Selection
+                                    </button>
+                                )}
+                                <button
+                                    className="nav-btn" style={{ flex: 1, padding: '5px', fontSize: '0.7rem', color: '#ff3b30', borderColor: 'rgba(255, 59, 48, 0.2)' }}
+                                    onClick={() => setDefinePlaneActive(false)}
+                                >
+                                    Cancel
+                                </button>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
+
+
 
             {/* ── Edge Joint Section (2+ boards selected) ── */}
             {canShowedgeJoint && (() => {
@@ -518,7 +692,7 @@ const ToolsPanel = () => {
             })()}
 
             {/* ── Tool Type Buttons ── */}
-            {selectedBoard ? (
+            {selectedBoard && selectedBoard.shape !== 'plane' ? (
                 <div className="inspector-card" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px' }}>
                     <button
                         onClick={() => handleAddTool({ id: Date.now(), type: 'hole', radius: 1, offsetX: 0, offsetY: 0, axis: 'y' })}
@@ -569,7 +743,7 @@ const ToolsPanel = () => {
                         onMouseLeave={e => e.target.style.background = 'var(--bg-color)'}
                     >⌸ Profile</button>
                 </div>
-            ) : !canShowedgeJoint && (
+            ) : !hasSelectedPlane && !canShowedgeJoint && (
                 <div className="hint" style={{ marginBottom: '14px' }}>Select a board to add or edit tools.</div>
             )}
 

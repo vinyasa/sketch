@@ -40,7 +40,7 @@ export function MeasurementOverlay({ boards, selectedItemIds, showMeasurements, 
       {/* ── Ephemeral auto-dims for selected boards (never printed) ── */}
       {!isPrinting && selectedItemIds.map(id => {
         const b = boards.find(x => x.id.toString() === id);
-        if (!b) return null;
+        if (!b || b.shape === 'plane') return null;
 
         const hx = b.size[0] / 2, hy = b.size[1] / 2, hz = b.size[2] / 2;
         const oY = 1.5;

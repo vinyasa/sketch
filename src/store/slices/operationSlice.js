@@ -1101,7 +1101,7 @@ export const createOperationSlice = (set, get) => ({
       const {
         boards: latestBoards
       } = get();
-      const selBoards = boardIds.map(id => latestBoards.find(b => b.id.toString() === id.toString())).filter(Boolean);
+      const selBoards = boardIds.map(id => latestBoards.find(b => b.id.toString() === id.toString())).filter(b => b && b.shape !== 'plane');
 
       // Helpers
       const bbOf = b => [0, 1, 2].map(i => ({
@@ -1369,6 +1369,374 @@ export const createOperationSlice = (set, get) => ({
       get().showToast(`🔗 Removed ${removedCount} edge joints from selection`);
     }
     return removedCount;
+  },
+  definePlaneActive: false,
+  definePlaneFeatures: [],
+  setDefinePlaneActive: (active) => set({ definePlaneActive: active, definePlaneFeatures: [] }),
+  addDefinePlaneFeature: (feature) => {
+    const { definePlaneFeatures } = get();
+    const isSameFeature = (f1, f2) => {
+      if (f1.type !== f2.type) return false;
+      if (f1.type === 'point') {
+        return Math.abs(f1.pos[0] - f2.pos[0]) < 0.01 &&
+               Math.abs(f1.pos[1] - f2.pos[1]) < 0.01 &&
+               Math.abs(f1.pos[2] - f2.pos[2]) < 0.01;
+      }
+      if (f1.type === 'edge') {
+        return (Math.abs(f1.start[0] - f2.start[0]) < 0.01 &&
+                Math.abs(f1.start[1] - f2.start[1]) < 0.01 &&
+                Math.abs(f1.start[2] - f2.start[2]) < 0.01 &&
+                Math.abs(f1.end[0] - f2.end[0]) < 0.01 &&
+                Math.abs(f1.end[1] - f2.end[1]) < 0.01 &&
+                Math.abs(f1.end[2] - f2.end[2]) < 0.01) ||
+               (Math.abs(f1.start[0] - f2.end[0]) < 0.01 &&
+                Math.abs(f1.start[1] - f2.end[1]) < 0.01 &&
+                Math.abs(f1.start[2] - f2.end[2]) < 0.01 &&
+                Math.abs(f1.end[0] - f2.start[0]) < 0.01 &&
+                Math.abs(f1.end[1] - f2.start[1]) < 0.01 &&
+                Math.abs(f1.end[2] - f2.start[2]) < 0.01);
+      }
+      return false;
+    };
+
+    const existsIndex = definePlaneFeatures.findIndex(f => isSameFeature(f, feature));
+    if (existsIndex > -1) {
+      set({ definePlaneFeatures: definePlaneFeatures.filter((_, i) => i !== existsIndex) });
+      return;
+    }
+
+    let currentPointsCount = 0;
+    definePlaneFeatures.forEach(f => {
+      currentPointsCount += f.type === 'edge' ? 2 : 1;
+    });
+    
+    const incomingCount = feature.type === 'edge' ? 2 : 1;
+    if (currentPointsCount + incomingCount === 3) {
+      const finalFeatures = [...definePlaneFeatures, feature];
+      const pts = [];
+      finalFeatures.forEach(f => {
+        if (f.type === 'point') pts.push(new THREE.Vector3(...f.pos));
+        if (f.type === 'edge') {
+          pts.push(new THREE.Vector3(...f.start));
+          pts.push(new THREE.Vector3(...f.end));
+        }
+      });
+      
+      const p0 = pts[0];
+      const p1 = pts[1];
+      const p2 = pts[2];
+      
+      const centroid = new THREE.Vector3().add(p0).add(p1).add(p2).multiplyScalar(1 / 3);
+      const v1 = new THREE.Vector3().subVectors(p1, p0);
+      const v2 = new THREE.Vector3().subVectors(p2, p0);
+      const normal = new THREE.Vector3().crossVectors(v1, v2).normalize();
+      
+      if (normal.lengthSq() < 0.0001) {
+        get().showToast('⚠ Selected points are collinear. Cannot define a plane.');
+        return;
+      }
+      
+      const localX = new THREE.Vector3().subVectors(p1, p0).normalize();
+      const v3 = new THREE.Vector3().subVectors(p2, p0);
+      const localZ = new THREE.Vector3().crossVectors(localX, v3).normalize();
+      const localY = new THREE.Vector3().crossVectors(localZ, localX).normalize();
+      
+      const matrix = new THREE.Matrix4().makeBasis(localX, localY, localZ);
+      const euler = new THREE.Euler().setFromRotationMatrix(matrix, 'YXZ');
+      
+      const planeId = 'plane_' + Date.now();
+      const newPlane = {
+        id: planeId,
+        name: 'Plane ' + (get().boards.filter(b => b.shape === 'plane').length + 1),
+        shape: 'plane',
+        position: [centroid.x, centroid.y, centroid.z],
+        orientation: [euler.x, euler.y, euler.z],
+        points: pts.map(p => p.toArray()),
+        normal: normal.toArray(),
+        centroid: centroid.toArray(),
+        parentId: 'Workspace',
+        visible: true,
+        operations: []
+      };
+      
+      const { boards, pushHistory, setBoards } = get();
+      pushHistory();
+      setBoards([...boards, newPlane]);
+      set({
+        selectedItemIds: [planeId],
+        definePlaneActive: false,
+        definePlaneFeatures: []
+      });
+      get().showToast(`✓ Established and selected "${newPlane.name}"`);
+    } else if (currentPointsCount + incomingCount < 3) {
+      set({ definePlaneFeatures: [...definePlaneFeatures, feature] });
+    } else {
+      get().showToast('Cannot select feature: defining a plane requires exactly 3 points.');
+    }
+  },
+  clearDefinePlaneFeatures: () => set({ definePlaneFeatures: [] }),
+  createSlabFromPlane: (planeCentroid, planeNormal, planePoints, width, height, thickness, name, thicknessDirection = 'up', planeIdToDelete = null) => {
+    const { boards, pushHistory, setBoards, showToast, defaultMaterial } = get();
+    
+    if (planePoints.length < 3) return;
+    
+    const p0 = new THREE.Vector3(...planePoints[0]);
+    const p1 = new THREE.Vector3(...planePoints[1]);
+    const p2 = new THREE.Vector3(...planePoints[2]);
+    
+    const centroid = new THREE.Vector3(...planeCentroid);
+    
+    const localX = new THREE.Vector3().subVectors(p1, p0).normalize();
+    const v2 = new THREE.Vector3().subVectors(p2, p0);
+    const localZ = new THREE.Vector3().crossVectors(localX, v2).normalize();
+    const localY = new THREE.Vector3().crossVectors(localZ, localX).normalize();
+    
+    // Shift centroid based on thickness direction along plane normal (localZ)
+    let shiftAmount = 0;
+    if (thicknessDirection === 'up') {
+      shiftAmount = thickness / 2;
+    } else if (thicknessDirection === 'down') {
+      shiftAmount = -thickness / 2;
+    }
+    const shiftedCentroid = centroid.clone().addScaledVector(localZ, shiftAmount);
+    
+    const matrix = new THREE.Matrix4().makeBasis(localX, localY, localZ);
+    const euler = new THREE.Euler().setFromRotationMatrix(matrix, 'YXZ');
+    
+    const newBoard = {
+      id: 'slab_' + Date.now(),
+      name: name || 'Slab Plane',
+      size: [width, height, thickness],
+      position: [shiftedCentroid.x, shiftedCentroid.y, shiftedCentroid.z],
+      orientation: [euler.x, euler.y, euler.z],
+      parentId: 'Workspace',
+      material: defaultMaterial || 'pine',
+      visible: true,
+      operations: []
+    };
+    
+    pushHistory();
+    let nextBoards = [...boards];
+    if (planeIdToDelete) {
+      nextBoards = nextBoards.filter(b => b.id.toString() !== planeIdToDelete.toString());
+    }
+    setBoards([...nextBoards, newBoard]);
+    set({ selectedItemIds: [newBoard.id.toString()] });
+    showToast(`Created slab board "${newBoard.name}"`);
+    
+    set({ definePlaneActive: false, definePlaneFeatures: [] });
+  },
+  cutBoardWithPlane: (targetBoardIds, planeCentroid, planeNormal) => {
+    const { boards, pushHistory, setBoards, showToast, constraints } = get();
+    
+    const normal = new THREE.Vector3(...planeNormal).normalize();
+    const centroid = new THREE.Vector3(...planeCentroid);
+    
+    let nextBoards = [...boards];
+    let newConstraints = { ...constraints };
+    let didCutAny = false;
+    
+    const targetBoards = boards.filter(b => targetBoardIds.includes(b.id.toString()));
+    
+    const getWorldCorners = (b) => {
+      const hw = b.size[0] / 2;
+      const hh = b.size[1] / 2;
+      const hd = b.size[2] / 2;
+      const localCorners = [
+        new THREE.Vector3(-hw, -hh, -hd),
+        new THREE.Vector3(hw, -hh, -hd),
+        new THREE.Vector3(-hw, hh, -hd),
+        new THREE.Vector3(hw, hh, -hd),
+        new THREE.Vector3(-hw, -hh, hd),
+        new THREE.Vector3(hw, -hh, hd),
+        new THREE.Vector3(-hw, hh, hd),
+        new THREE.Vector3(hw, hh, hd)
+      ];
+      if (b.pivot) {
+        const pivotVec = new THREE.Vector3(...b.pivot);
+        localCorners.forEach(c => c.sub(pivotVec));
+      }
+      const euler = new THREE.Euler(...(b.orientation || [0, 0, 0]), 'YXZ');
+      const pos = new THREE.Vector3(...b.position);
+      
+      return localCorners.map(c => {
+        c.applyEuler(euler);
+        c.add(pos);
+        return c;
+      });
+    };
+    
+    const getBoardWorldMatrix = (b) => {
+      const euler = new THREE.Euler(...(b.orientation || [0, 0, 0]), 'YXZ');
+      const matrix = new THREE.Matrix4().compose(
+        new THREE.Vector3(...b.position),
+        new THREE.Quaternion().setFromEuler(euler),
+        new THREE.Vector3(1, 1, 1)
+      );
+      if (b.pivot) {
+        matrix.multiply(new THREE.Matrix4().makeTranslation(-b.pivot[0], -b.pivot[1], -b.pivot[2]));
+      }
+      return matrix;
+    };
+    
+    const L = 500;
+    
+    const w = normal.clone().normalize();
+    let u = Math.abs(w.x) < 0.9 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 1, 0);
+    u.cross(w).normalize();
+    const v = new THREE.Vector3().crossVectors(w, u).normalize();
+    const cutterRotMatrix = new THREE.Matrix4().makeBasis(u, v, w);
+    
+    const boardsToRemove = [];
+    const boardsToAdd = [];
+    
+    targetBoards.forEach(b => {
+      const corners = getWorldCorners(b);
+      let numPos = 0;
+      let numNeg = 0;
+      
+      corners.forEach(c => {
+        const dist = new THREE.Vector3().subVectors(c, centroid).dot(normal);
+        if (dist > 0.001) numPos++;
+        else if (dist < -0.001) numNeg++;
+      });
+      
+      if (numPos === 0 || numNeg === 0) {
+        return;
+      }
+      
+      didCutAny = true;
+      boardsToRemove.push(b.id.toString());
+      
+      const id1 = b.id.toString() + "_part1_" + Date.now();
+      const id2 = b.id.toString() + "_part2_" + Date.now();
+      
+      const cutterPos1 = centroid.clone().addScaledVector(normal, L / 2);
+      const Wc1 = new THREE.Matrix4().compose(
+        cutterPos1,
+        new THREE.Quaternion().setFromRotationMatrix(cutterRotMatrix),
+        new THREE.Vector3(1, 1, 1)
+      );
+      const Wb = getBoardWorldMatrix(b);
+      const relativeMatrix1 = Wb.clone().invert().multiply(Wc1);
+      
+      const op1 = {
+        id: Date.now() + 10 + Math.random(),
+        type: 'subtract',
+        cutterName: 'Plane Cut (Positive Face)',
+        cutterId: 'plane-cutter-pos-' + Date.now(),
+        cutterSize: [L, L, L],
+        cutterShape: 'box',
+        relativeMatrix: relativeMatrix1.elements.slice()
+      };
+      
+      const newBoard1 = {
+        ...b,
+        id: id1,
+        name: `${b.name} (Part 1)`,
+        operations: [...(b.operations || []), op1]
+      };
+      
+      const cutterPos2 = centroid.clone().addScaledVector(normal, -L / 2);
+      const Wc2 = new THREE.Matrix4().compose(
+        cutterPos2,
+        new THREE.Quaternion().setFromRotationMatrix(cutterRotMatrix),
+        new THREE.Vector3(1, 1, 1)
+      );
+      const relativeMatrix2 = Wb.clone().invert().multiply(Wc2);
+      
+      const op2 = {
+        id: Date.now() + 20 + Math.random(),
+        type: 'subtract',
+        cutterName: 'Plane Cut (Negative Face)',
+        cutterId: 'plane-cutter-neg-' + Date.now(),
+        cutterSize: [L, L, L],
+        cutterShape: 'box',
+        relativeMatrix: relativeMatrix2.elements.slice()
+      };
+      
+      const newBoard2 = {
+        ...b,
+        id: id2,
+        name: `${b.name} (Part 2)`,
+        operations: [...(b.operations || []), op2]
+      };
+      
+      boardsToAdd.push(newBoard1, newBoard2);
+      
+      Object.entries(newConstraints).forEach(([cId, c]) => {
+        const involvesOriginal = c.boardAId?.toString() === b.id.toString() || c.boardBId?.toString() === b.id.toString();
+        if (!involvesOriginal) return;
+
+        delete newConstraints[cId];
+
+        if (c.type === 'Flush') {
+          const isA = c.boardAId?.toString() === b.id.toString();
+          const flush1Id = `flush_plane_1_${cId}_${Date.now()}`;
+          newConstraints[flush1Id] = {
+              ...c,
+              boardAId: isA ? id1 : c.boardAId,
+              boardBId: isA ? c.boardBId : id1
+          };
+
+          const flush2Id = `flush_plane_2_${cId}_${Date.now()}`;
+          newConstraints[flush2Id] = {
+              ...c,
+              boardAId: isA ? id2 : c.boardAId,
+              boardBId: isA ? c.boardBId : id2
+          };
+        }
+        
+        if (c.type === 'Glue') {
+          const isA = c.boardAId?.toString() === b.id.toString();
+          const partnerId = isA ? c.boardBId : c.boardAId;
+          const partnerBoard = boards.find(bd => bd.id.toString() === partnerId.toString());
+          if (partnerBoard) {
+            const glue1Id = `glue_plane_1_${cId}_${Date.now()}`;
+            const offset1 = isA
+                ? [partnerBoard.position[0] - b.position[0], partnerBoard.position[1] - b.position[1], partnerBoard.position[2] - b.position[2]]
+                : [b.position[0] - partnerBoard.position[0], b.position[1] - partnerBoard.position[1], b.position[2] - partnerBoard.position[2]];
+            newConstraints[glue1Id] = {
+                ...c,
+                boardAId: isA ? id1 : partnerId,
+                boardBId: isA ? partnerId : id1,
+                offset: offset1
+            };
+
+            const glue2Id = `glue_plane_2_${cId}_${Date.now()}`;
+            const offset2 = isA
+                ? [partnerBoard.position[0] - b.position[0], partnerBoard.position[1] - b.position[1], partnerBoard.position[2] - b.position[2]]
+                : [b.position[0] - partnerBoard.position[0], b.position[1] - partnerBoard.position[1], b.position[2] - partnerBoard.position[2]];
+            newConstraints[glue2Id] = {
+                ...c,
+                boardAId: isA ? id2 : partnerId,
+                boardBId: isA ? partnerId : id2,
+                offset: offset2
+            };
+          }
+        }
+      });
+    });
+    
+    if (!didCutAny) {
+      showToast('⚠ The plane does not intersect the selected board(s).');
+      return;
+    }
+    
+    pushHistory();
+    
+    nextBoards = nextBoards.filter(b => !boardsToRemove.includes(b.id.toString()));
+    nextBoards.push(...boardsToAdd);
+    
+    set({
+      boards: nextBoards,
+      constraints: newConstraints,
+      selectedItemIds: boardsToAdd.map(b => b.id.toString()),
+      definePlaneActive: false,
+      definePlaneFeatures: []
+    });
+    
+    showToast(`🔪 Split board(s) using the defined plane.`);
   }
 });
 

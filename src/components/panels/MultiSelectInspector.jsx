@@ -34,7 +34,7 @@ const MultiSelectInspector = () => {
         }
     });
 
-    const selBoards = Array.from(selectedBoardSet);
+    const selBoards = Array.from(selectedBoardSet).filter(b => b.shape !== 'plane');
 
     // Compute bulk states
     const allSolid = selBoards.length > 0 && selBoards.every(b => b.lumberType === 'solid');
