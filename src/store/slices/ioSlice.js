@@ -11,6 +11,12 @@ import {
   createRotateCommand,
   executeCommands,
 } from "../../commands";
+import {
+  appendAiMessage,
+  replaceThinkingWithAiError,
+  replaceThinkingWithAiMessage,
+  showAiThinking,
+} from "../../utils/aiChatMessaging";
 import { applyGeminiLegacyAction } from "../../utils/geminiLegacyActions";
 import { resolveLegacyAiTargetIds } from "../../utils/workspaceTargets";
 import {
@@ -480,23 +486,13 @@ export const createIoSlice = (set, get) => ({
       /(help|what can you do|cheat sheet|command|syntax|\bhow \b)/.test(lower)
     ) {
       setShowAiHelpDialog(true);
-      setChatMessages((prev) => [
-        ...prev,
-        {
-          role: "ai",
-          text: "I've popped open the command cheat sheet for you!",
-        },
-      ]);
+      appendAiMessage(
+        setChatMessages,
+        "I've popped open the command cheat sheet for you!",
+      );
       return;
     }
-    setChatMessages((prev) => [
-      ...prev,
-      {
-        role: "ai",
-        text: "Thinking...",
-        isThinking: true,
-      },
-    ]);
+    showAiThinking(setChatMessages);
     try {
       const { parseUserIntent } = await import("../../services/geminiService");
 
@@ -591,27 +587,9 @@ export const createIoSlice = (set, get) => ({
       }
 
       // Replace thinking bubble with results
-      setChatMessages((prev) => {
-        const filt = prev.filter((m) => !m.isThinking);
-        return [
-          ...filt,
-          {
-            role: "ai",
-            text: result.reply || "Done!",
-          },
-        ];
-      });
+      replaceThinkingWithAiMessage(setChatMessages, result.reply || "Done!");
     } catch (e) {
-      setChatMessages((prev) => {
-        const filt = prev.filter((m) => !m.isThinking);
-        return [
-          ...filt,
-          {
-            role: "ai",
-            text: `Error: ${e.message}`,
-          },
-        ];
-      });
+      replaceThinkingWithAiError(setChatMessages, e);
     }
   },
   // ─── Measurement Actions ────────────────────────────────────────────────────────────

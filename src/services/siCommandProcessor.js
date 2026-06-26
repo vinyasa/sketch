@@ -9,6 +9,7 @@ import {
   createRotateCommand,
   executeCommand,
 } from "../commands";
+import { appendAiMessage } from "../utils/aiChatMessaging";
 import { extractSiMeasurement, parseSiMeasurement } from "../utils/siParsing";
 import { resolveSelectionOrNamedTarget } from "../utils/workspaceTargets";
 
@@ -38,13 +39,7 @@ export function processSiCommand(text, set, get) {
     setShowAiHelpDialog(true);
     reply = "I've popped open the command cheat sheet for you!";
     setTimeout(() => {
-      setChatMessages((prev) => [
-        ...prev,
-        {
-          role: "ai",
-          text: reply,
-        },
-      ]);
+      appendAiMessage(setChatMessages, reply);
     }, 300);
     return;
   }
@@ -733,12 +728,6 @@ export function processSiCommand(text, set, get) {
       "I need clearer instructions. Try 'move this 3 along red' or 'make this 1 inch wider'.";
   }
   setTimeout(() => {
-    get().setChatMessages((prev) => [
-      ...prev,
-      {
-        role: "ai",
-        text: reply,
-      },
-    ]);
+    appendAiMessage(get().setChatMessages, reply);
   }, 500);
 }
