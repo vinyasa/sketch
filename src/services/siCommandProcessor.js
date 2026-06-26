@@ -10,11 +10,25 @@ import {
 import { appendAiMessage } from "../utils/aiChatMessaging";
 import { appendOperationToBoards } from "../utils/boardOperations";
 import {
+  resolveMoveAxis,
+  resolveResizeDelta,
+  resolveResizeDimension,
+  resolveRotateAxis,
+  resolveSignedMoveAmount,
+} from "../utils/siCommandIntents";
+import {
   createCubeAssembly,
   createProceduralBoxAssembly,
   createSimpleLeg,
   createTopBoard,
 } from "../utils/siBuilders";
+import {
+  createArcOperation,
+  createCoveOperation,
+  createHoleOperation,
+  resolveCoveEdge,
+  resolveOperationAxis,
+} from "../utils/siOperations";
 import {
   findMaterialIntent,
   formatMaterialLabel,
@@ -84,38 +98,8 @@ export function processSiCommand(text, set, get) {
     (lower.includes("nudge") || lower.includes("move")) &&
     selectedItemIds.length > 0
   ) {
-    // Determine axis from color names or direction words
-    let axis = "y";
-    if (
-      lower.includes("red") ||
-      lower.includes("left") ||
-      lower.includes("right") ||
-      /\bx\b/.test(lower)
-    )
-      axis = "x";
-    if (
-      lower.includes("blue") ||
-      lower.includes("forward") ||
-      lower.includes("back") ||
-      /\bz\b/.test(lower)
-    )
-      axis = "z";
-    if (
-      lower.includes("green") ||
-      lower.includes("up") ||
-      lower.includes("down") ||
-      /\by\b/.test(lower)
-    )
-      axis = "y";
-    let val = 1;
-    if (
-      lower.includes("down") ||
-      lower.includes("left") ||
-      lower.includes("back")
-    )
-      val = -1;
-    const match = lower.match(/(-?\d+\s+\d+\/\d+|-?\d+\/\d+|-?[\d.]+)/);
-    if (match) val = parseSiMeasurement(match[1]) * (val < 0 ? -1 : 1);
+    const axis = resolveMoveAxis(lower);
+    const val = resolveSignedMoveAmount(lower, parseSiMeasurement);
     pushHistory();
     const moved = executeCommand(
       createMoveCommand({
@@ -230,17 +214,8 @@ export function processSiCommand(text, set, get) {
     )
   ) {
     const r = extractSiMeasurement(lower) ?? 1;
-    let axis = "y";
-    if (/(through x|along x|\bx axis\b)/.test(lower)) axis = "x";
-    else if (/(through z|along z|\bz axis\b)/.test(lower)) axis = "z";
-    const op = {
-      id: Date.now(),
-      type: "hole",
-      radius: Math.abs(r),
-      offsetX: 0,
-      offsetY: 0,
-      axis,
-    };
+    const axis = resolveOperationAxis(lower);
+    const op = createHoleOperation(Date.now(), r, axis);
     setBoards((prev) => appendOperationToBoards(prev, selectedItemIds, op));
     reply = `Added ${r}" radius hole (${axis}-axis) to ${selectedItemIds.length} board(s). Adjust offset in the Inspector.`;
     updated = true;
@@ -251,20 +226,9 @@ export function processSiCommand(text, set, get) {
     /(add|cut|make).*(cove|hollow)|(cove|hollow).*(add|cut|make)/i.test(lower)
   ) {
     const depth = extractSiMeasurement(lower) ?? 1;
-    let edge = "top";
-    if (/bottom/.test(lower)) edge = "bottom";
-    else if (/left/.test(lower)) edge = "left";
-    else if (/right/.test(lower)) edge = "right";
-    let axis = "y";
-    if (/(\bx axis\b|along x)/.test(lower)) axis = "x";
-    else if (/(\bz axis\b|along z)/.test(lower)) axis = "z";
-    const op = {
-      id: Date.now(),
-      type: "cove",
-      edge,
-      depth: Math.abs(depth),
-      axis,
-    };
+    const edge = resolveCoveEdge(lower);
+    const axis = resolveOperationAxis(lower);
+    const op = createCoveOperation(Date.now(), depth, edge, axis);
     setBoards((prev) => appendOperationToBoards(prev, selectedItemIds, op));
     reply = `Added ${depth}" ${edge}-edge cove to ${selectedItemIds.length} board(s).`;
     updated = true;
@@ -276,20 +240,8 @@ export function processSiCommand(text, set, get) {
       lower,
     )
   ) {
-    const angleMatch = lower.match(/(\d+)\s*(?:to|-|through)\s*(\d+)/);
-    const startAngle = angleMatch ? parseInt(angleMatch[1]) : 0;
-    const endAngle = angleMatch ? parseInt(angleMatch[2]) : 90;
-    let axis = "y";
-    if (/(\bx axis\b|along x)/.test(lower)) axis = "x";
-    else if (/(\bz axis\b|along z)/.test(lower)) axis = "z";
-    const op = {
-      id: Date.now(),
-      type: "arc",
-      startAngle,
-      endAngle,
-      innerRadius: 0,
-      axis,
-    };
+    const op = createArcOperation(Date.now(), lower);
+    const { startAngle, endAngle, axis } = op;
     setBoards((prev) => appendOperationToBoards(prev, selectedItemIds, op));
     reply = `Added arc modifier (${startAngle}°–${endAngle}°, ${axis}-axis) to ${selectedItemIds.length} board(s).`;
     updated = true;
@@ -430,44 +382,8 @@ export function processSiCommand(text, set, get) {
   ) {
     const val = extractSiMeasurement(lower);
     if (val !== null) {
-      const isTall =
-        /(taller|tall)/.test(lower) && !/(length|longer|long)/.test(lower);
-      const isShorter =
-        /\bshorter\b/.test(lower) && !/(length|longer|long)/.test(lower);
-      const isNegative =
-        isShorter ||
-        /(cut|trim|shave|chop|short|narrow|thin|reduce|shrink|decrease)/.test(
-          lower,
-        );
-      const delta = isNegative ? -val : val;
-
-      const isLength =
-        !isTall && !isShorter && /(long|length|longer)/.test(lower);
-      const isWidth = /(wide|narrow|width|wider)/.test(lower);
-      const isThickness = /(thick|thin|thicker|thinner|thickness)/.test(lower);
-      let dimension = "thickness";
-      if (isTall || isShorter) dimension = "height";
-      else if (isLength) dimension = "length";
-      else if (isWidth) dimension = "width";
-      else if (isThickness) dimension = "thickness";
-      else if (
-        /(right|left)/.test(lower) ||
-        lower.includes("red") ||
-        /\bx\b/.test(lower)
-      )
-        dimension = "length";
-      else if (
-        /(up|down|top|bottom)/.test(lower) ||
-        lower.includes("green") ||
-        /\by\b/.test(lower)
-      )
-        dimension = "height";
-      else if (
-        /(front|back)/.test(lower) ||
-        lower.includes("blue") ||
-        /\bz\b/.test(lower)
-      )
-        dimension = "width";
+      const delta = resolveResizeDelta(lower, val);
+      const dimension = resolveResizeDimension(lower);
 
       const target = resolveSelectionOrNamedTarget(
         selectedItemIds,
@@ -509,9 +425,7 @@ export function processSiCommand(text, set, get) {
       reply = "Select a board first, or name it — e.g. 'rotate Leg A 90 on Y'.";
       updated = true;
     } else if (/reset/.test(lower)) {
-      let axis = "y";
-      if (/(right|left|red|\bx\b)/.test(lower)) axis = "x";
-      else if (/(front|back|blue|\bz\b)/.test(lower)) axis = "z";
+      const axis = resolveRotateAxis(lower);
       pushHistory();
       const rotated = executeCommand(
         createRotateCommand({
@@ -528,9 +442,7 @@ export function processSiCommand(text, set, get) {
     } else {
       const degrees = extractSiMeasurement(lower);
       if (degrees !== null || /flip/.test(lower)) {
-        let axis = "y";
-        if (/(right|left|red|\bx\b)/.test(lower)) axis = "x";
-        else if (/(front|back|blue|\bz\b)/.test(lower)) axis = "z";
+        const axis = resolveRotateAxis(lower);
         pushHistory();
         const rotated = executeCommand(
           createRotateCommand({
