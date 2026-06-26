@@ -34,6 +34,7 @@ import {
   formatMaterialLabel,
   toMaterialPayload,
 } from "../utils/materialIntents";
+import { collectSiTopTargets } from "../utils/siTargetSelection";
 import {
   createPartialTaperedLegAssembly,
   createStandaloneTaperedLeg,
@@ -260,29 +261,7 @@ export function processSiCommand(text, set, get) {
     lower.includes("top") &&
     (lower.includes("add") || lower.includes("put"))
   ) {
-    let targets = [];
-    if (selectedItemIds.length === 0 || selectedItemIds.includes("Workspace")) {
-      targets = boards;
-    } else {
-      const validBoards = new Set();
-      const traverse = (pId) => {
-        boards
-          .filter((b) => b.parentId === pId)
-          .forEach((b) => validBoards.add(b));
-        Object.keys(groups)
-          .filter((k) => groups[k].parentId === pId)
-          .forEach((k) => traverse(k));
-      };
-      selectedItemIds.forEach((id) => {
-        if (Object.keys(groups).includes(id)) {
-          traverse(id);
-        } else {
-          const b = boards.find((x) => x.id.toString() === id);
-          if (b) validBoards.add(b);
-        }
-      });
-      targets = Array.from(validBoards);
-    }
+    const targets = collectSiTopTargets(selectedItemIds, boards, groups);
     if (targets.length === 0) {
       reply =
         "I need some existing geometry to calculate where a top should go!";
