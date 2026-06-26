@@ -10,6 +10,7 @@ import {
   executeCommand,
 } from "../commands";
 import { appendAiMessage } from "../utils/aiChatMessaging";
+import { appendOperationToBoards } from "../utils/boardOperations";
 import { extractSiMeasurement, parseSiMeasurement } from "../utils/siParsing";
 import { resolveSelectionOrNamedTarget } from "../utils/workspaceTargets";
 
@@ -300,16 +301,7 @@ export function processSiCommand(text, set, get) {
       offsetY: 0,
       axis,
     };
-    setBoards((prev) =>
-      prev.map((b) =>
-        selectedItemIds.includes(b.id.toString())
-          ? {
-              ...b,
-              operations: [...(b.operations || []), op],
-            }
-          : b,
-      ),
-    );
+    setBoards((prev) => appendOperationToBoards(prev, selectedItemIds, op));
     reply = `Added ${r}" radius hole (${axis}-axis) to ${selectedItemIds.length} board(s). Adjust offset in the Inspector.`;
     updated = true;
 
@@ -333,16 +325,7 @@ export function processSiCommand(text, set, get) {
       depth: Math.abs(depth),
       axis,
     };
-    setBoards((prev) =>
-      prev.map((b) =>
-        selectedItemIds.includes(b.id.toString())
-          ? {
-              ...b,
-              operations: [...(b.operations || []), op],
-            }
-          : b,
-      ),
-    );
+    setBoards((prev) => appendOperationToBoards(prev, selectedItemIds, op));
     reply = `Added ${depth}" ${edge}-edge cove to ${selectedItemIds.length} board(s).`;
     updated = true;
 
@@ -367,16 +350,7 @@ export function processSiCommand(text, set, get) {
       innerRadius: 0,
       axis,
     };
-    setBoards((prev) =>
-      prev.map((b) =>
-        selectedItemIds.includes(b.id.toString())
-          ? {
-              ...b,
-              operations: [...(b.operations || []), op],
-            }
-          : b,
-      ),
-    );
+    setBoards((prev) => appendOperationToBoards(prev, selectedItemIds, op));
     reply = `Added arc modifier (${startAngle}°–${endAngle}°, ${axis}-axis) to ${selectedItemIds.length} board(s).`;
     updated = true;
   } else if (lower.includes("add") && lower.includes("leg")) {
