@@ -8,6 +8,7 @@ import {
   getRelativeBoardMatrix,
   getSubtractionIntersectionBounds,
   getSubtractionSplitPlan,
+  redistributeSplitConstraints,
 } from "../../utils/operationGeometry";
 
 export const createOperationSlice = (set, get) => ({
@@ -113,113 +114,14 @@ export const createOperationSlice = (set, get) => ({
         operation2: op2,
       });
 
-      // ── Audit constraints on the original split board ─────────────
       const constraints = get().constraints || {};
-      let newConstraints = { ...constraints };
-
-      Object.entries(constraints).forEach(([cId, c]) => {
-        const involvesOriginal =
-          c.boardAId?.toString() === targetBoard.id.toString() ||
-          c.boardBId?.toString() === targetBoard.id.toString();
-        if (!involvesOriginal) return;
-
-        // Remove the original constraint
-        delete newConstraints[cId];
-
-        if (c.type === "Flush") {
-          const isA = c.boardAId?.toString() === targetBoard.id.toString();
-          const targetFace = isA ? c.faceA : c.faceB;
-
-          // Check if the flush face is along the split axis
-          const isFaceOnSplitAxis = targetFace.startsWith(splitAxis);
-
-          if (!isFaceOnSplitAxis) {
-            // Rule 1: Perpendicular face — keep on both new pieces!
-            const flush1Id = `flush_split_1_${cId}_${Date.now()}`;
-            newConstraints[flush1Id] = {
-              ...c,
-              boardAId: isA ? id1 : c.boardAId,
-              boardBId: isA ? c.boardBId : id1,
-            };
-
-            const flush2Id = `flush_split_2_${cId}_${Date.now()}`;
-            newConstraints[flush2Id] = {
-              ...c,
-              boardAId: isA ? id2 : c.boardAId,
-              boardBId: isA ? c.boardBId : id2,
-            };
-          } else {
-            // Rule 2: Parallel face — keep only on the piece that occupies that outer face
-            const isNegativeFace = targetFace.endsWith("-");
-            if (isNegativeFace) {
-              // Keep only on Part 1 (negative/left/bottom/back piece)
-              const flush1Id = `flush_split_1_${cId}_${Date.now()}`;
-              newConstraints[flush1Id] = {
-                ...c,
-                boardAId: isA ? id1 : c.boardAId,
-                boardBId: isA ? c.boardBId : id1,
-              };
-            } else {
-              // Keep only on Part 2 (positive/right/top/front piece)
-              const flush2Id = `flush_split_2_${cId}_${Date.now()}`;
-              newConstraints[flush2Id] = {
-                ...c,
-                boardAId: isA ? id2 : c.boardAId,
-                boardBId: isA ? c.boardBId : id2,
-              };
-            }
-          }
-          return;
-        }
-
-        if (c.type === "Glue") {
-          const isA = c.boardAId?.toString() === targetBoard.id.toString();
-          const partnerId = isA ? c.boardBId : c.boardAId;
-          const partnerBoard = boards.find(
-            (bd) => bd.id.toString() === partnerId.toString(),
-          );
-          if (!partnerBoard) return;
-
-          // Recalculate rigid offsets for Part 1
-          const glue1Id = `glue_split_1_${cId}_${Date.now()}`;
-          const offset1 = isA
-            ? [
-                partnerBoard.position[0] - pos1.x,
-                partnerBoard.position[1] - pos1.y,
-                partnerBoard.position[2] - pos1.z,
-              ]
-            : [
-                pos1.x - partnerBoard.position[0],
-                pos1.y - partnerBoard.position[1],
-                pos1.z - partnerBoard.position[2],
-              ];
-          newConstraints[glue1Id] = {
-            ...c,
-            boardAId: isA ? id1 : partnerId,
-            boardBId: isA ? partnerId : id1,
-            offset: offset1,
-          };
-
-          // Recalculate rigid offsets for Part 2
-          const glue2Id = `glue_split_2_${cId}_${Date.now()}`;
-          const offset2 = isA
-            ? [
-                partnerBoard.position[0] - pos2.x,
-                partnerBoard.position[1] - pos2.y,
-                partnerBoard.position[2] - pos2.z,
-              ]
-            : [
-                pos2.x - partnerBoard.position[0],
-                pos2.y - partnerBoard.position[1],
-                pos2.z - partnerBoard.position[2],
-              ];
-          newConstraints[glue2Id] = {
-            ...c,
-            boardAId: isA ? id2 : partnerId,
-            boardBId: isA ? partnerId : id2,
-            offset: offset2,
-          };
-        }
+      const newConstraints = redistributeSplitConstraints({
+        constraints,
+        targetBoard,
+        newBoard1,
+        newBoard2,
+        splitAxis,
+        boards,
       });
 
       pushHistory();

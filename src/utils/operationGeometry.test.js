@@ -8,6 +8,7 @@ import {
   getRelativeBoardMatrix,
   getSubtractionIntersectionBounds,
   getSubtractionSplitPlan,
+  redistributeSplitConstraints,
 } from "./operationGeometry";
 
 function makeBoard(overrides = {}) {
@@ -256,5 +257,122 @@ describe("operationGeometry", () => {
       { type: "miter", face: "x+" },
       { type: "subtract", id: 2 },
     ]);
+  });
+
+  it("duplicates perpendicular flush constraints onto both split boards", () => {
+    const targetBoard = makeBoard({ id: "target", position: [10, 0, 0] });
+    const newBoard1 = makeBoard({ id: "b1", position: [8, 0, 0] });
+    const newBoard2 = makeBoard({ id: "b2", position: [12, 0, 0] });
+    const constraints = {
+      c1: {
+        type: "Flush",
+        boardAId: "target",
+        boardBId: "other",
+        faceA: "y+",
+        faceB: "y-",
+      },
+    };
+
+    const result = redistributeSplitConstraints({
+      constraints,
+      targetBoard,
+      newBoard1,
+      newBoard2,
+      splitAxis: "x",
+      boards: [targetBoard, newBoard1, newBoard2],
+      idFactory: (prefix, constraintId) => `${prefix}_${constraintId}`,
+    });
+
+    expect(result).toEqual({
+      flush_split_1_c1: {
+        type: "Flush",
+        boardAId: "b1",
+        boardBId: "other",
+        faceA: "y+",
+        faceB: "y-",
+      },
+      flush_split_2_c1: {
+        type: "Flush",
+        boardAId: "b2",
+        boardBId: "other",
+        faceA: "y+",
+        faceB: "y-",
+      },
+    });
+  });
+
+  it("keeps split-axis flush constraints only on the matching outer piece", () => {
+    const targetBoard = makeBoard({ id: "target", position: [10, 0, 0] });
+    const newBoard1 = makeBoard({ id: "b1", position: [8, 0, 0] });
+    const newBoard2 = makeBoard({ id: "b2", position: [12, 0, 0] });
+    const constraints = {
+      c1: {
+        type: "Flush",
+        boardAId: "target",
+        boardBId: "other",
+        faceA: "x-",
+        faceB: "x+",
+      },
+    };
+
+    const result = redistributeSplitConstraints({
+      constraints,
+      targetBoard,
+      newBoard1,
+      newBoard2,
+      splitAxis: "x",
+      boards: [targetBoard, newBoard1, newBoard2],
+      idFactory: (prefix, constraintId) => `${prefix}_${constraintId}`,
+    });
+
+    expect(result).toEqual({
+      flush_split_1_c1: {
+        type: "Flush",
+        boardAId: "b1",
+        boardBId: "other",
+        faceA: "x-",
+        faceB: "x+",
+      },
+    });
+  });
+
+  it("recomputes glue offsets for both split boards", () => {
+    const targetBoard = makeBoard({ id: "target", position: [10, 0, 0] });
+    const newBoard1 = makeBoard({ id: "b1", position: [8, 0, 0] });
+    const newBoard2 = makeBoard({ id: "b2", position: [12, 0, 0] });
+    const partnerBoard = makeBoard({ id: "other", position: [20, 5, 0] });
+    const constraints = {
+      c1: {
+        type: "Glue",
+        boardAId: "target",
+        boardBId: "other",
+        offset: [0, 0, 0],
+      },
+    };
+
+    const result = redistributeSplitConstraints({
+      constraints,
+      targetBoard,
+      newBoard1,
+      newBoard2,
+      splitAxis: "x",
+      boards: [targetBoard, newBoard1, newBoard2, partnerBoard],
+      idFactory: (prefix, constraintId) => `${prefix}_${constraintId}`,
+    });
+
+    expect(result).toEqual({
+      glue_split_1_c1: {
+        type: "Glue",
+        boardAId: "b1",
+        boardBId: "other",
+        offset: [12, 5, 0],
+      },
+      glue_split_2_c1: {
+        type: "Glue",
+        boardAId: "b2",
+        boardBId: "other",
+        offset: [8, 5, 0],
+      },
+    });
   });
 });

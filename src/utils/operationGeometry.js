@@ -536,6 +536,110 @@ export function buildSplitBoards({
   return { board1, board2 };
 }
 
+export function redistributeSplitConstraints({
+  constraints,
+  targetBoard,
+  newBoard1,
+  newBoard2,
+  splitAxis,
+  boards,
+  idFactory = (prefix, constraintId) =>
+    `${prefix}_${constraintId}_${Date.now()}`,
+}) {
+  const nextConstraints = { ...constraints };
+
+  Object.entries(constraints).forEach(([constraintId, constraint]) => {
+    const involvesOriginal =
+      constraint.boardAId?.toString() === targetBoard.id.toString() ||
+      constraint.boardBId?.toString() === targetBoard.id.toString();
+    if (!involvesOriginal) return;
+
+    delete nextConstraints[constraintId];
+
+    if (constraint.type === "Flush") {
+      const isA = constraint.boardAId?.toString() === targetBoard.id.toString();
+      const targetFace = isA ? constraint.faceA : constraint.faceB;
+      const isFaceOnSplitAxis = targetFace.startsWith(splitAxis);
+
+      if (!isFaceOnSplitAxis) {
+        nextConstraints[idFactory("flush_split_1", constraintId)] = {
+          ...constraint,
+          boardAId: isA ? newBoard1.id : constraint.boardAId,
+          boardBId: isA ? constraint.boardBId : newBoard1.id,
+        };
+        nextConstraints[idFactory("flush_split_2", constraintId)] = {
+          ...constraint,
+          boardAId: isA ? newBoard2.id : constraint.boardAId,
+          boardBId: isA ? constraint.boardBId : newBoard2.id,
+        };
+      } else {
+        const isNegativeFace = targetFace.endsWith("-");
+        if (isNegativeFace) {
+          nextConstraints[idFactory("flush_split_1", constraintId)] = {
+            ...constraint,
+            boardAId: isA ? newBoard1.id : constraint.boardAId,
+            boardBId: isA ? constraint.boardBId : newBoard1.id,
+          };
+        } else {
+          nextConstraints[idFactory("flush_split_2", constraintId)] = {
+            ...constraint,
+            boardAId: isA ? newBoard2.id : constraint.boardAId,
+            boardBId: isA ? constraint.boardBId : newBoard2.id,
+          };
+        }
+      }
+      return;
+    }
+
+    if (constraint.type === "Glue") {
+      const isA = constraint.boardAId?.toString() === targetBoard.id.toString();
+      const partnerId = isA ? constraint.boardBId : constraint.boardAId;
+      const partnerBoard = boards.find(
+        (board) => board.id.toString() === partnerId.toString(),
+      );
+      if (!partnerBoard) return;
+
+      const offset1 = isA
+        ? [
+            partnerBoard.position[0] - newBoard1.position[0],
+            partnerBoard.position[1] - newBoard1.position[1],
+            partnerBoard.position[2] - newBoard1.position[2],
+          ]
+        : [
+            newBoard1.position[0] - partnerBoard.position[0],
+            newBoard1.position[1] - partnerBoard.position[1],
+            newBoard1.position[2] - partnerBoard.position[2],
+          ];
+      nextConstraints[idFactory("glue_split_1", constraintId)] = {
+        ...constraint,
+        boardAId: isA ? newBoard1.id : partnerId,
+        boardBId: isA ? partnerId : newBoard1.id,
+        offset: offset1,
+      };
+
+      const offset2 = isA
+        ? [
+            partnerBoard.position[0] - newBoard2.position[0],
+            partnerBoard.position[1] - newBoard2.position[1],
+            partnerBoard.position[2] - newBoard2.position[2],
+          ]
+        : [
+            newBoard2.position[0] - partnerBoard.position[0],
+            newBoard2.position[1] - partnerBoard.position[1],
+            newBoard2.position[2] - partnerBoard.position[2],
+          ];
+      nextConstraints[idFactory("glue_split_2", constraintId)] = {
+        ...constraint,
+        boardAId: isA ? newBoard2.id : partnerId,
+        boardBId: isA ? partnerId : newBoard2.id,
+        offset: offset2,
+      };
+    }
+  });
+
+  return nextConstraints;
+}
+
 export function filterOperationsForPiece(
   operation,
   pieceIdx,
