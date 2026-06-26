@@ -18,6 +18,7 @@ import {
   showAiThinking,
 } from "../../utils/aiChatMessaging";
 import { applyGeminiLegacyAction } from "../../utils/geminiLegacyActions";
+import { materialPayloadFromGeminiAction } from "../../utils/materialIntents";
 import { resolveLegacyAiTargetIds } from "../../utils/workspaceTargets";
 import {
   ACTIVE_WORKSPACE_KEY,
@@ -26,10 +27,16 @@ import {
   loadWorkspaceStorage,
   parseWorkspaceString,
   sanitizeWorkspacePayload,
-  saveRecentFiles,
   saveWorkspaceStorage,
   stringifyWorkspacePayload,
 } from "../../utils/workspaceSerialization";
+import {
+  clearActiveWorkspace,
+  persistActiveWorkspace,
+  persistRecentFiles,
+  removeSavedWorkspace,
+  updateRecentFilesList,
+} from "../../utils/workspaceFiles";
 
 export const createIoSlice = (set, get) => ({
   newWorkspace: () => {
@@ -60,7 +67,7 @@ export const createIoSlice = (set, get) => ({
     if (resetHistory) resetHistory();
 
     // Clear active page-reload cache to prevent the deleted/cleared design from returning
-    localStorage.removeItem(ACTIVE_WORKSPACE_KEY);
+    clearActiveWorkspace();
   },
   saveWorkspace: (customName = null) => {
     const {
@@ -97,14 +104,13 @@ export const createIoSlice = (set, get) => ({
 
     if (boards.length === 0) {
       if (currentFileName && !customName) {
-        localStorage.removeItem("lucey_save_" + name);
+        removeSavedWorkspace(name);
         const newRecents = recentFiles.filter((r) => r.name !== name);
-        setRecentFiles(newRecents);
-        saveRecentFiles(newRecents);
+        persistRecentFiles(setRecentFiles, newRecents);
         setCurrentFileName(
           newRecents.length > 0 ? newRecents[0].name : "Untitled",
         );
-        localStorage.removeItem(ACTIVE_WORKSPACE_KEY);
+        clearActiveWorkspace();
         showToast(`Removed "${name}" file`);
         return true;
       }
@@ -138,16 +144,10 @@ export const createIoSlice = (set, get) => ({
     });
     saveWorkspaceStorage("lucey_save_" + name, payload);
     // Also update the active autosave buffer so manual saves survive page reloads immediately
-    saveWorkspaceStorage(ACTIVE_WORKSPACE_KEY, payload);
+    persistActiveWorkspace(payload);
 
-    let newRecents = recentFiles.filter((r) => r.name !== name);
-    newRecents.unshift({
-      name,
-      timestamp: Date.now(),
-    });
-    if (newRecents.length > 5) newRecents = newRecents.slice(0, 5);
-    setRecentFiles(newRecents);
-    saveRecentFiles(newRecents);
+    const newRecents = updateRecentFilesList(recentFiles, name);
+    persistRecentFiles(setRecentFiles, newRecents);
     setCurrentFileName(name);
 
     showToast(customName ? `Saved as "${name}"` : `Saved "${name}"`);
@@ -209,7 +209,7 @@ export const createIoSlice = (set, get) => ({
         if (name) setCurrentFileName(name);
 
         // Persist the loaded project to the active reload buffer so it survives page reloads
-        saveWorkspaceStorage(ACTIVE_WORKSPACE_KEY, p);
+        persistActiveWorkspace(p);
       }
     } else if (name) {
       alert("Project load failed.");
@@ -432,7 +432,7 @@ export const createIoSlice = (set, get) => ({
           resetHistory();
 
           // Persist the imported project to the active reload buffer so it survives page reloads
-          saveWorkspaceStorage(ACTIVE_WORKSPACE_KEY, p);
+          persistActiveWorkspace(p);
         }
       } catch (e) {
         const message = e?.message || "Failed to parse project file.";
@@ -549,10 +549,7 @@ export const createIoSlice = (set, get) => ({
               return [
                 createMaterialCommand({
                   target,
-                  material:
-                    action.materialType === "color"
-                      ? { type: "color", hex: action.value }
-                      : { type: "wood", id: action.value },
+                  material: materialPayloadFromGeminiAction(action),
                 }),
               ];
             default:

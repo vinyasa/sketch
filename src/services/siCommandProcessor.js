@@ -1,7 +1,5 @@
 import * as THREE from "three";
 import { computeWorldAABB, collectChildBoards } from "../utils/sceneGraph";
-import { calculateProceduralBoxWalls } from "../utils/procedural";
-import { WOOD_CATALOGUE, PAINT_PALETTE } from "../utils/materialCatalogue";
 import {
   createMaterialCommand,
   createMoveCommand,
@@ -11,6 +9,17 @@ import {
 } from "../commands";
 import { appendAiMessage } from "../utils/aiChatMessaging";
 import { appendOperationToBoards } from "../utils/boardOperations";
+import {
+  createCubeAssembly,
+  createProceduralBoxAssembly,
+  createSimpleLeg,
+  createTopBoard,
+} from "../utils/siBuilders";
+import {
+  findMaterialIntent,
+  formatMaterialLabel,
+  toMaterialPayload,
+} from "../utils/materialIntents";
 import {
   createPartialTaperedLegAssembly,
   createStandaloneTaperedLeg,
@@ -51,31 +60,9 @@ export function processSiCommand(text, set, get) {
   }
 
   // ── Material change ──────────────────────────────────────────────────
-  const allWoods = Object.entries(WOOD_CATALOGUE).map(([id, spec]) => ({
-    id,
-    label: spec.label.toLowerCase(),
-    type: "wood",
-  }));
-  const allPaints = PAINT_PALETTE.map(({ hex, label }) => ({
-    hex,
-    label: label.toLowerCase(),
-    type: "color",
-  }));
-  const allMats = [...allWoods, ...allPaints].sort(
-    (a, b) => b.label.length - a.label.length,
-  );
-  const matchedMat = allMats.find((m) => lower.includes(m.label));
+  const matchedMat = findMaterialIntent(lower);
   if (matchedMat) {
-    const matDesc =
-      matchedMat.type === "wood"
-        ? {
-            type: "wood",
-            id: matchedMat.id,
-          }
-        : {
-            type: "color",
-            hex: matchedMat.hex,
-          };
+    const matDesc = toMaterialPayload(matchedMat);
     pushHistory();
     executeCommand(
       createMaterialCommand({
@@ -85,9 +72,7 @@ export function processSiCommand(text, set, get) {
       }),
       get,
     );
-    const displayLabel = matchedMat.label.replace(/\b\w/g, (l) =>
-      l.toUpperCase(),
-    );
+    const displayLabel = formatMaterialLabel(matchedMat.label);
     reply =
       selectedItemIds.length > 0
         ? `Changed selected to ${displayLabel}.`
@@ -312,16 +297,7 @@ export function processSiCommand(text, set, get) {
     const newId = Date.now();
     setBoards((prev) => [
       ...prev,
-      {
-        id: newId,
-        name: "New Leg",
-        parentId: "Workspace",
-        size: [1.5, 12, 1.5],
-        position: [0, 6, 0],
-        material: defaultMaterial,
-        joint: "Butt 1",
-        operations: [],
-      },
+      createSimpleLeg({ id: newId, defaultMaterial }),
     ]);
     setSelectedItemIds([newId.toString()]);
     reply = `Added a new 1.5×12×1.5 leg at origin, sitting on floor.`;
@@ -359,32 +335,15 @@ export function processSiCommand(text, set, get) {
       reply =
         "I need some existing geometry to calculate where a top should go!";
     } else {
-      const aabb = computeWorldAABB(targets);
-      let newWidth = Math.abs(aabb.maxX - aabb.minX);
-      let newDepth = Math.abs(aabb.maxZ - aabb.minZ);
-      const thickness = 0.75;
-      if (newWidth < 3) newWidth = Math.max(newWidth, 24);
-      if (newDepth < 3) newDepth = Math.max(newDepth, 16);
-      const newX = (aabb.minX + aabb.maxX) / 2;
-      const newZ = (aabb.minZ + aabb.maxZ) / 2;
-      const newY = aabb.maxY + thickness / 2;
       const newId = Date.now();
-      const pId = targets[0]?.parentId || "Workspace";
-      setBoards((prev) => [
-        ...prev,
-        {
-          id: newId,
-          name: "Table Top",
-          parentId: pId,
-          size: [newWidth, thickness, newDepth],
-          position: [newX, newY, newZ],
-          material: defaultMaterial,
-          joint: "None",
-          operations: [],
-        },
-      ]);
+      const topResult = createTopBoard({
+        id: newId,
+        targets,
+        defaultMaterial,
+      });
+      setBoards((prev) => [...prev, topResult.board]);
       setSelectedItemIds([newId.toString()]);
-      reply = `Generated top at Y=${newY.toFixed(2)}".`;
+      reply = `Generated top at Y=${topResult.y.toFixed(2)}".`;
       updated = true;
     }
 
@@ -392,64 +351,17 @@ export function processSiCommand(text, set, get) {
     // All 6 panels are identical 12×12×0.75".
     // Outer extent is 12" in every axis; 3 panels overlap at every corner.
   } else if (/(build|create|make).+cube/i.test(lower)) {
-    const side = 12,
-      t = 0.75;
-    const half = side / 2;
     const newGroupId = "Cube " + Math.floor(Math.random() * 1000);
+    const cubeAssembly = createCubeAssembly({
+      groupId: newGroupId,
+      defaultMaterial,
+      idBase: Date.now(),
+    });
     setGroups((prev) => ({
       ...prev,
-      [newGroupId]: {
-        parentId: "Workspace",
-        isExpanded: true,
-        visible: true,
-      },
+      ...cubeAssembly.group,
     }));
-
-    // Panel positions so outer extents are 0→12 in Y, -6→+6 in X and Z
-    const panelDefs = [
-      {
-        name: "Bottom",
-        size: [side, t, side],
-        position: [0, t / 2, 0],
-      },
-      {
-        name: "Top",
-        size: [side, t, side],
-        position: [0, side - t / 2, 0],
-      },
-      {
-        name: "Front",
-        size: [side, side, t],
-        position: [0, half, half - t / 2],
-      },
-      {
-        name: "Back",
-        size: [side, side, t],
-        position: [0, half, -(half - t / 2)],
-      },
-      {
-        name: "Left",
-        size: [t, side, side],
-        position: [-(half - t / 2), half, 0],
-      },
-      {
-        name: "Right",
-        size: [t, side, side],
-        position: [half - t / 2, half, 0],
-      },
-    ];
-    const cubeBoards = panelDefs.map((bd, i) => ({
-      id: Date.now() + i,
-      name: bd.name,
-      size: bd.size,
-      position: bd.position,
-      parentId: newGroupId,
-      material: defaultMaterial,
-      joint: "None",
-      shape: "box",
-      operations: [],
-    }));
-    setBoards((prev) => [...prev, ...cubeBoards]);
+    setBoards((prev) => [...prev, ...cubeAssembly.boards]);
     setSelectedItemIds([newGroupId]);
     reply = `Built a 12" cube — 6 panels, each 12×12×0.75", overlapping at every corner.`;
     updated = true;
@@ -479,40 +391,33 @@ export function processSiCommand(text, set, get) {
       newWidth = globalBounds.x;
       newDepth = globalBounds.z;
     }
-    const proceduralMeta = {
-      type: "procedural-box",
-      w: newWidth,
-      h: newHeight,
-      d: newDepth,
-      t: thickness,
-      joint: "butt-A",
-    };
     const newGroupId = "Assembly " + Math.floor(Math.random() * 1000);
+    const boxAssembly = createProceduralBoxAssembly({
+      groupId: newGroupId,
+      defaultMaterial,
+      width: newWidth,
+      depth: newDepth,
+      height: newHeight,
+      idBase: Date.now(),
+    });
     setGroups((prev) => ({
       ...prev,
-      [newGroupId]: {
-        parentId: "Workspace",
-        isExpanded: true,
-        visible: true,
-        meta: proceduralMeta,
-      },
+      ...boxAssembly.group,
     }));
-    const wallsData = calculateProceduralBoxWalls(proceduralMeta);
-    const newBoards = wallsData.map((wd, i) => ({
-      id: Date.now() + i,
-      name: `${wd.role} Wall`,
-      parentId: newGroupId,
-      size: wd.size,
-      position: [
-        wd.position[0] + newX,
-        wd.position[1] + baseY,
-        wd.position[2] + newZ,
-      ],
-      material: defaultMaterial,
-      joint: "None",
-      operations: [],
-    }));
-    setBoards((prev) => [...prev, ...newBoards]);
+    setBoards((prev) =>
+      [...prev, ...boxAssembly.boards].map((board) =>
+        board.parentId === newGroupId
+          ? {
+              ...board,
+              position: [
+                board.position[0] + newX,
+                board.position[1] + baseY,
+                board.position[2] + newZ,
+              ],
+            }
+          : board,
+      ),
+    );
     setSelectedItemIds([newGroupId]);
     reply = `Generated ${newHeight}" box (${newWidth}×${newDepth}) sitting on floor.`;
     updated = true;
