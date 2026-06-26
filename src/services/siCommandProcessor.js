@@ -9,25 +9,7 @@ import {
   createRotateCommand,
   executeCommand,
 } from "../commands";
-
-const resolveSiTarget = (selectedItemIds, boards, lower) => {
-  if (selectedItemIds.length > 0) {
-    return { scope: "selected" };
-  }
-
-  const namedBoards = boards.filter((board) =>
-    lower.includes(board.name.toLowerCase()),
-  );
-
-  if (namedBoards.length > 0) {
-    return {
-      scope: "ids",
-      ids: namedBoards.map((board) => board.id.toString()),
-    };
-  }
-
-  return null;
-};
+import { resolveSelectionOrNamedTarget } from "../utils/workspaceTargets";
 
 export function processSiCommand(text, set, get) {
   const {
@@ -681,7 +663,11 @@ export function processSiCommand(text, set, get) {
       )
         dimension = "width";
 
-      const target = resolveSiTarget(selectedItemIds, boards, lower);
+      const target = resolveSelectionOrNamedTarget(
+        selectedItemIds,
+        boards,
+        lower,
+      );
       if (target) {
         pushHistory();
         const resized = executeCommand(
@@ -708,7 +694,11 @@ export function processSiCommand(text, set, get) {
     }
     // ── Rotate ───────────────────────────────────────────────────────────
   } else if (/(rotat|spin|turn|flip|orient)/.test(lower)) {
-    const target = resolveSiTarget(selectedItemIds, boards, lower);
+    const target = resolveSelectionOrNamedTarget(
+      selectedItemIds,
+      boards,
+      lower,
+    );
     if (!target) {
       reply = "Select a board first, or name it — e.g. 'rotate Leg A 90 on Y'.";
       updated = true;

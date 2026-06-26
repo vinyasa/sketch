@@ -1,55 +1,23 @@
-import { collectChildBoards } from '../utils/sceneGraph';
-import { propagateMove } from '../utils/constraintSolver';
-import { COMMAND_TYPES } from './types';
+import { propagateMove } from "../utils/constraintSolver";
+import { resolveTargetIds } from "../utils/workspaceTargets";
+import { COMMAND_TYPES } from "./types";
 
-function resolveTargetIds(target, get) {
-  if (!target) return [];
-
+function resolveCommandTargetIds(target, get) {
   const state = get();
   const { boards, groups, selectedItemIds } = state;
-
-  let rawTargetIds = [];
-
-  if (target.scope === 'all') {
-    rawTargetIds = boards.map((b) => b.id.toString());
-  } else if (target.scope === 'selected') {
-    rawTargetIds = selectedItemIds;
-  } else if (target.scope === 'ids') {
-    rawTargetIds = (target.ids || []).map(String);
-  } else if (target.scope === 'name' && target.value) {
-    const searchName = target.value.toLowerCase();
-    const matchedBoards = boards
-      .filter((b) => b.name?.toLowerCase().includes(searchName))
-      .map((b) => b.id.toString());
-    const matchedGroups = Object.entries(groups)
-      .filter(([, g]) => g.name?.toLowerCase().includes(searchName))
-      .map(([id]) => id);
-    rawTargetIds = [...matchedBoards, ...matchedGroups];
-  }
-
-  const expandedSet = new Set();
-  rawTargetIds.forEach((id) => {
-    if (groups[id]) {
-      const children = collectChildBoards(id, boards, groups);
-      children.forEach((child) => expandedSet.add(child.id.toString()));
-    } else {
-      expandedSet.add(String(id));
-    }
-  });
-
-  return Array.from(expandedSet);
+  return resolveTargetIds(target, boards, groups, selectedItemIds);
 }
 
 function executeMove(command, get) {
-  const targetIds = resolveTargetIds(command.target, get);
+  const targetIds = resolveCommandTargetIds(command.target, get);
   if (!targetIds.length) return false;
 
   const delta = parseFloat(command.delta) || 0;
   if (delta === 0) return false;
 
   let axisIndex = 1;
-  if (command.axis === 'x') axisIndex = 0;
-  if (command.axis === 'z') axisIndex = 2;
+  if (command.axis === "x") axisIndex = 0;
+  if (command.axis === "z") axisIndex = 2;
 
   const deltaVec = [0, 0, 0];
   deltaVec[axisIndex] = delta;
@@ -75,7 +43,7 @@ function executeMove(command, get) {
 }
 
 function executeResize(command, get) {
-  const targetIds = resolveTargetIds(command.target, get);
+  const targetIds = resolveCommandTargetIds(command.target, get);
   if (!targetIds.length) return false;
 
   const delta = parseFloat(command.delta) || 0;
@@ -92,10 +60,10 @@ function executeResize(command, get) {
       ].sort((a, b) => b.val - a.val);
 
       let targetIndex = 2;
-      if (command.dimension === 'height') targetIndex = 1;
-      else if (command.dimension === 'length') targetIndex = dims[0].idx;
-      else if (command.dimension === 'width') targetIndex = dims[1].idx;
-      else if (command.dimension === 'thickness') targetIndex = dims[2].idx;
+      if (command.dimension === "height") targetIndex = 1;
+      else if (command.dimension === "length") targetIndex = dims[0].idx;
+      else if (command.dimension === "width") targetIndex = dims[1].idx;
+      else if (command.dimension === "thickness") targetIndex = dims[2].idx;
 
       const newSize = [...board.size];
       newSize[targetIndex] = Math.max(0.1, newSize[targetIndex] + delta);
@@ -111,7 +79,7 @@ function executeResize(command, get) {
 }
 
 function executeRotate(command, get) {
-  const targetIds = resolveTargetIds(command.target, get);
+  const targetIds = resolveCommandTargetIds(command.target, get);
   if (!targetIds.length) return false;
 
   get().setBoards((prev) =>
@@ -135,7 +103,7 @@ function executeRotate(command, get) {
       let pivotUpdate = {};
       let positionUpdate = {};
 
-      if (command.pivot && command.pivot !== 'center') {
+      if (command.pivot && command.pivot !== "center") {
         const hx = board.size[0] / 2;
         const hy = board.size[1] / 2;
         const hz = board.size[2] / 2;
@@ -146,14 +114,14 @@ function executeRotate(command, get) {
           back: [0, 0, -hz],
           right: [hx, 0, 0],
           left: [-hx, 0, 0],
-          'bottom-left-front': [-hx, -hy, hz],
-          'bottom-right-front': [hx, -hy, hz],
-          'bottom-left-back': [-hx, -hy, -hz],
-          'bottom-right-back': [hx, -hy, -hz],
-          'top-left-front': [-hx, hy, hz],
-          'top-right-front': [hx, hy, hz],
-          'top-left-back': [-hx, hy, -hz],
-          'top-right-back': [hx, hy, -hz],
+          "bottom-left-front": [-hx, -hy, hz],
+          "bottom-right-front": [hx, -hy, hz],
+          "bottom-left-back": [-hx, -hy, -hz],
+          "bottom-right-back": [hx, -hy, -hz],
+          "top-left-front": [-hx, hy, hz],
+          "top-right-front": [hx, hy, hz],
+          "top-left-back": [-hx, hy, -hz],
+          "top-right-back": [hx, hy, -hz],
         };
         const resolved = pivotMap[command.pivot];
         if (resolved) {
@@ -195,8 +163,8 @@ function executeRotate(command, get) {
 
       const orientation = [...(board.orientation || [0, 0, 0])];
       let axis = 1;
-      if (command.axis === 'x') axis = 0;
-      if (command.axis === 'z') axis = 2;
+      if (command.axis === "x") axis = 0;
+      if (command.axis === "z") axis = 2;
 
       if (command.flip) {
         orientation[axis] = orientation[axis] === 0 ? Math.PI : 0;
@@ -217,13 +185,13 @@ function executeRotate(command, get) {
 }
 
 function executeMaterial(command, get) {
-  const targetIds = resolveTargetIds(command.target, get);
-  if (!targetIds.length && command.target?.scope !== 'all') return false;
+  const targetIds = resolveCommandTargetIds(command.target, get);
+  if (!targetIds.length && command.target?.scope !== "all") return false;
 
   get().setBoards((prev) =>
     prev.map((board) => {
       if (
-        command.target?.scope === 'all' ||
+        command.target?.scope === "all" ||
         targetIds.includes(board.id.toString())
       ) {
         return {

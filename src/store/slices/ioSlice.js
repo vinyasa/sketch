@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { computeWorldAABB, collectChildBoards } from "../../utils/sceneGraph";
+import { computeWorldAABB } from "../../utils/sceneGraph";
 import { propagateMove } from "../../utils/constraintSolver";
 import { calculateProceduralBoxWalls } from "../../utils/procedural";
 import { WOOD_CATALOGUE, PAINT_PALETTE } from "../../utils/materialCatalogue";
@@ -12,41 +12,7 @@ import {
   createRotateCommand,
   executeCommands,
 } from "../../commands";
-
-const resolveGeminiTargetIds = (target, boards, groups, selectedItemIds) => {
-  if (!target) return [];
-
-  let rawTargetIds = [];
-
-  if (target === "all") {
-    rawTargetIds = boards.map((board) => board.id.toString());
-  } else if (target === "selected") {
-    rawTargetIds = selectedItemIds;
-  } else if (Array.isArray(target)) {
-    rawTargetIds = target.map(String);
-  } else if (typeof target === "string") {
-    const searchName = target.toLowerCase();
-    const matchedBoards = boards
-      .filter((board) => board.name?.toLowerCase().includes(searchName))
-      .map((board) => board.id.toString());
-    const matchedGroups = Object.entries(groups)
-      .filter(([, group]) => group.name?.toLowerCase().includes(searchName))
-      .map(([id]) => id);
-    rawTargetIds = [...matchedBoards, ...matchedGroups];
-  }
-
-  const expandedSet = new Set();
-  rawTargetIds.forEach((id) => {
-    if (groups[id]) {
-      const children = collectChildBoards(id, boards, groups);
-      children.forEach((child) => expandedSet.add(child.id.toString()));
-    } else {
-      expandedSet.add(String(id));
-    }
-  });
-
-  return Array.from(expandedSet);
-};
+import { resolveLegacyAiTargetIds } from "../../utils/workspaceTargets";
 import {
   ACTIVE_WORKSPACE_KEY,
   RECENT_FILES_KEY,
@@ -601,7 +567,7 @@ export const createIoSlice = (set, get) => ({
         processedActions += executeCommands(normalizedCommands, get);
 
         for (const action of result.actions) {
-          const targetIds = resolveGeminiTargetIds(
+          const targetIds = resolveLegacyAiTargetIds(
             action.target,
             get().boards,
             get().groups,
