@@ -8,6 +8,8 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "preview": "vite preview",
     "bump": "node scripts/bump.js"
   },
@@ -33,6 +35,7 @@
     "globals": "^17.4.0",
     "postcss": "^8.5.9",
     "tailwindcss": "^4.2.2",
-    "vite": "^8.0.4"
+    "vite": "^8.0.4",
+    "vitest": "^3.2.4"
   }
 }
