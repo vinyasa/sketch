@@ -11,6 +11,11 @@ import {
 } from "../commands";
 import { appendAiMessage } from "../utils/aiChatMessaging";
 import { appendOperationToBoards } from "../utils/boardOperations";
+import {
+  createPartialTaperedLegAssembly,
+  createStandaloneTaperedLeg,
+  createTaperSpec,
+} from "../utils/siTaperedLeg";
 import { extractSiMeasurement, parseSiMeasurement } from "../utils/siParsing";
 import { resolveSelectionOrNamedTarget } from "../utils/workspaceTargets";
 
@@ -157,67 +162,33 @@ export function processSiCommand(text, set, get) {
     const az = angleMatch ? parseFloat(angleMatch[1]) : 2;
     const ax = /dual|both|side/.test(lower) ? az : 0;
     if (/halfway|half way|partial|lower half|bottom half/.test(lower)) {
-      // Partial taper: box upper + tapered lower, glued together
-      const totalH = 30,
-        t = 1.5,
-        halfH = totalH / 2;
       const newGroupId = "Tapered Leg " + Math.floor(Math.random() * 1000);
-      const upperId = Date.now(),
-        lowerId = upperId + 1;
+      const upperId = Date.now();
+      const lowerId = upperId + 1;
+      const glueId = (upperId + 2).toString();
+      const partialAssembly = createPartialTaperedLegAssembly({
+        groupId: newGroupId,
+        upperId,
+        lowerId,
+        defaultMaterial,
+        ax,
+        az,
+      });
       setGroups((prev) => ({
         ...prev,
-        [newGroupId]: {
-          parentId: "Workspace",
-          isExpanded: true,
-          visible: true,
-        },
+        ...partialAssembly.group,
       }));
-      const upperBoard = {
-        id: upperId,
-        name: "Leg Upper",
-        parentId: newGroupId,
-        size: [t, halfH, t],
-        position: [0, halfH + halfH / 2, 0],
-        material: defaultMaterial,
-        joint: "None",
-        operations: [],
-      };
-      const lowerBoard = {
-        id: lowerId,
-        name: "Leg Lower",
-        parentId: newGroupId,
-        shape: "taper",
-        taper: {
-          angleLeft: ax,
-          angleRight: ax,
-          angleFront: az,
-          angleBack: az,
-        },
-        size: [t, halfH, t],
-        position: [0, halfH / 2, 0],
-        material: defaultMaterial,
-        joint: "None",
-        operations: [],
-        note: "One piece; taper lower " + halfH + '" only.',
-      };
-      const glueId = (Date.now() + 2).toString();
-      setBoards((prev) => [...prev, upperBoard, lowerBoard]);
+      setBoards((prev) => [...prev, ...partialAssembly.boards]);
       get().setConstraints((prev) => ({
         ...prev,
-        [glueId]: {
-          type: "Glue",
-          boardAId: upperId.toString(),
-          boardBId: lowerId.toString(),
-          offset: [0, halfH, 0],
-          enabled: true,
-        },
+        [glueId]: partialAssembly.constraint,
       }));
       setSelectedItemIds([newGroupId]);
       reply =
         "Partial-tapered leg: " +
-        halfH +
+        partialAssembly.halfHeight +
         '" straight upper + ' +
-        halfH +
+        partialAssembly.halfHeight +
         '" tapered lower (' +
         az +
         "° back), glued as one unit.";
@@ -232,12 +203,7 @@ export function processSiCommand(text, set, get) {
             ? {
                 ...b,
                 shape: "taper",
-                taper: {
-                  angleLeft: ax,
-                  angleRight: ax,
-                  angleFront: az,
-                  angleBack: az,
-                },
+                taper: createTaperSpec(ax, az),
               }
             : b,
         ),
@@ -253,23 +219,12 @@ export function processSiCommand(text, set, get) {
       const newId = Date.now();
       setBoards((prev) => [
         ...prev,
-        {
+        createStandaloneTaperedLeg({
           id: newId,
-          name: "Tapered Leg",
-          parentId: "Workspace",
-          shape: "taper",
-          taper: {
-            angleLeft: ax,
-            angleRight: ax,
-            angleFront: az,
-            angleBack: az,
-          },
-          size: [1.5, 30, 1.5],
-          position: [0, 15, 0],
-          material: defaultMaterial,
-          joint: "None",
-          operations: [],
-        },
+          defaultMaterial,
+          ax,
+          az,
+        }),
       ]);
       setSelectedItemIds([newId.toString()]);
       reply =
