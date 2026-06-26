@@ -1,5 +1,4 @@
 import * as THREE from "three";
-import { computeWorldAABB } from "../../utils/sceneGraph";
 import { propagateMove } from "../../utils/constraintSolver";
 import { calculateProceduralBoxWalls } from "../../utils/procedural";
 import { WOOD_CATALOGUE, PAINT_PALETTE } from "../../utils/materialCatalogue";
@@ -12,6 +11,7 @@ import {
   createRotateCommand,
   executeCommands,
 } from "../../commands";
+import { applyGeminiLegacyAction } from "../../utils/geminiLegacyActions";
 import { resolveLegacyAiTargetIds } from "../../utils/workspaceTargets";
 import {
   ACTIVE_WORKSPACE_KEY,
@@ -574,169 +574,18 @@ export const createIoSlice = (set, get) => ({
             get().selectedItemIds,
           );
 
-          switch (action.type) {
-            case "addTop": {
-              const targets = get().boards;
-              if (!targets.length) break;
-              const aabb = computeWorldAABB(targets);
-              const thickness = 0.75;
-              const newX = (aabb.minX + aabb.maxX) / 2;
-              const newZ = (aabb.minZ + aabb.maxZ) / 2;
-              const newY = aabb.maxY + thickness / 2;
-              const newId = Date.now();
-              setBoards((prev) => [
-                ...prev,
-                {
-                  id: newId,
-                  name: "Table Top",
-                  parentId: "Workspace",
-                  size: [
-                    Math.max(24, Math.abs(aabb.maxX - aabb.minX)),
-                    thickness,
-                    Math.max(16, Math.abs(aabb.maxZ - aabb.minZ)),
-                  ],
-                  position: [newX, newY, newZ],
-                  material: defaultMaterial,
-                  joint: "None",
-                  operations: [],
-                },
-              ]);
-              setSelectedItemIds([newId.toString()]);
-              processedActions++;
-              break;
+          const legacyResult = applyGeminiLegacyAction(action, {
+            boards: get().boards,
+            defaultMaterial,
+            targetIds,
+          });
+
+          if (legacyResult) {
+            setBoards((prev) => [...prev, ...legacyResult.addedBoards]);
+            if (legacyResult.selectedItemIds) {
+              setSelectedItemIds(legacyResult.selectedItemIds);
             }
-            case "clone": {
-              if (!targetIds.length) break;
-              const count = parseInt(action.count) || 1;
-              let axisIndex = 1;
-              if (action.axis === "x") axisIndex = 0;
-              if (action.axis === "z") axisIndex = 2;
-              // Positive or negative gap? Assume positive unless explicitly negative.
-              const gap = parseFloat(action.gap) || 0;
-              let newClones = [];
-              const sourceBoards = get().boards.filter((b) =>
-                targetIds.includes(b.id.toString()),
-              );
-              sourceBoards.forEach((b, sIdx) => {
-                let currentPos = [...b.position];
-                for (let i = 1; i <= count; i++) {
-                  currentPos[axisIndex] += b.size[axisIndex] + gap;
-                  newClones.push({
-                    ...b,
-                    id: Date.now() + sIdx * 1000 + i,
-                    name: `${b.name} (Clone ${i})`,
-                    position: [...currentPos],
-                    operations: [], // omit operations to save performance on clones
-                  });
-                }
-              });
-              const newIds = newClones.map((b) => b.id.toString());
-              setBoards((prev) => [...prev, ...newClones]);
-              setSelectedItemIds(newIds);
-              processedActions++;
-              break;
-            }
-            case "addShelf": {
-              const targetBoards =
-                targetIds.length > 0
-                  ? get().boards.filter((b) =>
-                      targetIds.includes(b.id.toString()),
-                    )
-                  : get().boards;
-              if (!targetBoards.length) break;
-              const parentId = targetBoards[0].parentId || "Workspace";
-              const aabb = computeWorldAABB(targetBoards);
-              const thickness = 0.75;
-              let effMinY = aabb.minY;
-              let effMaxY = aabb.maxY;
-              if (action.relativeBounds) {
-                if (action.relativeBounds.bottom) {
-                  if (action.relativeBounds.bottom.toLowerCase() === "floor") {
-                    effMinY = 0;
-                  } else if (action.relativeBounds.bottom !== "bottom") {
-                    const botName = action.relativeBounds.bottom.toLowerCase();
-                    const botBoard = get().boards.find((b) =>
-                      b.name?.toLowerCase().includes(botName),
-                    );
-                    if (botBoard) {
-                      const botAabb = computeWorldAABB([botBoard]);
-                      effMinY = botAabb.maxY;
-                    }
-                  }
-                }
-                if (action.relativeBounds.top) {
-                  if (action.relativeBounds.top !== "top") {
-                    const topName = action.relativeBounds.top.toLowerCase();
-                    const topBoard = get().boards.find((b) =>
-                      b.name?.toLowerCase().includes(topName),
-                    );
-                    if (topBoard) {
-                      const topAabb = computeWorldAABB([topBoard]);
-                      effMaxY = topAabb.minY;
-                    }
-                  }
-                }
-              }
-              let newY = (effMinY + effMaxY) / 2;
-              if (action.position === "bottom") {
-                newY = effMinY + thickness / 2;
-              } else if (action.position === "top") {
-                newY = effMaxY - thickness / 2;
-              } else if (
-                typeof action.position === "string" &&
-                action.position.includes("%")
-              ) {
-                const pct = parseFloat(action.position) / 100;
-                newY = effMinY + (effMaxY - effMinY) * pct;
-              } else if (
-                typeof action.position === "string" &&
-                action.position.includes("/")
-              ) {
-                const [num, den] = action.position.split("/");
-                const pct = parseFloat(num) / parseFloat(den);
-                newY = effMinY + (effMaxY - effMinY) * pct;
-              } else if (typeof action.position === "number") {
-                newY = action.position;
-              }
-              const newX = (aabb.minX + aabb.maxX) / 2;
-              const newZ = (aabb.minZ + aabb.maxZ) / 2;
-              const count = parseInt(action.count) || 1;
-              let newShelves = [];
-              const width = Math.abs(aabb.maxX - aabb.minX);
-              const depth = Math.abs(aabb.maxZ - aabb.minZ);
-              if (count > 1) {
-                const span = effMaxY - effMinY;
-                const interval = span / (count + 1);
-                for (let i = 1; i <= count; i++) {
-                  newShelves.push({
-                    id: Date.now() + i,
-                    name: `Shelf ${i}`,
-                    parentId,
-                    size: [width, thickness, depth],
-                    position: [newX, effMinY + interval * i, newZ],
-                    material: defaultMaterial,
-                    joint: "None",
-                    operations: [],
-                  });
-                }
-              } else {
-                newShelves.push({
-                  id: Date.now(),
-                  name: "Shelf",
-                  parentId,
-                  size: [width, thickness, depth],
-                  position: [newX, newY, newZ],
-                  material: defaultMaterial,
-                  joint: "None",
-                  operations: [],
-                });
-              }
-              const newIds = newShelves.map((b) => b.id.toString());
-              setBoards((prev) => [...prev, ...newShelves]);
-              setSelectedItemIds(newIds);
-              processedActions++;
-              break;
-            }
+            processedActions++;
           }
         }
       }

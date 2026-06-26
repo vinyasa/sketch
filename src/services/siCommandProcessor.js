@@ -9,6 +9,7 @@ import {
   createRotateCommand,
   executeCommand,
 } from "../commands";
+import { extractSiMeasurement, parseSiMeasurement } from "../utils/siParsing";
 import { resolveSelectionOrNamedTarget } from "../utils/workspaceTargets";
 
 export function processSiCommand(text, set, get) {
@@ -47,30 +48,6 @@ export function processSiCommand(text, set, get) {
     }, 300);
     return;
   }
-
-  // Parses plain decimals, pure fractions (3/8), and mixed numbers (1 3/8)
-  const parseMeasurement = (str) => {
-    if (!str) return null;
-    const mixed = str.match(/^(-?\d+)\s+(\d+)\/(\d+)$/);
-    if (mixed) {
-      const whole = parseInt(mixed[1]);
-      const frac = parseInt(mixed[2]) / parseInt(mixed[3]);
-      return whole + (whole < 0 ? -frac : frac);
-    }
-    const frac = str.match(/^(-?)(\d+)\/(\d+)$/);
-    if (frac)
-      return (
-        ((frac[1] === "-" ? -1 : 1) * parseInt(frac[2])) / parseInt(frac[3])
-      );
-    const v = parseFloat(str);
-    return isNaN(v) ? null : v;
-  };
-
-  // Finds first measurement token (decimal, fraction, or mixed number) in the lowercased text
-  const extractMeasurement = (s) => {
-    const m = s.match(/(-?\d+\s+\d+\/\d+|-?\d+\/\d+|-?\d*\.?\d+)/);
-    return m ? parseMeasurement(m[1]) : null;
-  };
 
   // ── Material change ──────────────────────────────────────────────────
   const allWoods = Object.entries(WOOD_CATALOGUE).map(([id, spec]) => ({
@@ -152,7 +129,7 @@ export function processSiCommand(text, set, get) {
     )
       val = -1;
     const match = lower.match(/(-?\d+\s+\d+\/\d+|-?\d+\/\d+|-?[\d.]+)/);
-    if (match) val = parseMeasurement(match[1]) * (val < 0 ? -1 : 1);
+    if (match) val = parseSiMeasurement(match[1]) * (val < 0 ? -1 : 1);
     pushHistory();
     const moved = executeCommand(
       createMoveCommand({
@@ -316,7 +293,7 @@ export function processSiCommand(text, set, get) {
       lower,
     )
   ) {
-    const r = extractMeasurement(lower) ?? 1;
+    const r = extractSiMeasurement(lower) ?? 1;
     let axis = "y";
     if (/(through x|along x|\bx axis\b)/.test(lower)) axis = "x";
     else if (/(through z|along z|\bz axis\b)/.test(lower)) axis = "z";
@@ -346,7 +323,7 @@ export function processSiCommand(text, set, get) {
     selectedItemIds.length > 0 &&
     /(add|cut|make).*(cove|hollow)|(cove|hollow).*(add|cut|make)/i.test(lower)
   ) {
-    const depth = extractMeasurement(lower) ?? 1;
+    const depth = extractSiMeasurement(lower) ?? 1;
     let edge = "top";
     if (/bottom/.test(lower)) edge = "bottom";
     else if (/left/.test(lower)) edge = "left";
@@ -622,7 +599,7 @@ export function processSiCommand(text, set, get) {
       lower,
     )
   ) {
-    const val = extractMeasurement(lower);
+    const val = extractSiMeasurement(lower);
     if (val !== null) {
       const isTall =
         /(taller|tall)/.test(lower) && !/(length|longer|long)/.test(lower);
@@ -720,7 +697,7 @@ export function processSiCommand(text, set, get) {
         : "I could not reset rotation on the target board(s).";
       updated = true;
     } else {
-      const degrees = extractMeasurement(lower);
+      const degrees = extractSiMeasurement(lower);
       if (degrees !== null || /flip/.test(lower)) {
         let axis = "y";
         if (/(right|left|red|\bx\b)/.test(lower)) axis = "x";
