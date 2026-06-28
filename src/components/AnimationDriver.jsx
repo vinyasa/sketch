@@ -54,34 +54,132 @@ export function AnimationDriver() {
 
       const eased = ease(Math.max(0, Math.min(1, newProgress)), boardAnim.easing);
 
-      // Lerp orientation
-      const startOri = boardAnim.start.orientation;
-      const endOri = boardAnim.end.orientation;
-      const lerpedOri = [
-        startOri[0] + (endOri[0] - startOri[0]) * eased,
-        startOri[1] + (endOri[1] - startOri[1]) * eased,
-        startOri[2] + (endOri[2] - startOri[2]) * eased,
-      ];
+      if (boardAnim.isGroup) {
+        const startBoards = boardAnim.start.boards || [];
+        const endBoards = boardAnim.end.boards || [];
+        if (startBoards.length > 0 && endBoards.length > 0) {
+          // 1. Calculate start and end centroids
+          const startCentroid = new THREE.Vector3();
+          startBoards.forEach(sb => {
+            startCentroid.add(new THREE.Vector3(...sb.position));
+          });
+          startCentroid.divideScalar(startBoards.length);
 
-      // Lerp pivot if both have it
-      const startPiv = boardAnim.start.pivot || [0, 0, 0];
-      const endPiv = boardAnim.end.pivot || [0, 0, 0];
-      const lerpedPiv = [
-        startPiv[0] + (endPiv[0] - startPiv[0]) * eased,
-        startPiv[1] + (endPiv[1] - startPiv[1]) * eased,
-        startPiv[2] + (endPiv[2] - startPiv[2]) * eased,
-      ];
-      const hasPiv = lerpedPiv[0] !== 0 || lerpedPiv[1] !== 0 || lerpedPiv[2] !== 0;
+          const endCentroid = new THREE.Vector3();
+          endBoards.forEach(eb => {
+            endCentroid.add(new THREE.Vector3(...eb.position));
+          });
+          endCentroid.divideScalar(endBoards.length);
 
-      // Apply to board
-      state.setBoards(prev => prev.map(b => {
-        if (b.id.toString() !== boardAnim.boardId) return b;
-        return {
-          ...b,
-          orientation: lerpedOri,
-          pivot: hasPiv ? lerpedPiv : undefined,
-        };
-      }));
+          // Current centroid (lerped path for translation)
+          const currentCentroid = new THREE.Vector3().lerpVectors(startCentroid, endCentroid, eased);
+
+          // 2. Calculate relative rotation quaternion using the first board
+          const sb0 = startBoards[0];
+          const eb0 = endBoards.find(eb => eb.id === sb0.id);
+          
+          const qRel = new THREE.Quaternion();
+          if (eb0) {
+            const qStart0 = new THREE.Quaternion().setFromEuler(new THREE.Euler(...sb0.orientation, 'YXZ'));
+            const qEnd0 = new THREE.Quaternion().setFromEuler(new THREE.Euler(...eb0.orientation, 'YXZ'));
+            const qCurrent0 = qStart0.clone().slerp(qEnd0, eased);
+            
+            // qRel = qCurrent0 * qStart0^-1
+            qRel.copy(qCurrent0).multiply(qStart0.clone().invert());
+          }
+
+          // Map end boards for quick lookup
+          const endMap = {};
+          endBoards.forEach(eb => {
+            endMap[eb.id] = eb;
+          });
+
+          const animatedBoardsMap = {};
+          startBoards.forEach(sb => {
+            const eb = endMap[sb.id];
+            if (!eb) return;
+
+            // Initial position relative to start centroid
+            const relPosStart = new THREE.Vector3(...sb.position).sub(startCentroid);
+            // Rotate relative position around centroid pivot
+            relPosStart.applyQuaternion(qRel);
+            // Final position = current centroid + rotated relative position
+            const currentPos = currentCentroid.clone().add(relPosStart);
+
+            // Calculate current orientation
+            const qStart = new THREE.Quaternion().setFromEuler(new THREE.Euler(...sb.orientation, 'YXZ'));
+            const qCurrent = qRel.clone().multiply(qStart);
+            const currentEuler = new THREE.Euler().setFromQuaternion(qCurrent, 'YXZ');
+
+            // Lerp pivot
+            const startPiv = sb.pivot || [0, 0, 0];
+            const endPiv = eb.pivot || [0, 0, 0];
+            const lerpedPiv = [
+              startPiv[0] + (endPiv[0] - startPiv[0]) * eased,
+              startPiv[1] + (endPiv[1] - startPiv[1]) * eased,
+              startPiv[2] + (endPiv[2] - startPiv[2]) * eased,
+            ];
+            const hasPiv = lerpedPiv[0] !== 0 || lerpedPiv[1] !== 0 || lerpedPiv[2] !== 0;
+
+            animatedBoardsMap[sb.id] = {
+              position: [currentPos.x, currentPos.y, currentPos.z],
+              orientation: [currentEuler.x, currentEuler.y, currentEuler.z],
+              pivot: hasPiv ? lerpedPiv : undefined,
+            };
+          });
+
+          // Apply to all children
+          state.setBoards(prev => prev.map(b => {
+            const anim = animatedBoardsMap[b.id.toString()];
+            if (!anim) return b;
+            return {
+              ...b,
+              position: anim.position,
+              orientation: anim.orientation,
+              pivot: anim.pivot,
+            };
+          }));
+        }
+      } else {
+        // Lerp position if start and end have it
+        const startPos = boardAnim.start.position;
+        const endPos = boardAnim.end.position;
+        const lerpedPos = startPos && endPos ? [
+          startPos[0] + (endPos[0] - startPos[0]) * eased,
+          startPos[1] + (endPos[1] - startPos[1]) * eased,
+          startPos[2] + (endPos[2] - startPos[2]) * eased,
+        ] : null;
+
+        // Lerp orientation
+        const startOri = boardAnim.start.orientation;
+        const endOri = boardAnim.end.orientation;
+        const lerpedOri = startOri && endOri ? [
+          startOri[0] + (endOri[0] - startOri[0]) * eased,
+          startOri[1] + (endOri[1] - startOri[1]) * eased,
+          startOri[2] + (endOri[2] - startOri[2]) * eased,
+        ] : null;
+
+        // Lerp pivot if both have it
+        const startPiv = boardAnim.start.pivot || [0, 0, 0];
+        const endPiv = boardAnim.end.pivot || [0, 0, 0];
+        const lerpedPiv = [
+          startPiv[0] + (endPiv[0] - startPiv[0]) * eased,
+          startPiv[1] + (endPiv[1] - startPiv[1]) * eased,
+          startPiv[2] + (endPiv[2] - startPiv[2]) * eased,
+        ];
+        const hasPiv = lerpedPiv[0] !== 0 || lerpedPiv[1] !== 0 || lerpedPiv[2] !== 0;
+
+        // Apply to single board
+        state.setBoards(prev => prev.map(b => {
+          if (b.id.toString() !== boardAnim.boardId) return b;
+          return {
+            ...b,
+            position: lerpedPos || b.position,
+            orientation: lerpedOri || b.orientation || [0, 0, 0],
+            pivot: hasPiv ? lerpedPiv : undefined,
+          };
+        }));
+      }
 
       // Update progress
       state.setAnimation(prev => ({
