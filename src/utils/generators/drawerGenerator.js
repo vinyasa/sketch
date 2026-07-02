@@ -139,11 +139,18 @@ export function generateDrawers(cfg, boards, groups, defaultMaterial) {
     const sH = slotHeights[i];
     const boxH = sH - topClearance;
 
-    const drawerGroupId = rootGroupId + ' Drawer ' + (i + 1);
+    let baseName = rootGroupId;
+    if (baseName.startsWith('Drawers')) {
+      baseName = baseName.replace('Drawers', 'Drawer');
+    } else if (!baseName.toLowerCase().includes('drawer')) {
+      baseName = 'Drawer ' + baseName;
+    }
+    const drawerGroupId = rootGroupId + '-' + (i + 1);
     newGroups[drawerGroupId] = {
       parentId: rootGroupId,
       isExpanded: false,
-      visible: true
+      visible: true,
+      name: `${baseName}-${i + 1}`
     };
     
     // Top-down physical position calculation (Drawer 1 is Top Drawer)

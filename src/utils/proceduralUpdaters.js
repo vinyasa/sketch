@@ -16,6 +16,21 @@ import { generateDrawers } from './generators/drawerGenerator';
 import { generateTableBase } from './generators/tableBaseGenerator';
 import { generateTableTop } from './generators/tableTopGenerator';
 
+const mergeTransientProperties = (oldBoards, newBoards) => {
+  const oldMap = new Map(oldBoards.map(b => [b.id, b]));
+  return newBoards.map(nb => {
+    const oldB = oldMap.get(nb.id);
+    if (oldB) {
+      const merged = { ...nb };
+      if (oldB.visible !== undefined) {
+        merged.visible = oldB.visible;
+      }
+      return merged;
+    }
+    return nb;
+  });
+};
+
 export const buildCabinetHelper = (cfg, boards, groups) => {
   const {
     groupId,
@@ -51,14 +66,15 @@ export const buildCabinetHelper = (cfg, boards, groups) => {
     };
   }
 
-  const newBoardIds = new Set(newBoards.map(nb => nb.id));
+  const mergedNewBoards = mergeTransientProperties(boards, newBoards);
+  const newBoardIds = new Set(mergedNewBoards.map(nb => nb.id));
   const filteredBoards = boards.filter(b => !newBoardIds.has(b.id) && b.parentId !== groupId);
-  const updatedBoards = [...filteredBoards, ...newBoards];
+  const updatedBoards = [...filteredBoards, ...mergedNewBoards];
 
   return {
     groupId,
     savedParams,
-    newBoards,
+    newBoards: mergedNewBoards,
     updatedGroups,
     updatedBoards,
     backStyle,
@@ -99,9 +115,10 @@ export const buildBoxHelper = (cfg, boards, groups) => {
     };
   }
 
-  const newBoardIds = new Set(newBoards.map(nb => nb.id));
+  const mergedNewBoards = mergeTransientProperties(boards, newBoards);
+  const newBoardIds = new Set(mergedNewBoards.map(nb => nb.id));
   const filteredBoards = boards.filter(b => !newBoardIds.has(b.id) && b.parentId !== groupId);
-  const updatedBoards = [...filteredBoards, ...newBoards];
+  const updatedBoards = [...filteredBoards, ...mergedNewBoards];
 
   return {
     groupId,
@@ -134,9 +151,10 @@ export const buildFaceFrameHelper = (cfg, boards, groups, defaultMaterial) => {
     };
   }
 
-  const newBoardIds = new Set(newBoards.map(nb => nb.id));
+  const mergedNewBoards = mergeTransientProperties(boards, newBoards);
+  const newBoardIds = new Set(mergedNewBoards.map(nb => nb.id));
   const filteredBoards = boards.filter(b => !newBoardIds.has(b.id) && b.parentId !== groupId);
-  const updatedBoards = [...filteredBoards, ...newBoards];
+  const updatedBoards = [...filteredBoards, ...mergedNewBoards];
 
   return {
     groupId,
@@ -173,9 +191,10 @@ export const buildShelvingHelper = (cfg, boards, groups, defaultMaterial) => {
     };
   }
 
-  const newBoardIds = new Set(newBoards.map(nb => nb.id));
+  const mergedNewBoards = mergeTransientProperties(boards, newBoards);
+  const newBoardIds = new Set(mergedNewBoards.map(nb => nb.id));
   const filteredBoards = boards.filter(b => !newBoardIds.has(b.id) && b.parentId !== groupId);
-  let updatedBoards = [...filteredBoards, ...newBoards];
+  let updatedBoards = [...filteredBoards, ...mergedNewBoards];
 
   // ── Shelf Pin Holes Generation ──────────────────────────────────────────
   const parentGroupId = cabinetGroupId || boxGroupId;
@@ -366,7 +385,8 @@ export const buildShakerDoorHelper = (cfg, boards, groups, defaultMaterial) => {
     ...newGroups
   };
 
-  const newBoardIds = new Set(newBoards.map(nb => nb.id));
+  const mergedNewBoards = mergeTransientProperties(boards, newBoards);
+  const newBoardIds = new Set(mergedNewBoards.map(nb => nb.id));
   // Filter out boards that were part of the door builder assembly or any of its subassemblies
   const filteredBoards = boards.filter(b => {
     if (!isEditing) return true;
@@ -380,7 +400,7 @@ export const buildShakerDoorHelper = (cfg, boards, groups, defaultMaterial) => {
     return true;
   });
 
-  const updatedBoards = [...filteredBoards, ...newBoards];
+  const updatedBoards = [...filteredBoards, ...mergedNewBoards];
 
   return {
     groupId,
@@ -424,7 +444,8 @@ export const buildDrawersHelper = (cfg, boards, groups, defaultMaterial) => {
     }
     return true;
   });
-  const updatedBoards = [...filteredBoards, ...newBoards];
+  const mergedNewBoards = mergeTransientProperties(boards, newBoards);
+  const updatedBoards = [...filteredBoards, ...mergedNewBoards];
 
   return {
     rootGroupId,
@@ -475,14 +496,15 @@ export const buildTableBaseHelper = (cfg, boards, groups, constraints, defaultMa
 
   const childBoards = collectChildBoards(groupId, boards, groups);
   const childBoardIds = new Set(childBoards.map(b => b.id.toString()));
-  const newBoardIds = new Set(newBoards.map(nb => nb.id.toString()));
+  const mergedNewBoards = mergeTransientProperties(boards, newBoards);
+  const newBoardIds = new Set(mergedNewBoards.map(nb => nb.id.toString()));
   
   const filteredBoards = boards.filter(b => 
     !childBoardIds.has(b.id.toString()) && 
     !newBoardIds.has(b.id.toString()) && 
     b.parentId !== groupId
   );
-  const updatedBoards = [...filteredBoards, ...newBoards];
+  const updatedBoards = [...filteredBoards, ...mergedNewBoards];
 
   const nextConstraints = { ...constraints };
   if (isEditing) {
@@ -546,14 +568,15 @@ export const buildTableTopHelper = (cfg, boards, groups, constraints, defaultMat
 
   const childBoards = collectChildBoards(groupId, boards, groups);
   const childBoardIds = new Set(childBoards.map(b => b.id.toString()));
-  const newBoardIds = new Set(newBoards.map(nb => nb.id.toString()));
+  const mergedNewBoards = mergeTransientProperties(boards, newBoards);
+  const newBoardIds = new Set(mergedNewBoards.map(nb => nb.id.toString()));
   
   const filteredBoards = boards.filter(b => 
     !childBoardIds.has(b.id.toString()) && 
     !newBoardIds.has(b.id.toString()) && 
     b.parentId !== groupId
   );
-  const updatedBoards = [...filteredBoards, ...newBoards];
+  const updatedBoards = [...filteredBoards, ...mergedNewBoards];
 
   const nextConstraints = { ...constraints };
   if (isEditing) {
@@ -568,7 +591,7 @@ export const buildTableTopHelper = (cfg, boards, groups, constraints, defaultMat
   return {
     groupId,
     savedParams,
-    newBoards,
+    newBoards: mergedNewBoards,
     updatedGroups,
     updatedBoards,
     updatedConstraints: nextConstraints,

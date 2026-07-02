@@ -31,7 +31,7 @@ export function getSortedDims(size) {
  * @param {string} sheetSizeKey - Key from SHEET_SIZES ('4x8' | '5x5' | 'metric')
  * @returns {Array} List of sheet layouts grouped by thickness and species
  */
-export function packPlywoodSheets(boards, sheetSizeKey = '4x8') {
+export function packPlywoodSheets(boards, sheetSizeKey = '4x8', plywoodInventory = [], prioritizeInventory = true) {
     const sizeCfg = SHEET_SIZES[sheetSizeKey] || SHEET_SIZES['4x8'];
     const sheetW = sizeCfg.w;
     const sheetH = sizeCfg.h;
@@ -118,7 +118,7 @@ export function packPlywoodSheets(boards, sheetSizeKey = '4x8') {
 
         // Helper: create a new empty sheet layout
         const createNewSheet = () => ({
-            id: sheets.length + 1,
+            id: sheets.filter(s => !s.isInventory).length + 1,
             material: grp.material,
             thickness: grp.thickness,
             width: sheetW,
@@ -130,16 +130,53 @@ export function packPlywoodSheets(boards, sheetSizeKey = '4x8') {
             currentShelfH: 0
         });
 
+        // Helper: create sheet from plywood inventory item
+        const createSheetFromInventory = (invItem) => ({
+            id: `inv_${invItem.id}`,
+            isInventory: true,
+            label: invItem.label || `${invItem.width}" × ${invItem.height}" Scrap`,
+            material: grp.material,
+            thickness: grp.thickness,
+            width: parseFloat(invItem.width),
+            height: parseFloat(invItem.height),
+            placements: [],
+            shelves: [],
+            currentX: 0,
+            currentY: 0,
+            currentShelfH: 0
+        });
+
+        // Pre-fill sheets with matching inventory items if prioritized
+        if (prioritizeInventory && Array.isArray(plywoodInventory)) {
+            const matchingInventory = plywoodInventory.filter(item => {
+                const thickMatch = Math.abs(parseFloat(item.thickness) - parseFloat(grp.thickness)) < 0.001;
+                if (!thickMatch) return false;
+
+                const matA = typeof item.material === 'string' ? item.material : (item.material?.id || item.material?.hex);
+                const matB = typeof grp.material === 'string' ? grp.material : (grp.material?.id || grp.material?.hex);
+                return matA === matB;
+            });
+
+            // Sort inventory items ascending by area (use smaller scraps first)
+            matchingInventory.sort((a, b) => (parseFloat(a.width) * parseFloat(a.height)) - (parseFloat(b.width) * parseFloat(b.height)));
+
+            matchingInventory.forEach(item => {
+                sheets.push(createSheetFromInventory(item));
+            });
+        }
+
         // Pack each part
         parts.forEach(part => {
             let packed = false;
 
-            // Try to pack in existing sheets
+            // Try to pack in existing sheets (including inventory sheets)
             for (let sIdx = 0; sIdx < sheets.length; sIdx++) {
                 const sheet = sheets[sIdx];
+                const activeW = sheet.width;
+                const activeH = sheet.height;
 
                 // Attempt to pack in the current shelf
-                if (sheet.currentX + part.w <= sheetW && sheet.currentY + part.h <= sheetH) {
+                if (sheet.currentX + part.w <= activeW && sheet.currentY + part.h <= activeH) {
                     sheet.placements.push({
                         board: part.board,
                         x: sheet.currentX,
@@ -156,7 +193,7 @@ export function packPlywoodSheets(boards, sheetSizeKey = '4x8') {
 
                 // If it doesn't fit on the current shelf, try opening a new shelf on this sheet
                 const nextY = sheet.currentY + sheet.currentShelfH + KERF;
-                if (nextY + part.h <= sheetH && part.w <= sheetW) {
+                if (nextY + part.h <= activeH && part.w <= activeW) {
                     sheet.currentY = nextY;
                     sheet.currentX = 0;
                     sheet.currentShelfH = part.h;
@@ -180,7 +217,7 @@ export function packPlywoodSheets(boards, sheetSizeKey = '4x8') {
                     const rotH = part.w;
 
                     // Try rotated on current shelf
-                    if (sheet.currentX + rotW <= sheetW && sheet.currentY + rotH <= sheetH) {
+                    if (sheet.currentX + rotW <= activeW && sheet.currentY + rotH <= activeH) {
                         sheet.placements.push({
                             board: part.board,
                             x: sheet.currentX,
@@ -196,7 +233,7 @@ export function packPlywoodSheets(boards, sheetSizeKey = '4x8') {
                     }
 
                     // Try rotated on a new shelf
-                    if (nextY + rotH <= sheetH && rotW <= sheetW) {
+                    if (nextY + rotH <= activeH && rotW <= activeW) {
                         sheet.currentY = nextY;
                         sheet.currentX = 0;
                         sheet.currentShelfH = rotH;
@@ -242,15 +279,17 @@ export function packPlywoodSheets(boards, sheetSizeKey = '4x8') {
             sheet.placements.forEach(p => {
                 usedArea += p.w * p.h;
             });
-            const totalArea = sheetW * sheetH;
+            const totalArea = sheet.width * sheet.height;
             const efficiency = (usedArea / totalArea) * 100;
 
             return {
                 id: sheet.id,
+                isInventory: sheet.isInventory || false,
+                label: sheet.label || `Sheet ${sheet.id}`,
                 material: sheet.material,
                 thickness: sheet.thickness,
-                width: sheetW,
-                height: sheetH,
+                width: sheet.width,
+                height: sheet.height,
                 placements: sheet.placements,
                 usedArea,
                 totalArea,

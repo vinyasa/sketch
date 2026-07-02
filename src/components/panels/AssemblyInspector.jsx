@@ -30,9 +30,10 @@ const AssemblyInspector = ({ selectedGroup }) => {
     const supportsY = hasBuilder && meta.builder !== 'table-top';
     const supportsZ = hasBuilder && !['shaker-door', 'face-frame'].includes(meta.builder);
 
-    // Compute overall dimensions from child boards
+    // Compute overall dimensions and center from child boards
     const childBoards = collectChildBoards(selectedGroup, boards, groups);
     let overallSize = [0, 0, 0];
+    let aabbCenter = [0, 0, 0];
     let isGlued = false;
     
     if (childBoards.length > 0) {
@@ -41,6 +42,11 @@ const AssemblyInspector = ({ selectedGroup }) => {
             Math.abs(aabb.maxX - aabb.minX),
             Math.abs(aabb.maxY - aabb.minY),
             Math.abs(aabb.maxZ - aabb.minZ)
+        ];
+        aabbCenter = [
+            (aabb.minX + aabb.maxX) / 2,
+            (aabb.minY + aabb.maxY) / 2,
+            (aabb.minZ + aabb.maxZ) / 2
         ];
 
         const childIds = new Set(childBoards.map(b => b.id.toString()));
@@ -144,10 +150,10 @@ const AssemblyInspector = ({ selectedGroup }) => {
                 </div>
             </div>
             {!isWorkspace && (() => {
-                // Compute centroid of all child boards
-                const cx = childBoards.length > 0 ? fmt4(childBoards.reduce((s, b) => s + b.position[0], 0) / childBoards.length) : 0;
-                const cy = childBoards.length > 0 ? fmt4(childBoards.reduce((s, b) => s + b.position[1], 0) / childBoards.length) : 0;
-                const cz = childBoards.length > 0 ? fmt4(childBoards.reduce((s, b) => s + b.position[2], 0) / childBoards.length) : 0;
+                // Compute AABB center of all child boards
+                const cx = fmt4(aabbCenter[0]);
+                const cy = fmt4(aabbCenter[1]);
+                const cz = fmt4(aabbCenter[2]);
                 const centroid = [cx, cy, cz];
 
                 const handleCentroidChange = (axis, newVal) => {
@@ -168,7 +174,7 @@ const AssemblyInspector = ({ selectedGroup }) => {
                                 <div style={{ backgroundColor: 'rgba(60, 150, 255, 0.15)' }}>Z<NumericInput step={units === 'metric' ? '1' : '0.125'} value={units === 'metric' ? fmt4(centroid[2] * 25.4) : centroid[2]} onChange={val => handleCentroidChange(2, units === 'metric' ? val / 25.4 : val)} /></div>
                             </div>
                             <button style={{ marginTop: '8px', width: '100%' }} className="primary-btn" onClick={dropGroupToFloor}>↓ Set on Floor</button>
-                            <p className="hint" style={{ marginTop: '6px' }}>Assembly centroid — changes move all children in real time.</p>
+                            <p className="hint" style={{ marginTop: '6px' }}>Assembly center (bounding box) — changes move all children in real time.</p>
                         </div>
                         {/* ── Assembly Orientation ── */}
                         <div className="inspector-card">

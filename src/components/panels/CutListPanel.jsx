@@ -1,11 +1,15 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import useStore from '../../store/useStore';
 import { normalizeMaterial, WOOD_CATALOGUE, getMaterialDisplayColor } from '../../utils/materialCatalogue';
 import { packPlywoodSheets, SHEET_SIZES } from '../../utils/sheetPacker';
+import { formatUnit } from '../../utils/units';
 
 const fmt4 = (v) => parseFloat(v.toFixed(4));
 
-const matLabel = (material) => {
+const matLabel = (material, board) => {
+    if (board && board.name && board.name.includes('Slide')) {
+        return 'Slides';
+    }
     const m = normalizeMaterial(material);
     if (m.type === 'color') return `Paint ${m.hex}`;
     return WOOD_CATALOGUE[m.id]?.label ?? m.id;
@@ -40,10 +44,190 @@ const btnIdle = {
     borderColor: 'var(--border-color)'
 };
 
+const EXCLUDED_HARDWARE_KEYWORDS = ['slide', 'hardware', 'hinge', 'pull', 'knob', 'handle', 'bracket'];
+const isHardwareBoard = (name) => {
+    if (!name) return false;
+    const lower = name.toLowerCase();
+    return EXCLUDED_HARDWARE_KEYWORDS.some(kw => lower.includes(kw));
+};
+
+const renderPartLabel = (p, idx, scale, units, isHtmlString = false) => {
+    const partW = p.w * scale;
+    const partH = p.h * scale;
+    const pieceCode = String.fromCharCode(65 + (idx % 26)) + (idx >= 26 ? Math.floor(idx / 26) + 1 : '');
+    const showHorizontal = partW > 45 && partH > 22;
+    const showVertical = !showHorizontal && partH > 45 && partW > 22;
+    const showCodeOnly = !showHorizontal && !showVertical && partW > 12 && partH > 12;
+
+    const formattedDim = `${formatUnit(p.w, units)}×${formatUnit(p.h, units)}`;
+
+    if (isHtmlString) {
+        if (showHorizontal) {
+            return `
+                <text x="${partW / 2}" y="${partH / 2 - 2}" text-anchor="middle" fill="#000000" font-size="8px" font-weight="bold" font-family="sans-serif">${p.board.name}</text>
+                <text x="${partW / 2}" y="${partH / 2 + 7}" text-anchor="middle" fill="rgba(0,0,0,0.7)" font-size="7px" font-family="monospace">${formattedDim}</text>
+            `;
+        } else if (showVertical) {
+            return `
+                <g transform="rotate(90, ${partW / 2}, ${partH / 2})">
+                    <text x="${partW / 2}" y="${partH / 2 - 2}" text-anchor="middle" fill="#000000" font-size="8px" font-weight="bold" font-family="sans-serif">${p.board.name}</text>
+                    <text x="${partW / 2}" y="${partH / 2 + 7}" text-anchor="middle" fill="rgba(0,0,0,0.7)" font-size="7px" font-family="monospace">${formattedDim}</text>
+                </g>
+            `;
+        } else if (showCodeOnly) {
+            return `
+                <text x="${partW / 2}" y="${partH / 2 + 3}" text-anchor="middle" fill="#000000" font-size="9px" font-weight="bold" font-family="sans-serif">${pieceCode}</text>
+            `;
+        }
+        return '';
+    } else {
+        if (showHorizontal) {
+            return (
+                <>
+                    <text
+                        x={partW / 2}
+                        y={partH / 2 - 2}
+                        textAnchor="middle"
+                        fill="#000000"
+                        fontSize="7.5px"
+                        fontWeight="bold"
+                    >
+                        {p.board.name}
+                    </text>
+                    <text
+                        x={partW / 2}
+                        y={partH / 2 + 7}
+                        textAnchor="middle"
+                        fill="rgba(0,0,0,0.65)"
+                        fontSize="6.5px"
+                        fontFamily="monospace"
+                    >
+                        {formattedDim}
+                    </text>
+                </>
+            );
+        } else if (showVertical) {
+            return (
+                <g transform={`rotate(90, ${partW / 2}, ${partH / 2})`}>
+                    <text
+                        x={partW / 2}
+                        y={partH / 2 - 2}
+                        textAnchor="middle"
+                        fill="#000000"
+                        fontSize="7.5px"
+                        fontWeight="bold"
+                    >
+                        {p.board.name}
+                    </text>
+                    <text
+                        x={partW / 2}
+                        y={partH / 2 + 7}
+                        textAnchor="middle"
+                        fill="rgba(0,0,0,0.65)"
+                        fontSize="6.5px"
+                        fontFamily="monospace"
+                    >
+                        {formattedDim}
+                    </text>
+                </g>
+            );
+        } else if (showCodeOnly) {
+            return (
+                <text
+                    x={partW / 2}
+                    y={partH / 2 + 3}
+                    textAnchor="middle"
+                    fill="#000000"
+                    fontSize="8.5px"
+                    fontWeight="bold"
+                >
+                    {pieceCode}
+                </text>
+            );
+        }
+        return null;
+    }
+};
+
 const CutListPanel = () => {
-    const { boards } = useStore();
+    const { boards, units, plywoodInventory, setPlywoodInventory, setBoards } = useStore();
     const [mode, setMode] = useState('detail'); // 'detail' | 'grouped' | 'plywood'
     const [sheetSize, setSheetSize] = useState('4x8'); // '4x8' | '5x5' | 'metric'
+    const [showPlywood, setShowPlywood] = useState(true);
+    const [showSolid, setShowSolid] = useState(true);
+
+    const [prioritizeInventory, setPrioritizeInventory] = useState(() => {
+        try {
+            const saved = localStorage.getItem('lucey_prioritize_inventory');
+            return saved !== null ? JSON.parse(saved) : true;
+        } catch {
+            return true;
+        }
+    });
+
+    const setAndPersistPrioritizeInventory = (val) => {
+        setPrioritizeInventory(val);
+        try {
+            localStorage.setItem('lucey_prioritize_inventory', JSON.stringify(val));
+        } catch {}
+    };
+
+    const [showInvManager, setShowInvManager] = useState(false);
+    const [invWidth, setInvWidth] = useState('');
+    const [invHeight, setInvHeight] = useState('');
+    const [invThickness, setInvThickness] = useState('0.75');
+    const [invMaterial, setInvMaterial] = useState('pine');
+    const [invLabel, setInvLabel] = useState('');
+
+    useEffect(() => {
+        setInvThickness(units === 'metric' ? '0.7087' : '0.75');
+    }, [units]);
+
+    const toggleGrainDirection = (boardId) => {
+        setBoards(prev => prev.map(b => {
+            if (b.id === boardId) {
+                const nextGrain = b.grainDirection === 'width' ? 'length' : 'width';
+                return {
+                    ...b,
+                    grainDirection: nextGrain
+                };
+            }
+            return b;
+        }));
+    };
+
+    const handleAddInventoryItem = () => {
+        const wVal = parseFloat(invWidth);
+        const hVal = parseFloat(invHeight);
+        const tVal = parseFloat(invThickness);
+
+        if (isNaN(wVal) || wVal <= 0 || isNaN(hVal) || hVal <= 0) {
+            alert('Please enter valid positive dimensions for width and height.');
+            return;
+        }
+
+        const widthInInches = units === 'metric' ? wVal / 25.4 : wVal;
+        const heightInInches = units === 'metric' ? hVal / 25.4 : hVal;
+        const thicknessInInches = tVal;
+
+        const newItem = {
+            id: Date.now() + Math.random().toString(36).substr(2, 5),
+            width: widthInInches,
+            height: heightInInches,
+            thickness: thicknessInInches,
+            material: invMaterial,
+            label: invLabel.trim() || undefined
+        };
+
+        setPlywoodInventory([...(plywoodInventory || []), newItem]);
+        setInvWidth('');
+        setInvHeight('');
+        setInvLabel('');
+    };
+
+    const handleRemoveInventoryItem = (id) => {
+        setPlywoodInventory((plywoodInventory || []).filter(item => item.id !== id));
+    };
 
     // ─── Virtually Merge Split Legs ─────────────────────────────────────────
     const visibleBoards = useMemo(() => {
@@ -51,7 +235,7 @@ const CutListPanel = () => {
         const lowerLegs = new Map(); // key: parentId + leg index -> lower board
         const upperLegs = new Map(); // key: parentId + leg index -> upper board
 
-        boards.filter(b => b.shape !== 'plane').forEach(b => {
+        boards.filter(b => b.shape !== 'plane' && !isHardwareBoard(b.name)).forEach(b => {
             const matchUpper = b.name.match(/^Leg (\d+) Upper$/);
             const matchLower = b.name.match(/^Leg (\d+) Lower$/);
             if (matchUpper) {
@@ -95,29 +279,61 @@ const CutListPanel = () => {
         return mergedList;
     }, [boards]);
 
+    // ── Sorted Detail Boards ──────────────────────────────────────────────────
+    const sortedDetailBoards = useMemo(() => {
+        return [...visibleBoards].sort((a, b) => {
+            // 1. Sort by Type (Plywood vs Solid)
+            const typeA = a.lumberType === 'plywood' ? 'Plywood' : 'Solid';
+            const typeB = b.lumberType === 'plywood' ? 'Plywood' : 'Solid';
+            const cmpType = typeA.localeCompare(typeB);
+            if (cmpType !== 0) return cmpType;
+
+            // 2. Sort by Thickness (smallest dimension)
+            const thickA = Math.min(...a.size);
+            const thickB = Math.min(...b.size);
+            if (Math.abs(thickA - thickB) > 0.0001) {
+                return thickA - thickB;
+            }
+
+            // 3. Sort by Lumber (material label)
+            const labelA = matLabel(a.material, a);
+            const labelB = matLabel(b.material, b);
+            return labelA.localeCompare(labelB);
+        });
+    }, [visibleBoards]);
+
     // ── Grouped data ─────────────────────────────────────────────────────────
     const grouped = useMemo(() => {
         const map = new Map();
         visibleBoards.forEach(b => {
-            const label = matLabel(b.material);
-            const dims = [...b.size].sort((a, c) => c - a).map(fmt4); // L × W × T
-            const key = `${label}|||${dims.join('|')}`;
+            const label = matLabel(b.material, b);
+            const dims = [...b.size].sort((a, c) => c - a); // Keep raw numbers in inches for formatUnit
+            const type = b.lumberType === 'plywood' ? 'Plywood' : 'Solid';
+            const key = `${label}|||${type}|||${dims.join('|')}`;
             if (!map.has(key)) {
-                map.set(key, { label, dims, count: 0, names: [] });
+                map.set(key, { label, type, dims, count: 0, names: [] });
             }
             const entry = map.get(key);
             entry.count++;
             entry.names.push(b.name);
         });
         return [...map.values()].sort((a, b) =>
-            a.label.localeCompare(b.label) || b.dims[0] - a.dims[0]
+            a.type.localeCompare(b.type) || a.label.localeCompare(b.label) || b.dims[0] - a.dims[0]
         );
     }, [visibleBoards]);
 
+    const filteredGrouped = useMemo(() => {
+        return grouped.filter(g => {
+            if (g.type === 'Plywood') return showPlywood;
+            if (g.type === 'Solid') return showSolid;
+            return true;
+        });
+    }, [grouped, showPlywood, showSolid]);
+
     // ── Plywood Sheet Packing Layouts ────────────────────────────────────────
     const packedGroups = useMemo(() => {
-        return packPlywoodSheets(visibleBoards, sheetSize);
-    }, [visibleBoards, sheetSize]);
+        return packPlywoodSheets(visibleBoards, sheetSize, plywoodInventory || [], prioritizeInventory);
+    }, [visibleBoards, sheetSize, plywoodInventory, prioritizeInventory]);
 
     // ── Page Count Calculation ──
     const totalPrintPages = useMemo(() => {
@@ -126,9 +342,10 @@ const CutListPanel = () => {
     }, [packedGroups]);
 
     // ─── Single Sheet Print Spooler Helper ───────────────────────────────────
+    // ─── Single Sheet Print Spooler Helper ───────────────────────────────────
     const handlePrintSheet = (grp, sheet, autoPrint = false) => {
         const materialLabel = matLabel(grp.material);
-        const thickLabel = fmt4(grp.thickness);
+        const thickLabel = formatUnit(grp.thickness, units);
         const sheetW = sheet.width;
         const sheetH = sheet.height;
 
@@ -138,9 +355,11 @@ const CutListPanel = () => {
             return;
         }
 
-        const svgW = 450;
+        const baseSheetW = 48;
+        const svgW = Math.max(200, Math.min(450, (sheetW / baseSheetW) * 450));
         const svgH = (sheetH / sheetW) * svgW;
         const scale = svgW / sheetW;
+        const printBelow = sheetH <= 36;
         const speciesColor = getMaterialDisplayColor(sheet.material);
 
         const placementsHtml = sheet.placements.map((p, idx) => {
@@ -162,11 +381,7 @@ const CutListPanel = () => {
                 }
             }
 
-            const showText = partW > 45 && partH > 22;
-            const labelText = showText ? `
-                <text x="${partW / 2}" y="${partH / 2 - 2}" text-anchor="middle" fill="#000000" font-size="8px" font-weight="bold" font-family="sans-serif">${p.board.name}</text>
-                <text x="${partW / 2}" y="${partH / 2 + 7}" text-anchor="middle" fill="rgba(0,0,0,0.7)" font-size="7px" font-family="monospace">${fmt4(p.w)}"×${fmt4(p.h)}"</text>
-            ` : '';
+            const labelText = renderPartLabel(p, idx, scale, units, true);
 
             return `
                 <g transform="translate(${px}, ${py})">
@@ -177,14 +392,20 @@ const CutListPanel = () => {
             `;
         }).join('\n');
 
-        const partsListHtml = sheet.placements.map((p, idx) => `
-            <tr>
-                <td style="padding:8px; border-bottom:1px solid #ddd; font-weight:bold;">${p.board.name}</td>
-                <td style="padding:8px; border-bottom:1px solid #ddd; font-family:monospace; text-align:right;">${fmt4(p.w)}"</td>
-                <td style="padding:8px; border-bottom:1px solid #ddd; font-family:monospace; text-align:right;">${fmt4(p.h)}"</td>
-                <td style="padding:8px; border-bottom:1px solid #ddd; text-align:center; color:#555;">${p.rotated ? 'Rotated 90° (Width grain)' : 'Aligned (Length grain)'}</td>
-            </tr>
-        `).join('\n');
+        const partsListHtml = sheet.placements.map((p, idx) => {
+            const pieceCode = String.fromCharCode(65 + (idx % 26)) + (idx >= 26 ? Math.floor(idx / 26) + 1 : '');
+            return `
+                <tr>
+                    <td style="padding:8px; border-bottom:1px solid #ddd; font-weight:bold;">
+                        <span style="background:#eeeeee; border:1px solid #ccc; padding:2px 5px; border-radius:3px; font-size:0.7rem; font-family:monospace; font-weight:bold; margin-right:6px; color:#444;">${pieceCode}</span>
+                        ${p.board.name}
+                    </td>
+                    <td style="padding:8px; border-bottom:1px solid #ddd; font-family:monospace; text-align:right;">${formatUnit(p.w, units)}</td>
+                    <td style="padding:8px; border-bottom:1px solid #ddd; font-family:monospace; text-align:right;">${formatUnit(p.h, units)}</td>
+                    <td style="padding:8px; border-bottom:1px solid #ddd; text-align:center; color:#555;">${p.rotated ? 'Rotated 90° (Width grain)' : 'Aligned (Length grain)'}</td>
+                </tr>
+            `;
+        }).join('\n');
 
         const htmlContent = `
             <!DOCTYPE html>
@@ -217,20 +438,22 @@ const CutListPanel = () => {
                     }
                     .layout-container {
                         display: flex;
+                        flex-direction: ${printBelow ? 'column' : 'row'};
                         gap: 30px;
-                        flex-wrap: wrap;
                         margin-bottom: 30px;
-                        align-items: flex-start;
+                        align-items: ${printBelow ? 'stretch' : 'flex-start'};
                     }
                     .svg-box {
                         border: 2px solid #333;
                         background: #fafafa;
                         padding: 10px;
                         border-radius: 4px;
+                        width: fit-content;
                     }
                     .info-box {
                         flex: 1;
                         min-width: 250px;
+                        max-width: ${printBelow ? '100%' : 'none'};
                     }
                     .info-box h3 {
                         margin-top: 0;
@@ -263,8 +486,8 @@ const CutListPanel = () => {
                 </div>
                 
                 <div class="header">
-                    <h1>Sheet ${sheet.id} &mdash; Cut Layout</h1>
-                    <div class="meta">${thickLabel}" ${materialLabel} Plywood &middot; Efficiency: ${sheet.efficiency.toFixed(1)}%</div>
+                    <h1>${sheet.isInventory ? `Scrap Layout (${sheet.label})` : `Sheet ${sheet.id} &mdash; Cut Layout`}</h1>
+                    <div class="meta">${thickLabel} ${materialLabel} Plywood &middot; Efficiency: ${sheet.efficiency.toFixed(1)}%</div>
                 </div>
                 
                 <div class="layout-container">
@@ -331,41 +554,42 @@ const CutListPanel = () => {
             return;
         }
 
-        // 1. Cut List Detail Table HTML (Page 1)
-        const detailRowsHtml = visibleBoards.map(b => {
-            const dims = [...b.size].sort((x, y) => y - x).map(fmt4);
-            const isPly = b.lumberType === 'plywood';
+        // 1. Cut List Grouped Table HTML (Page 1)
+        const groupedRowsHtml = filteredGrouped.map(g => {
+            const isPly = g.type === 'Plywood';
+            const thicknessLabel = formatUnit(g.dims[2], units);
+            const sizeLabel = `${formatUnit(g.dims[0], units)} × ${formatUnit(g.dims[1], units)}`;
             return `
                 <tr>
-                    <td style="padding:6px 8px; border-bottom:1px solid #ddd; font-weight:bold;">${matLabel(b.material)}</td>
-                    <td style="padding:6px 8px; border-bottom:1px solid #ddd; color: ${isPly ? '#8b5a2b' : '#333'}; font-weight: 600;">${isPly ? 'Plywood' : 'Solid'}</td>
-                    <td style="padding:6px 8px; border-bottom:1px solid #ddd;">${b.name}</td>
-                    <td style="padding:6px 8px; border-bottom:1px solid #ddd; font-family:monospace; text-align:right;">${dims[0]}"</td>
-                    <td style="padding:6px 8px; border-bottom:1px solid #ddd; font-family:monospace; text-align:right;">${dims[1]}"</td>
-                    <td style="padding:6px 8px; border-bottom:1px solid #ddd; font-family:monospace; text-align:right;">${dims[2]}"</td>
+                    <td style="padding:6px 8px; border-bottom:1px solid #ddd; font-weight:bold;">${g.label}</td>
+                    <td style="padding:6px 8px; border-bottom:1px solid #ddd; color: ${isPly ? '#8b5a2b' : '#333'}; font-weight: 600;">${g.type}</td>
+                    <td style="padding:6px 8px; border-bottom:1px solid #ddd; font-family:monospace; text-align:right;">${thicknessLabel}</td>
+                    <td style="padding:6px 8px; border-bottom:1px solid #ddd; font-family:monospace; text-align:right;">${sizeLabel}</td>
+                    <td style="padding:6px 8px; border-bottom:1px solid #ddd; font-weight:bold; text-align:center;">${g.count}</td>
+                    <td style="padding:6px 8px; border-bottom:1px solid #ddd; color:#555; font-size:0.8rem;">${g.names.join(', ')}</td>
                 </tr>
             `;
         }).join('\n');
 
-        const detailSectionHtml = `
+        const groupedSectionHtml = `
             <div class="page-container" style="page-break-after: always; margin-bottom: 40px;">
                 <div class="header">
                     <h1>Project Lumber Cut List &mdash; Overview</h1>
-                    <div class="meta">Total Pieces: ${visibleBoards.length} &middot; Mode: Detailed Inventory</div>
+                    <div class="meta">Mode: Grouped Summary &middot; Total Types: ${filteredGrouped.length}</div>
                 </div>
                 <table>
                     <thead>
                         <tr>
                             <th style="padding:8px; text-align:left; background:#f4f4f4; border-bottom:2px solid #ddd;">Lumber Material</th>
                             <th style="padding:8px; text-align:left; background:#f4f4f4; border-bottom:2px solid #ddd;">Classification</th>
-                            <th style="padding:8px; text-align:left; background:#f4f4f4; border-bottom:2px solid #ddd;">Component Name</th>
-                            <th style="padding:8px; text-align:right; background:#f4f4f4; border-bottom:2px solid #ddd;">Length (in)</th>
-                            <th style="padding:8px; text-align:right; background:#f4f4f4; border-bottom:2px solid #ddd;">Width (in)</th>
-                            <th style="padding:8px; text-align:right; background:#f4f4f4; border-bottom:2px solid #ddd;">Thickness (in)</th>
+                            <th style="padding:8px; text-align:right; background:#f4f4f4; border-bottom:2px solid #ddd;">Thickness</th>
+                            <th style="padding:8px; text-align:right; background:#f4f4f4; border-bottom:2px solid #ddd;">Dimensions (L × W)</th>
+                            <th style="padding:8px; text-align:center; background:#f4f4f4; border-bottom:2px solid #ddd;">Qty</th>
+                            <th style="padding:8px; text-align:left; background:#f4f4f4; border-bottom:2px solid #ddd;">Parts</th>
                         </tr>
                     </thead>
                     <tbody>
-                        ${detailRowsHtml}
+                        ${groupedRowsHtml}
                     </tbody>
                 </table>
             </div>
@@ -375,15 +599,17 @@ const CutListPanel = () => {
         let plywoodSectionsHtml = '';
         packedGroups.forEach(grp => {
             const materialLabel = matLabel(grp.material);
-            const thickLabel = fmt4(grp.thickness);
+            const thickLabel = formatUnit(grp.thickness, units);
 
             grp.sheets.forEach(sheet => {
-                const svgW = 450;
+                const baseSheetW = 48;
+                const svgW = Math.max(200, Math.min(450, (sheet.width / baseSheetW) * 450));
                 const svgH = (sheet.height / sheet.width) * svgW;
                 const scale = svgW / sheet.width;
+                const printBelow = sheet.height <= 36;
                 const speciesColor = getMaterialDisplayColor(sheet.material);
 
-                const placementsHtml = sheet.placements.map(p => {
+                const placementsHtml = sheet.placements.map((p, idx) => {
                     const partW = p.w * scale;
                     const partH = p.h * scale;
                     const px = p.x * scale;
@@ -401,11 +627,7 @@ const CutListPanel = () => {
                         }
                     }
 
-                    const showText = partW > 45 && partH > 22;
-                    const labelText = showText ? `
-                        <text x="${partW / 2}" y="${partH / 2 - 2}" text-anchor="middle" fill="#000000" font-size="8px" font-weight="bold" font-family="sans-serif">${p.board.name}</text>
-                        <text x="${partW / 2}" y="${partH / 2 + 7}" text-anchor="middle" fill="rgba(0,0,0,0.7)" font-size="7px" font-family="monospace">${fmt4(p.w)}"×${fmt4(p.h)}"</text>
-                    ` : '';
+                    const labelText = renderPartLabel(p, idx, scale, units, true);
 
                     return `
                         <g transform="translate(${px}, ${py})">
@@ -416,24 +638,30 @@ const CutListPanel = () => {
                     `;
                 }).join('\n');
 
-                const partsListHtml = sheet.placements.map(p => `
-                    <tr>
-                        <td style="padding:6px; border-bottom:1px solid #ddd; font-weight:bold;">${p.board.name}</td>
-                        <td style="padding:6px; border-bottom:1px solid #ddd; font-family:monospace; text-align:right;">${fmt4(p.w)}"</td>
-                        <td style="padding:6px; border-bottom:1px solid #ddd; font-family:monospace; text-align:right;">${fmt4(p.h)}"</td>
-                        <td style="padding:6px; border-bottom:1px solid #ddd; text-align:center; color:#555;">${p.rotated ? 'Rotated 90°' : 'Aligned'}</td>
-                    </tr>
-                `).join('\n');
+                const partsListHtml = sheet.placements.map((p, idx) => {
+                    const pieceCode = String.fromCharCode(65 + (idx % 26)) + (idx >= 26 ? Math.floor(idx / 26) + 1 : '');
+                    return `
+                        <tr>
+                            <td style="padding:6px; border-bottom:1px solid #ddd; font-weight:bold;">
+                                <span style="background:#eeeeee; border:1px solid #ccc; padding:1px 4px; border-radius:3px; font-size:0.65rem; font-family:monospace; font-weight:bold; margin-right:6px; color:#444;">${pieceCode}</span>
+                                ${p.board.name}
+                            </td>
+                            <td style="padding:6px; border-bottom:1px solid #ddd; font-family:monospace; text-align:right;">${formatUnit(p.w, units)}</td>
+                            <td style="padding:6px; border-bottom:1px solid #ddd; font-family:monospace; text-align:right;">${formatUnit(p.h, units)}</td>
+                            <td style="padding:6px; border-bottom:1px solid #ddd; text-align:center; color:#555;">${p.rotated ? 'Rotated 90°' : 'Aligned'}</td>
+                        </tr>
+                    `;
+                }).join('\n');
 
                 plywoodSectionsHtml += `
                     <div class="page-container" style="page-break-after: always; margin-bottom: 40px; page-break-inside: avoid;">
                         <div class="header">
-                            <h1>Sheet ${sheet.id} &mdash; Cut Layout</h1>
-                            <div class="meta">${thickLabel}" ${materialLabel} Plywood &middot; Efficiency: ${sheet.efficiency.toFixed(1)}%</div>
+                            <h1>${sheet.isInventory ? `Scrap Layout (${sheet.label})` : `Sheet ${sheet.id} &mdash; Cut Layout`}</h1>
+                            <div class="meta">${thickLabel} ${materialLabel} Plywood &middot; Efficiency: ${sheet.efficiency.toFixed(1)}%</div>
                         </div>
                         
-                        <div class="layout-container">
-                            <div class="svg-box">
+                        <div class="layout-container" style="flex-direction: ${printBelow ? 'column' : 'row'}; align-items: ${printBelow ? 'stretch' : 'flex-start'};">
+                            <div class="svg-box" style="width: fit-content;">
                                 <svg width="${svgW}" height="${svgH}" style="overflow:hidden;">
                                     <g opacity="0.08">
                                         <line x1="${svgW * 0.2}" y1="0" x2="${svgW * 0.2}" y2="${svgH}" stroke="#000" stroke-width="1" />
@@ -445,7 +673,7 @@ const CutListPanel = () => {
                                 </svg>
                             </div>
                             
-                            <div class="info-box">
+                            <div class="info-box" style="max-width: ${printBelow ? '100%' : 'none'};">
                                 <h3>Sheet Inventory</h3>
                                 <table>
                                     <thead>
@@ -547,7 +775,7 @@ const CutListPanel = () => {
                     <button onclick="window.print()" style="background:#bc8a5f; color:white; border:none; padding:6px 16px; border-radius:4px; font-weight:bold; cursor:pointer;">Print All Pages</button>
                 </div>
                 
-                ${detailSectionHtml}
+                ${groupedSectionHtml}
                 ${plywoodSectionsHtml}
                 
                 <script>
@@ -608,25 +836,25 @@ const CutListPanel = () => {
                                 <th style={th}>Lumber</th>
                                 <th style={th}>Type</th>
                                 <th style={th}>Component</th>
-                                <th style={{ ...th, textAlign: 'right' }}>Length</th>
-                                <th style={{ ...th, textAlign: 'right' }}>Width</th>
-                                <th style={{ ...th, textAlign: 'right' }}>Thickness</th>
+                                <th style={{ ...th, textAlign: 'right' }}>Length ({units === 'metric' ? 'mm' : 'in'})</th>
+                                <th style={{ ...th, textAlign: 'right' }}>Width ({units === 'metric' ? 'mm' : 'in'})</th>
+                                <th style={{ ...th, textAlign: 'right' }}>Thickness ({units === 'metric' ? 'mm' : 'in'})</th>
                             </tr>
                         </thead>
                         <tbody>
-                            {visibleBoards.map(b => {
-                                const dims = [...b.size].sort((a, c) => c - a).map(fmt4);
+                            {sortedDetailBoards.map(b => {
+                                const dims = [...b.size].sort((a, c) => c - a);
                                 const isPly = b.lumberType === 'plywood';
                                 return (
                                     <tr key={b.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                                        <td style={td}>{matLabel(b.material)}</td>
+                                        <td style={td}>{matLabel(b.material, b)}</td>
                                         <td style={{ ...td, fontWeight: 600, color: isPly ? 'var(--accent-color)' : 'var(--text-muted)' }}>
                                             {isPly ? 'Plywood' : 'Solid'}
                                         </td>
                                         <td style={td}>{b.name}</td>
-                                        <td style={{ ...tdMono, textAlign: 'right' }}>{dims[0]}"</td>
-                                        <td style={{ ...tdMono, textAlign: 'right' }}>{dims[1]}"</td>
-                                        <td style={{ ...tdMono, textAlign: 'right' }}>{dims[2]}"</td>
+                                        <td style={{ ...tdMono, textAlign: 'right' }}>{formatUnit(dims[0], units)}</td>
+                                        <td style={{ ...tdMono, textAlign: 'right' }}>{formatUnit(dims[1], units)}</td>
+                                        <td style={{ ...tdMono, textAlign: 'right' }}>{formatUnit(dims[2], units)}</td>
                                     </tr>
                                 );
                             })}
@@ -635,32 +863,60 @@ const CutListPanel = () => {
                 )}
 
                 {mode === 'grouped' && (
-                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                        <thead>
-                            <tr style={{ borderBottom: '2px solid var(--border-color)' }}>
-                                <th style={{ ...th, textAlign: 'center', width: '36px' }}>Qty</th>
-                                <th style={th}>Lumber</th>
-                                <th style={th}>Dimensions (L × W × T)</th>
-                                <th style={th}>Components</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {grouped.map((g, i) => (
-                                <tr key={i} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                                    <td style={{ ...td, textAlign: 'center', fontWeight: 700, color: 'var(--accent-color)', fontSize: '0.9rem' }}>
-                                        {g.count}×
-                                    </td>
-                                    <td style={td}>{g.label}</td>
-                                    <td style={tdMono}>
-                                        {g.dims[0]}" × {g.dims[1]}" × {g.dims[2]}"
-                                    </td>
-                                    <td style={{ ...td, color: 'var(--text-muted)', fontSize: '0.72rem' }}>
-                                        {g.names.join(', ')}
-                                    </td>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                        {/* Checkboxes Row */}
+                        <div style={{ display: 'flex', gap: '16px', marginBottom: '4px', alignItems: 'center' }}>
+                            <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 700, letterSpacing: '0.5px' }}>FILTER BY TYPE:</span>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', color: 'var(--text-main)', cursor: 'pointer', fontWeight: 500 }}>
+                                <input
+                                    type="checkbox"
+                                    checked={showPlywood}
+                                    onChange={(e) => setShowPlywood(e.target.checked)}
+                                    style={{ accentColor: 'var(--accent-color)', cursor: 'pointer' }}
+                                />
+                                Plywood
+                            </label>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', color: 'var(--text-main)', cursor: 'pointer', fontWeight: 500 }}>
+                                <input
+                                    type="checkbox"
+                                    checked={showSolid}
+                                    onChange={(e) => setShowSolid(e.target.checked)}
+                                    style={{ accentColor: 'var(--accent-color)', cursor: 'pointer' }}
+                                />
+                                Solid
+                            </label>
+                        </div>
+                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                            <thead>
+                                <tr style={{ borderBottom: '2px solid var(--border-color)' }}>
+                                    <th style={{ ...th, textAlign: 'center', width: '36px' }}>Qty</th>
+                                    <th style={th}>Lumber</th>
+                                    <th style={th}>Type</th>
+                                    <th style={th}>Dimensions ({units === 'metric' ? 'mm' : 'in'})</th>
+                                    <th style={th}>Components</th>
                                 </tr>
-                            ))}
-                        </tbody>
-                    </table>
+                            </thead>
+                            <tbody>
+                                {filteredGrouped.map((g, i) => (
+                                    <tr key={i} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                                        <td style={{ ...td, textAlign: 'center', fontWeight: 700, color: 'var(--accent-color)', fontSize: '0.9rem' }}>
+                                            {g.count}×
+                                        </td>
+                                        <td style={td}>{g.label}</td>
+                                        <td style={{ ...td, fontWeight: 600, color: g.type === 'Plywood' ? 'var(--accent-color)' : 'var(--text-muted)' }}>
+                                            {g.type}
+                                        </td>
+                                        <td style={tdMono}>
+                                            {formatUnit(g.dims[0], units)} × {formatUnit(g.dims[1], units)} × {formatUnit(g.dims[2], units)}
+                                        </td>
+                                        <td style={{ ...td, color: 'var(--text-muted)', fontSize: '0.72rem' }}>
+                                            {g.names.join(', ')}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
                 )}
 
                 {mode === 'plywood' && (
@@ -690,6 +946,197 @@ const CutListPanel = () => {
                             </span>
                         </div>
 
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '10px', flexWrap: 'wrap' }}>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', color: 'var(--text-main)', cursor: 'pointer', fontWeight: 500 }}>
+                                <input
+                                    type="checkbox"
+                                    checked={prioritizeInventory}
+                                    onChange={(e) => setAndPersistPrioritizeInventory(e.target.checked)}
+                                    style={{ accentColor: 'var(--accent-color)', cursor: 'pointer' }}
+                                />
+                                Prioritize Plywood Inventory
+                            </label>
+
+                            <button
+                                onClick={() => setShowInvManager(!showInvManager)}
+                                style={{
+                                    marginLeft: 'auto',
+                                    padding: '4px 10px',
+                                    borderRadius: '5px',
+                                    border: '1px solid var(--border-color)',
+                                    fontSize: '0.74rem',
+                                    fontWeight: 'bold',
+                                    background: showInvManager ? 'var(--accent-color)' : 'rgba(255,255,255,0.04)',
+                                    color: showInvManager ? 'white' : 'var(--text-main)',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.15s ease'
+                                }}
+                            >
+                                🎒 Scrap Inventory ({(plywoodInventory || []).length} pc{(plywoodInventory || []).length !== 1 ? 's' : ''})
+                            </button>
+                        </div>
+
+                        {/* Inventory Manager Panel */}
+                        {showInvManager && (
+                            <div style={{
+                                borderTop: '1px dashed var(--border-color)',
+                                paddingTop: '12px',
+                                marginTop: '4px',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '12px'
+                            }}>
+                                {/* Add item form */}
+                                <div style={{
+                                    background: 'rgba(0, 0, 0, 0.2)',
+                                    padding: '10px 12px',
+                                    borderRadius: '6px',
+                                    border: '1px solid rgba(255,255,255,0.03)',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '8px'
+                                }}>
+                                    <div style={{ fontSize: '0.74rem', fontWeight: 'bold', color: 'var(--accent-color)', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
+                                        Add Plywood Scrap to Inventory
+                                    </div>
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: '8px' }}>
+                                        <div>
+                                            <div style={{ fontSize: '0.64rem', color: 'var(--text-muted)', marginBottom: '3px', fontWeight: 600 }}>MATERIAL</div>
+                                            <select
+                                                value={invMaterial}
+                                                onChange={e => setInvMaterial(e.target.value)}
+                                                style={{ width: '100%', padding: '4px 6px', background: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '4px', fontSize: '0.76rem' }}
+                                            >
+                                                {Object.entries(WOOD_CATALOGUE).map(([k, cfg]) => (
+                                                    <option key={k} value={k}>{cfg.label}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <div style={{ fontSize: '0.64rem', color: 'var(--text-muted)', marginBottom: '3px', fontWeight: 600 }}>THICKNESS</div>
+                                            <select
+                                                value={invThickness}
+                                                onChange={e => setInvThickness(e.target.value)}
+                                                style={{ width: '100%', padding: '4px 6px', background: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '4px', fontSize: '0.76rem' }}
+                                            >
+                                                {units === 'metric' ? (
+                                                    <>
+                                                        <option value="0.2362">6mm (≈1/4")</option>
+                                                        <option value="0.3543">9mm (≈3/8")</option>
+                                                        <option value="0.4724">12mm (≈1/2")</option>
+                                                        <option value="0.5906">15mm (≈5/8")</option>
+                                                        <option value="0.7087">18mm (≈3/4")</option>
+                                                        <option value="0.9843">25mm (≈1")</option>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <option value="0.25">1/4" (0.25")</option>
+                                                        <option value="0.375">3/8" (0.375")</option>
+                                                        <option value="0.5">1/2" (0.50")</option>
+                                                        <option value="0.625">5/8" (0.625")</option>
+                                                        <option value="0.75">3/4" (0.75")</option>
+                                                        <option value="1.0">1" (1.00")</option>
+                                                    </>
+                                                )}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <div style={{ fontSize: '0.64rem', color: 'var(--text-muted)', marginBottom: '3px', fontWeight: 600 }}>WIDTH ({units === 'metric' ? 'mm' : 'in'})</div>
+                                            <input
+                                                type="number"
+                                                step="any"
+                                                value={invWidth}
+                                                onChange={e => setInvWidth(e.target.value)}
+                                                placeholder="Width"
+                                                style={{ width: '100%', padding: '4px 6px', background: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '4px', fontSize: '0.76rem' }}
+                                            />
+                                        </div>
+                                        <div>
+                                            <div style={{ fontSize: '0.64rem', color: 'var(--text-muted)', marginBottom: '3px', fontWeight: 600 }}>LENGTH (Grain Dir) ({units === 'metric' ? 'mm' : 'in'})</div>
+                                            <input
+                                                type="number"
+                                                step="any"
+                                                value={invHeight}
+                                                onChange={e => setInvHeight(e.target.value)}
+                                                placeholder="Length (Grain)"
+                                                style={{ width: '100%', padding: '4px 6px', background: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '4px', fontSize: '0.76rem' }}
+                                            />
+                                        </div>
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                        <input
+                                            type="text"
+                                            value={invLabel}
+                                            onChange={e => setInvLabel(e.target.value)}
+                                            placeholder="Label / Note (optional, e.g. Leftover back)"
+                                            style={{ flex: 1, padding: '4px 6px', background: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '4px', fontSize: '0.76rem' }}
+                                        />
+                                        <button
+                                            onClick={handleAddInventoryItem}
+                                            style={{
+                                                padding: '4px 14px',
+                                                borderRadius: '4px',
+                                                background: 'var(--accent-color)',
+                                                color: 'white',
+                                                border: 'none',
+                                                fontWeight: 'bold',
+                                                fontSize: '0.76rem',
+                                                cursor: 'pointer'
+                                            }}
+                                        >
+                                            Add Piece
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* Inventory list */}
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '160px', overflowY: 'auto', paddingRight: '4px' }}>
+                                    <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 'bold' }}>CURRENT STOCK:</div>
+                                    {(plywoodInventory || []).length === 0 ? (
+                                        <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', fontStyle: 'italic', padding: '6px 0' }}>
+                                            No scrap pieces in inventory. Add some above!
+                                        </div>
+                                    ) : (
+                                        (plywoodInventory || []).map((item) => (
+                                            <div key={item.id} style={{
+                                                display: 'flex',
+                                                justifyContent: 'space-between',
+                                                alignItems: 'center',
+                                                background: 'rgba(255,255,255,0.02)',
+                                                padding: '5px 8px',
+                                                borderRadius: '4px',
+                                                border: '1px solid rgba(255,255,255,0.04)',
+                                                fontSize: '0.74rem'
+                                            }}>
+                                                <span style={{ fontWeight: 600, color: 'var(--text-main)' }}>
+                                                    {item.label ? `"${item.label}" - ` : ''}
+                                                    {formatUnit(parseFloat(item.thickness), units)} {WOOD_CATALOGUE[item.material]?.label || item.material}
+                                                </span>
+                                                <span style={{ fontFamily: 'monospace', color: 'var(--text-muted)', marginLeft: '8px' }}>
+                                                    {formatUnit(parseFloat(item.width), units)} × {formatUnit(parseFloat(item.height), units)}
+                                                </span>
+                                                <button
+                                                    onClick={() => handleRemoveInventoryItem(item.id)}
+                                                    style={{
+                                                        background: 'transparent',
+                                                        color: '#e06c75',
+                                                        border: 'none',
+                                                        cursor: 'pointer',
+                                                        marginLeft: '12px',
+                                                        padding: '2px 4px',
+                                                        fontSize: '0.8rem'
+                                                    }}
+                                                    title="Delete from stock"
+                                                >
+                                                    ❌
+                                                </button>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
                         {packedGroups.length === 0 ? (
                             <div style={{
                                 display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
@@ -705,7 +1152,7 @@ const CutListPanel = () => {
                         ) : (
                             packedGroups.map((grp, grpIdx) => {
                                 const materialLabel = matLabel(grp.material);
-                                const thickLabel = fmt4(grp.thickness);
+                                const thickLabel = formatUnit(grp.thickness, units);
 
                                 return (
                                     <div key={grpIdx} style={{
@@ -715,7 +1162,7 @@ const CutListPanel = () => {
                                         {/* Subheader */}
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px', marginBottom: '14px' }}>
                                             <h4 style={{ margin: 0, color: 'var(--accent-color)', fontSize: '0.9rem' }}>
-                                                {thickLabel}" {materialLabel} Plywood
+                                                {thickLabel} {materialLabel} Plywood
                                             </h4>
                                             <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)', fontWeight: 600 }}>
                                                 Total Sheets: {grp.sheets.length}
@@ -736,7 +1183,7 @@ const CutListPanel = () => {
                                                         {/* Vector Sheet Diagram Thumbnail (Enlargeable on Click) */}
                                                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                                                             <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '4px', fontWeight: 'bold' }}>
-                                                                Sheet {sheet.id} ({fmt4(sheet.width)}" × {fmt4(sheet.height)}")
+                                                                {sheet.isInventory ? `Scrap Piece Layout: ${sheet.label}` : `Sheet ${sheet.id} (${formatUnit(sheet.width, units)} × ${formatUnit(sheet.height, units)})`}
                                                             </div>
                                                             <div 
                                                                 title="Click to enlarge & print layout sheet"
@@ -794,8 +1241,6 @@ const CutListPanel = () => {
                                                                             }
                                                                         }
 
-                                                                        const showText = partW > 45 && partH > 22;
-
                                                                         return (
                                                                             <g key={pIdx} transform={`translate(${px}, ${py})`}>
                                                                                 <rect
@@ -807,30 +1252,7 @@ const CutListPanel = () => {
                                                                                     style={{ fillOpacity: 0.85 }}
                                                                                 />
                                                                                 {grainLines}
-                                                                                {showText && (
-                                                                                    <>
-                                                                                        <text
-                                                                                            x={partW / 2}
-                                                                                            y={partH / 2 - 2}
-                                                                                            textAnchor="middle"
-                                                                                            fill="#000000"
-                                                                                            fontSize="7.5px"
-                                                                                            fontWeight="bold"
-                                                                                        >
-                                                                                            {p.board.name}
-                                                                                        </text>
-                                                                                        <text
-                                                                                            x={partW / 2}
-                                                                                            y={partH / 2 + 7}
-                                                                                            textAnchor="middle"
-                                                                                            fill="rgba(0,0,0,0.65)"
-                                                                                            fontSize="6.5px"
-                                                                                            fontFamily="monospace"
-                                                                                        >
-                                                                                            {fmt4(p.w)}"×{fmt4(p.h)}"
-                                                                                        </text>
-                                                                                    </>
-                                                                                )}
+                                                                                {renderPartLabel(p, pIdx, scale, units, false)}
                                                                             </g>
                                                                         );
                                                                     })}
@@ -871,11 +1293,53 @@ const CutListPanel = () => {
                                                             <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px' }}>
                                                                 <div style={{ fontWeight: 'bold', marginBottom: '2px', textTransform: 'uppercase', fontSize: '0.64rem', letterSpacing: '0.3px' }}>Nested Components:</div>
                                                                 <ul style={{ margin: 0, paddingLeft: '14px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                                                                    {sheet.placements.map((p, idx) => (
-                                                                        <li key={idx}>
-                                                                            <strong>{p.board.name}</strong>: {fmt4(p.w)}" × {fmt4(p.h)}"{p.rotated ? ' (rotated)' : ''}
-                                                                        </li>
-                                                                    ))}
+                                                                    {sheet.placements.map((p, idx) => {
+                                                                        const isWidthGrain = p.board.grainDirection === 'width';
+                                                                        const pieceCode = String.fromCharCode(65 + (idx % 26)) + (idx >= 26 ? Math.floor(idx / 26) + 1 : '');
+                                                                        return (
+                                                                            <li key={idx} style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px' }}>
+                                                                                <span style={{
+                                                                                    background: 'rgba(255,255,255,0.08)',
+                                                                                    padding: '1px 5px',
+                                                                                    borderRadius: '3px',
+                                                                                    fontSize: '0.66rem',
+                                                                                    fontFamily: 'monospace',
+                                                                                    fontWeight: 'bold',
+                                                                                    color: 'var(--accent-color)',
+                                                                                    marginRight: '2px'
+                                                                                }}>{pieceCode}</span>
+                                                                                <strong>{p.board.name}</strong>: {formatUnit(p.w, units)} × {formatUnit(p.h, units)}{p.rotated ? ' (rotated)' : ''}
+                                                                                <button
+                                                                                    onClick={() => toggleGrainDirection(p.board.id)}
+                                                                                    title={isWidthGrain ? "Grain: Widthwise (↔). Click to change to Lengthwise (↕)." : "Grain: Lengthwise (↕). Click to change to Widthwise (↔)."}
+                                                                                    style={{
+                                                                                        background: 'rgba(255,255,255,0.06)',
+                                                                                        border: '1px solid var(--border-color)',
+                                                                                        borderRadius: '4px',
+                                                                                        padding: '0px 5px',
+                                                                                        fontSize: '0.74rem',
+                                                                                        color: 'var(--accent-color)',
+                                                                                        cursor: 'pointer',
+                                                                                        display: 'inline-flex',
+                                                                                        alignItems: 'center',
+                                                                                        marginLeft: '6px',
+                                                                                        height: '18px',
+                                                                                        transition: 'all 0.15s ease'
+                                                                                    }}
+                                                                                    onMouseEnter={e => {
+                                                                                        e.currentTarget.style.background = 'var(--accent-color)';
+                                                                                        e.currentTarget.style.color = '#fff';
+                                                                                    }}
+                                                                                    onMouseLeave={e => {
+                                                                                        e.currentTarget.style.background = 'rgba(255,255,255,0.06)';
+                                                                                        e.currentTarget.style.color = 'var(--accent-color)';
+                                                                                    }}
+                                                                                >
+                                                                                    {isWidthGrain ? '↔' : '↕'}
+                                                                                </button>
+                                                                            </li>
+                                                                        );
+                                                                    })}
                                                                 </ul>
                                                             </div>
                                                         </div>

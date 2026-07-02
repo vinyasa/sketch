@@ -592,6 +592,16 @@ const useStore = create((set, get) => ({
     } catch (e) {}
   },
 
+  plywoodInventory: loadState("plywoodInventory", []),
+  setPlywoodInventory: (v) => {
+    const next = typeof v === "function" ? v(get().plywoodInventory) : v;
+    set({ plywoodInventory: next });
+    updateActiveWorkspaceStorage((current) => ({
+      ...current,
+      plywoodInventory: next,
+    }));
+  },
+
   workspaceSize: loadState("workspaceSize", 120),
   setWorkspaceSize: (v) => {
     const next = typeof v === "function" ? v(get().workspaceSize) : v;

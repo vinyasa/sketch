@@ -307,12 +307,12 @@ function WorkspaceApp() {
               <DraggablePanel
                 title="Project Cut List"
                 defaultPosition={getSmartPosition(
-                  600,
+                  720,
                   500,
                   "force-center",
                   headerBottom,
                 )}
-                defaultSize={{ width: 600 }}
+                defaultSize={{ width: 720 }}
                 topMargin={headerBottom}
                 onClose={() => setShowCutlistPanel(false)}
                 zIndex={500}

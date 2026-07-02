@@ -17,18 +17,18 @@
 // seed        : unique turbulence seed per species for visual distinction
 // roughness   : Three.js MeshStandardMaterial roughness (0–1)
 export const WOOD_CATALOGUE = {
-    'pine':      { label: 'Pine',      grainColor: '#f4e4c1', baseFreq: '0.004 0.30', fineFreq: '0.015 0.60', grainAlpha: 0.55, seed: 2,  roughness: 0.85 },
-    'white-oak': { label: 'White Oak', grainColor: '#d4b483', baseFreq: '0.003 0.22', fineFreq: '0.018 0.50', grainAlpha: 0.60, seed: 5,  roughness: 0.80 },
-    'red-oak':   { label: 'Red Oak',   grainColor: '#c48040', baseFreq: '0.003 0.20', fineFreq: '0.016 0.48', grainAlpha: 0.58, seed: 8,  roughness: 0.80 },
-    'walnut':    { label: 'Walnut',    grainColor: '#6b4423', baseFreq: '0.002 0.18', fineFreq: '0.012 0.45', grainAlpha: 0.65, seed: 11, roughness: 0.75 },
-    'cherry':    { label: 'Cherry',    grainColor: '#c46040', baseFreq: '0.003 0.22', fineFreq: '0.014 0.52', grainAlpha: 0.50, seed: 3,  roughness: 0.78 },
-    'maple':     { label: 'Maple',     grainColor: '#f8e8c0', baseFreq: '0.006 0.32', fineFreq: '0.020 0.65', grainAlpha: 0.45, seed: 7,  roughness: 0.82 },
-    'mahogany':  { label: 'Mahogany',  grainColor: '#8b3a20', baseFreq: '0.002 0.16', fineFreq: '0.010 0.42', grainAlpha: 0.62, seed: 14, roughness: 0.72 },
-    'ash':       { label: 'Ash',       grainColor: '#e0cfa0', baseFreq: '0.004 0.28', fineFreq: '0.016 0.55', grainAlpha: 0.55, seed: 9,  roughness: 0.83 },
-    'birch':     { label: 'Birch',     grainColor: '#f0e8d0', baseFreq: '0.005 0.35', fineFreq: '0.022 0.68', grainAlpha: 0.42, seed: 6,  roughness: 0.84 },
-    'ebony':     { label: 'Ebony',     grainColor: '#1a1008', baseFreq: '0.002 0.15', fineFreq: '0.008 0.38', grainAlpha: 0.70, seed: 17, roughness: 0.60 },
-    'teak':      { label: 'Teak',      grainColor: '#9a6820', baseFreq: '0.003 0.20', fineFreq: '0.012 0.48', grainAlpha: 0.62, seed: 4,  roughness: 0.70 },
-    'cedar':     { label: 'Cedar',     grainColor: '#d08060', baseFreq: '0.004 0.26', fineFreq: '0.014 0.52', grainAlpha: 0.52, seed: 12, roughness: 0.82 },
+    'pine':      { label: 'Pine',      grainColor: '#fdf5d6', baseFreq: '0.004 0.30', fineFreq: '0.015 0.60', grainAlpha: 0.20, seed: 2,  roughness: 0.85 },
+    'white-oak': { label: 'White Oak', grainColor: '#eddcb5', baseFreq: '0.003 0.22', fineFreq: '0.018 0.50', grainAlpha: 0.22, seed: 5,  roughness: 0.80 },
+    'red-oak':   { label: 'Red Oak',   grainColor: '#e7bd95', baseFreq: '0.003 0.20', fineFreq: '0.016 0.48', grainAlpha: 0.21, seed: 8,  roughness: 0.80 },
+    'walnut':    { label: 'Walnut',    grainColor: '#a6876c', baseFreq: '0.002 0.18', fineFreq: '0.012 0.45', grainAlpha: 0.25, seed: 11, roughness: 0.75 },
+    'cherry':    { label: 'Cherry',    grainColor: '#e5a894', baseFreq: '0.003 0.22', fineFreq: '0.014 0.52', grainAlpha: 0.18, seed: 3,  roughness: 0.78 },
+    'maple':     { label: 'Maple',     grainColor: '#fffefa', baseFreq: '0.006 0.32', fineFreq: '0.020 0.65', grainAlpha: 0.06, seed: 7,  roughness: 0.82 },
+    'mahogany':  { label: 'Mahogany',  grainColor: '#c57e68', baseFreq: '0.002 0.16', fineFreq: '0.010 0.42', grainAlpha: 0.24, seed: 14, roughness: 0.72 },
+    'ash':       { label: 'Ash',       grainColor: '#f1e8d1', baseFreq: '0.004 0.28', fineFreq: '0.016 0.55', grainAlpha: 0.20, seed: 9,  roughness: 0.83 },
+    'birch':     { label: 'Birch',     grainColor: '#ffffff', baseFreq: '0.005 0.35', fineFreq: '0.022 0.68', grainAlpha: 0.05, seed: 6,  roughness: 0.84 },
+    'ebony':     { label: 'Ebony',     grainColor: '#5a4f45', baseFreq: '0.002 0.15', fineFreq: '0.008 0.38', grainAlpha: 0.28, seed: 17, roughness: 0.60 },
+    'teak':      { label: 'Teak',      grainColor: '#cba774', baseFreq: '0.003 0.20', fineFreq: '0.012 0.48', grainAlpha: 0.24, seed: 4,  roughness: 0.70 },
+    'cedar':     { label: 'Cedar',     grainColor: '#ebbcab', baseFreq: '0.004 0.26', fineFreq: '0.014 0.52', grainAlpha: 0.20, seed: 12, roughness: 0.82 },
 };
 
 // ─── Paint palette ────────────────────────────────────────────────────────────
@@ -56,6 +56,7 @@ function _buildWoodSvg(spec) {
     const seed = spec.seed ?? 3;
     const alpha = spec.grainAlpha ?? 0.55;
     const fineFreq = spec.fineFreq ?? '0.015 0.5';
+    const fineAlpha = spec.fineAlpha ?? (alpha * 0.4);
 
     return (
         `<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512">` +
@@ -74,7 +75,7 @@ function _buildWoodSvg(spec) {
         // ── Fine detail: fractalNoise → pores, rays, slight figure ───────────
         `<filter id="b">` +
         `<feTurbulence type="fractalNoise" baseFrequency="${fineFreq}" numOctaves="3" seed="${seed + 2}" result="n"/>` +
-        `<feColorMatrix type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.22 0" in="n"/>` +
+        `<feColorMatrix type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ${fineAlpha} 0" in="n"/>` +
         `</filter>` +
         `<rect width="100%" height="100%" filter="url(#b)"/>` +
 
